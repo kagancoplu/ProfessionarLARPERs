@@ -6,7 +6,8 @@
  * /cosign kind 'lighthouse') instead of the humans; one settlement pays
  * everyone. A lighthouse pledge the coordinator was never given is left out
  * of the plan (nobody could sign it); a pledge with a bad signature or an
- * unreachable guard is refused at POST.
+ * unreachable guard is refused at POST. A pledge already on the overlay can be
+ * posted without its beef (the web app does that).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
@@ -123,7 +124,9 @@ describe('coordinator × lighthouse pledges (A-P5 5.5–5.7)', () => {
   })
 
   it('once given, the round runs: the agent signs over WS, the guard co-signs both humans; one settlement pays everyone', async () => {
-    expect((await post('/pledges/lighthouse', h2)).status).toBe(201)
+    // h2 is already on the overlay, so it is posted without beef (as the web app does); the coordinator reads the tx there.
+    expect(await post('/pledges/lighthouse', { ...h2, beef: undefined, record: { ...h2.record, poolId: `${'00'.repeat(32)}_0` } })).toMatchObject({ status: 404, body: { code: 'LIGHTHOUSE_NOT_ON_OVERLAY' } })
+    expect((await post('/pledges/lighthouse', { ...h2, beef: undefined })).status).toBe(201)
     const settled = await waitUntil(() => bot.messages.find(m => m.type === 'settled' && m.poolId === terms.poolId), 30_000, 'settled')
     expect(logs.filter(l => l.event === 'sign_ok' && l.poolId === terms.poolId && l.by === 'guard')).toHaveLength(2)
     expect(bot.plans[0].participants.map(p => p.mode ?? 'interactive')).toEqual(['interactive', 'lighthouse', 'lighthouse'])

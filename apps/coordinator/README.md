@@ -27,6 +27,7 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | `MAX_ROUNDS` | `3` | rounds per lock attempt (MASTER §3.2) |
 | `SPENT_CHECK` | `woc` | pre-round check that pledge coins are unspent (WhatsOnChain bulk `POST /utxos/spent`), or `none` |
 | `NETWORK` | `main` | for the spent check |
+| `LIGHTHOUSE_GUARDS` | `GUARD_URL`, else `http://localhost:8091` | comma-separated guard URLs that co-sign lighthouse pledges; each guard's identity key comes from its `GET /healthz` |
 | `RATE_LIMIT` | on | `off` disables the per-IP HTTP limits |
 | `RATE_GET_PER_MIN` / `RATE_POST_PER_MIN` | `120` / `10` | per client IP; loopback exempt; behind Caddy the client is the last `X-Forwarded-For` hop |
 | `WS_MAX_PER_IP` / `WS_MAX_CLIENTS` / `WS_MAX_MSGS_PER_10S` | `20` / `1000` / `40` | WebSocket caps; over the message rate the connection is closed (`1008`) |
@@ -36,6 +37,7 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | Method | Path | |
 |---|---|---|
 | `POST` | `/offers` | Body: `Offer` (MASTER §3.3). Checked against the chain: the pool is on the overlay, valid and `open`; `lockingScriptHex`/`satoshis` are the pool's credit UTXO; `terms` equal the on-chain pool record; the signature's sighash byte is `0xC3` (`SINGLE\|ANYONECANPAY\|FORKID`) and it unlocks the credit UTXO for output 0 = `priceSats` → `payScriptHex`. `201`, or `400/404/409 { code, error }` |
+| `POST` | `/pledges/lighthouse` | Body: `LighthousePledge` from `buildLighthousePledge` (`beef` = AtomicBEEF bytes of the pledge tx; may be left out when the tx is already on the overlay, then it is read from `record.poolId`'s pledges, or `404 LIGHTHOUSE_NOT_ON_OVERLAY`). Checked offline with Track A's `verifyLighthousePledge` (record read from the tx, coin on the record's lighthouse script, credit output, the human's SINGLE\|ACP signature); pool `open`; credits within `minCredits..N`; the named guard reachable from this coordinator. Then the tx goes to the overlay and the pledge is kept. `201 { outpoint, poolId, guard, accepted }`, or `400 LIGHTHOUSE_INVALID_FORMAT`, `404 POOL_NOT_FOUND`, `409 POOL_NOT_OPEN`, `422 LIGHTHOUSE_INVALID` / `GUARD_UNKNOWN` |
 | `GET` | `/offers/:poolId` | the stored offer, else a valid one the provider published on chain (`OP_RETURN agentcoop offer`, checked like a POST and then stored), or `404` |
 | `GET` | `/pools` | every pool: overlay view + `status` + `hasOffer` + `height` |
 | `GET` | `/pools/:poolId` | one pool |
@@ -116,6 +118,10 @@ height ≥ deadline, not full ──▶ pool_failed (once); nothing is broadcast
 
 Before each round the plan's input 0 is checked with the provider's stored offer signature, and pledge coins can be checked against WhatsOnChain so a coin spent elsewhere is blacklisted instead of failing the broadcast. Every decision is one JSON log line (`round_start`, `sign_ok`, `sign_bad`, `sign_reject`, `round_failed`, `broadcast`, `settled`, `gave_up`, `pool_failed`, `plan_failed`, …).
 
+**Lighthouse participants** (offline humans, A-P5 5.5): their input is not sent over WS. The coordinator asks the guard named in the pledge record (`POST {guard}/cosign`, `context.kind: 'lighthouse'`, via Track A's `lighthouseCosign`); the guard runs `cosignLighthouse` (the whole plan checked as the human would) and returns the complete unlocking script, which is checked in place like any signature. A refusal or an unreachable guard fails that input for the round (`guard: …` in the blacklist). A lighthouse pledge that was only put on the overlay, never given to this coordinator, is left out of plans: nobody here could sign it. `test/e2e.lighthouse.mockchain.test.ts`: two humans and one agent, one settlement, `consistent`, `custodiedSats: 0`.
+
+**Vault-locked credits** (`creditLock: 'vault'`, A-P5 5.3): the pledge record is read from the pledge transaction itself, so the plan puts that participant's credits on its own vault script; audit and metrics recognize that output with Track A's `creditScriptFor`.
+
 Blacklists, attempt counts and last rounds are stored in the coordinator's database, so a restart does not reset the griefing protection. A round in progress is not stored: after a restart the pool is `open` and the next tick starts a fresh round.
 
 Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
@@ -136,11 +142,13 @@ The provider publishes its offer on chain (`publishOffer` from `@agentcoop/core`
 | 100 | 36.5 kB | 3,670 sat (100 sat/kB) | 347 kB | 0.4 s | 9.7 s | 8.0 s |
 | 50, 10 of them Mandate Vault agents (guard co-signs) | 19.75 kB | 1,986 sat (100 sat/kB) | 217 kB | 0.3 s | 3.7 s | 3.0 s |
 
+Run it with `npm run test:scale` (about six minutes); the root `npm test` skips it unless `SCALE=1`.
+
 All agents run in the test's one process, so the spread up to the last signature is mostly their own plan and lineage checks; on separate machines they run in parallel. The plan is serialized once per round.
 
 ## Audit and metrics
 
-**Audit.** For a settled pool, anyone can check from the chain that the settle record's `pledgeListHash` is the hash of the inputs actually included, that the provider got exactly P at output 0, and that every included pledge got its credits at its own receive address. The selection is checked by re-running Track A's `planSettlement` on the pool's pledges with this coordinator's declared blacklist. Pledges ahead in line that were left out are listed with a reason: the declared one (`timeout`, `bad signature`, `rejected: …`), `cancelled`, `rule: not part of the first exact fill`, or `not explained`. The blacklist reasons are the coordinator's word, not chain facts: censorship becomes detectable, not impossible (FINAL-IDEA §8).
+**Audit.** For a settled pool, anyone can check from the chain that the settle record's `pledgeListHash` is the hash of the inputs actually included, that the provider got exactly P at output 0, and that every included pledge got its credits at its own receive address (or, for a vault-locked pledge, on its own vault script). The selection is checked by re-running Track A's `planSettlement` on the pool's pledges with this coordinator's declared blacklist. Pledges ahead in line that were left out are listed with a reason: the declared one (`timeout`, `bad signature`, `rejected: …`), `cancelled`, `rule: not part of the first exact fill`, or `not explained`. The blacklist reasons are the coordinator's word, not chain facts: censorship becomes detectable, not impossible (FINAL-IDEA §8).
 
 **`custodiedSats`.** Every output of every settlement is classified as the provider's payment, a participant's credits, a participant's change (its own pledge coin script) or the OP_RETURN record; satoshis in any other output count as custodied. `0` is computed, not assumed. Scope: pools and settlements. Credits redeemed at a provider become an off-chain prepaid balance there (FINAL-IDEA §4.7), which this number does not cover.
 

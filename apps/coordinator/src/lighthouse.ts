@@ -74,17 +74,26 @@ const isHex = (v: unknown): v is string => typeof v === 'string' && v.length > 0
  */
 export async function acceptLighthousePledge (deps: { overlay: OverlayLookup, store: CoordinatorStore, lighthouse: LighthouseDesk }, body: unknown): Promise<{ outpoint: string, poolId: string, guard: string }> {
   const b = body as Partial<LighthousePledge> | null
+  const hasBeef = b !== null && typeof b === 'object' && b.beef !== undefined && b.beef !== null
   if (b === null || typeof b !== 'object' || typeof b.outpoint !== 'string' || !isHex(b.humanSignatureHex) || !isHex(b.creditLockingScriptHex) ||
-    !Array.isArray(b.beef) || b.beef.length === 0 || !b.beef.every(x => Number.isInteger(x) && x >= 0 && x < 256)) {
-    throw new OfferError('LIGHTHOUSE_INVALID_FORMAT', 'expected a LighthousePledge: outpoint, humanSignatureHex, creditLockingScriptHex, beef (AtomicBEEF bytes)')
+    (hasBeef && (!Array.isArray(b.beef) || b.beef.length === 0 || !b.beef.every(x => Number.isInteger(x) && x >= 0 && x < 256)))) {
+    throw new OfferError('LIGHTHOUSE_INVALID_FORMAT', 'expected a LighthousePledge: outpoint, humanSignatureHex, creditLockingScriptHex, beef (AtomicBEEF bytes; optional once the pledge tx is on the overlay)')
   }
-  let sourceTx: Transaction
+  let sourceTx!: Transaction
   let vout: number
   try {
-    sourceTx = Transaction.fromAtomicBEEF(b.beef)
     vout = parseOutpoint(b.outpoint).vout
+    if (hasBeef) sourceTx = Transaction.fromAtomicBEEF(b.beef!)
   } catch (e) {
     throw new OfferError('LIGHTHOUSE_INVALID_FORMAT', `beef/outpoint: ${String((e as Error).message ?? e)}`)
+  }
+  if (!hasBeef) {
+    // The client already submitted the pledge tx to the overlay (the web app does): read it from there.
+    const claimed = typeof b.record?.poolId === 'string' ? b.record.poolId : undefined
+    if (claimed === undefined) throw new OfferError('LIGHTHOUSE_INVALID_FORMAT', 'without beef, record.poolId is needed to find the pledge on the overlay')
+    const found = (await deps.overlay.pledgeCandidatesAll(claimed)).find(c => c.view.outpoint === b.outpoint)
+    if (found === undefined) throw new OfferError('LIGHTHOUSE_NOT_ON_OVERLAY', `${b.outpoint} is not a pledge of ${claimed} on the overlay; send beef`, 404)
+    sourceTx = found.sourceTx
   }
   const poolId = pledgeRecordOf(sourceTx)?.poolId
   if (poolId === undefined) throw new OfferError('LIGHTHOUSE_INVALID', 'the transaction has no pledge record')
@@ -98,7 +107,7 @@ export async function acceptLighthousePledge (deps: { overlay: OverlayLookup, st
     satoshis: sourceTx.outputs[vout]?.satoshis ?? 0,
     humanSignatureHex: b.humanSignatureHex.toLowerCase(),
     creditLockingScriptHex: b.creditLockingScriptHex.toLowerCase(),
-    beef: b.beef
+    beef: hasBeef ? b.beef! : sourceTx.toAtomicBEEF()
   }
   try {
     pledge.record = verifyLighthousePledge(pledge, { sourceTx, tokenId: pool.terms.tokenId }) // the on-chain record
@@ -114,7 +123,7 @@ export async function acceptLighthousePledge (deps: { overlay: OverlayLookup, st
     throw new OfferError('GUARD_UNKNOWN', `guard ${pledge.record.guard} is not reachable from this coordinator; it could never co-sign`, 422)
   }
 
-  await deps.overlay.submit(sourceTx.toBEEF()) // idempotent; the overlay decides validity against the pool
+  if (hasBeef) await deps.overlay.submit(sourceTx.toBEEF()) // idempotent; the overlay decides validity against the pool
   await deps.store.saveLighthouse(poolId, pledge)
   return { outpoint: pledge.outpoint, poolId, guard: pledge.record.guard }
 }

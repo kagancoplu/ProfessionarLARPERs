@@ -8,7 +8,8 @@
  * No covenant; the seller can be offline; cancelling = spending the UTXO.
  */
 import { Beef, Random, Transaction, UnlockingScript, Utils, type WalletInterface } from '../sdk'
-import { buildBsv21Script, decodeBsv21 } from '../kit/inscription'
+import { buildBsv21Script } from '../kit/inscription'
+import { decodeBsv21Owned } from '../scripts/creditLock'
 import { instructionsFor, receivePkh, TOKEN_BASKET } from '../kit/addresses'
 import { beefFromArcade } from '../kit/overlayApi'
 import type { TokenKit } from '../kit/token'
@@ -84,11 +85,13 @@ export function verifyListing (listing: Listing, opts: { sourceTx: Transaction }
   if (opts.sourceTx.id('hex') !== txid) bad('source transaction does not match the outpoint')
   const out = opts.sourceTx.outputs[vout]
   if (out === undefined || out.lockingScript.toHex() !== listing.lockingScriptHex) bad('locking script mismatch')
-  const d = decodeBsv21(out.lockingScript)
+  // P2PKH-owned credits, or vault-locked ones listed by agent + guard (signVaultCreditListing).
+  const d = decodeBsv21Owned(out.lockingScript)
   if (d === null || d.op !== 'transfer' || d.id !== listing.tokenId || d.amount !== BigInt(listing.credits)) bad('listed UTXO does not carry the listed credits')
   const unlock = UnlockingScript.fromHex(listing.unlockingScriptHex)
-  const sig = unlock.chunks[0]?.data
-  if (sig === undefined || sig[sig.length - 1] !== SIGHASH_SINGLE_ACP_FORKID) bad('listing signature is not SINGLE|ANYONECANPAY|FORKID')
+  // P2PKH: <sig> <pubkey>; vault (cosign branch): OP_0 <sig> <sig> OP_0. Every signature must be SINGLE|ACP.
+  const sigs = d!.owner.kind === 'vault' ? unlock.chunks.slice(1, 3).map(c => c.data) : [unlock.chunks[0]?.data]
+  if (sigs.some(sig => sig === undefined || sig.length === 0 || sig[sig.length - 1] !== SIGHASH_SINGLE_ACP_FORKID)) bad('listing signature is not SINGLE|ANYONECANPAY|FORKID')
   const tx = offerSkeleton(opts.sourceTx, vout, { payScriptHex: listing.payScriptHex, priceSats: listing.askSats })
   tx.inputs[0].unlockingScript = unlock
   if (!inputScriptValid(tx, 0)) bad('listing signature does not verify')
@@ -116,7 +119,10 @@ export async function buildSweep (
     beef.mergeBeef(b)
     verifyListing(l, { sourceTx: Transaction.fromBEEF(b, txid) })
     if (opts.verifyLineage !== false) {
-      const r = await verifyLineage(l.outpoint, opts.lineage)
+      const vaultLocked = decodeBsv21Owned(l.lockingScriptHex)?.owner.kind === 'vault'
+      // A lineage cache is per ownerKinds setting: a vault-locked listing walks without the caller's cache.
+      const { cache: _cache, ...lineage } = opts.lineage ?? {}
+      const r = await verifyLineage(l.outpoint, vaultLocked ? { ...lineage, ownerKinds: ['p2pkh', 'vault'] } : opts.lineage)
       if (!r.ok || r.tokenId !== tokenId || r.amt !== BigInt(l.credits)) throw new AgentCoopError('LINEAGE_FAILED', `${l.outpoint}: ${r.reason ?? 'credits do not match the listing'}`)
     }
   }

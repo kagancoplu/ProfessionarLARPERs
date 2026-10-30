@@ -46,17 +46,18 @@ Queries (MASTER §3.8). Each returned output carries a BEEF and a UTF-8 JSON `co
 | Query | Output → `context` |
 |---|---|
 | `{ op:'pools', status? }` / `{ op:'pool', poolId }` | the pool's OP_RETURN record → `PoolView`: `poolId`, `terms` (with `poolId`), `status` (`open`/`settled`/`cancelled`), `pledgedCredits`, `pledgeCount`, `target`, `settledTxid?`, `invalidReason?` |
-| `{ op:'pledges', poolId, includeSpent?, includeInvalid? }` | pledge coins → `PledgeView` (`valid`, `invalidReason?`, `spent`, `spendingTxid?`); order: height, then txid |
+| `{ op:'pledges', poolId, includeSpent?, includeInvalid? }` | pledge coins → `PledgeView` (`valid`, `invalidReason?`, `spent`, `spendingTxid?`, and from the record `creditLock?`, `mode?`, `guard?`, `lhId?`); order: height, then txid |
 | `{ op:'settlement', poolId }` | the settle record → `{ poolId, txid, pledgeListHash, inputs }` |
 | `{ op:'vaults', owner?, includeUnverified? }` / `{ op:'vault', vaultId }` | the vault record → `VaultView`: `vaultId`, `owner`, `agent`, `guard`, `scriptHex`, `verified`, `balanceSats`, `utxos` |
 | `{ op:'listings', tokenId? }` | optional on-chain `OP_RETURN list` records (raw); the listing book is the coordinator's `GET /listings` |
-| kit: `identity`, `utxos`, `token`, `tokens`, `outpoint`, `history` | credit outputs → `tokenId`, `amt`, `ownerPkh`, `spent`, `spendingTxid`, `index`, `sym`, `dec` |
+| `{ op:'vaultCredits', vaultHash, tokenId?, includeSpent? }` | credits locked to a Mandate Vault script; `vaultHash` = `vaultScriptHash(script)` (sha256 hex) |
+| kit: `identity`, `utxos`, `token`, `tokens`, `outpoint`, `history` | credit outputs → `tokenId`, `amt`, `ownerPkh` (`''` for vault-locked credits), `ownerVaultHash?`, `spent`, `spendingTxid`, `index`, `sym`, `dec` |
 
 Types: `src/views.ts` (no runtime imports, safe to import from other packages).
 
 ### How records are indexed
 
-- **Topic manager** (`src/AgentCoopTopicManager.ts`): the kit's credit rules, unchanged, plus the first well-formed `OP_FALSE OP_RETURN "agentcoop" <op> <json>` output (all json values strings, `src/records.ts`). That record output is admitted (0 sat, never spent) because lookup answers must point at stored outputs. For a pledge, the pledge coin (out0) is admitted too. Every previous topic coin is retained, so cancelled and settled pledges stay as history.
+- **Topic manager** (`src/AgentCoopTopicManager.ts`): the kit's credit rules with `ownerKinds: ['p2pkh','vault']` (an inscription on a Mandate Vault script, `buildVaultCreditScript`, is a token like a P2PKH-owned one; `new AgentCoopTopicManager({ ownerKinds: ['p2pkh'] })` gives the kit's rules byte for byte), plus the first well-formed `OP_FALSE OP_RETURN "agentcoop" <op> <json>` output (all json values strings, `src/records.ts`). That record output is admitted (0 sat, never spent) because lookup answers must point at stored outputs. For a pledge, the pledge coin (out0) is admitted too. A pledge record's optional fields must be consistent or it is not admitted: `creditLock:'vault'` only with `signer:'vault'`; `mode:'lighthouse'` with `signer:'vault'`, a `guard` identity key and a 32-hex `lhId`. Every previous topic coin is retained, so cancelled and settled pledges stay as history.
 - **Lookup** (`whole-tx` mode) stores pools, pledges and settlements. Whether a pledge counts is decided **at query time** against its pool's terms, so arrival order does not matter: pool `open`; `minCredits ≤ credits ≤ N`; out1 pays at least `feeSats` to `payScriptHex`; out0 ≥ `ceil(credits × priceSats / N) + 1`.
 - A settle record counts only if the transaction spends the pool's credit UTXO at input 0. A pool whose credit UTXO is spent by anything else is `cancelled`.
 - **Vaults:** every output with the Mandate Vault script shape is admitted (funding and change back to a vault), and joined to its `vault` record by script. A record is `verified` only if its script equals the one derived from its `owner`, `agent` and `guard` identity keys for that `vaultId` (`[1,'agentcoop vault']`, counterparty `'anyone'`, so anyone can recompute it). Unverified records are hidden by default, so a record claiming someone else's vault does nothing.

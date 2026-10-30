@@ -42,7 +42,7 @@ and can stay offline. Offline humans get a separate, guard-backed Lighthouse mod
 | Settle | `signSettlementInput`, `assembleSettlement`, `broadcastEF`, `internalizeSettlement` | `pool/settle.ts` |
 | Lineage | `verifyLineage`, `arcadeTxFetcher` | `verify/lineage.ts` |
 | Market | `reserveListing`, `signListing`, `verifyListing`, `buildSweep`, `cancelListing`, `cancelPool`, `reclaimReserved` | `market/listing.ts` |
-| Vault-locked credits | `buildVaultCreditScript`, `decodeBsv21Owned`, `vaultKeysOfScript`; `internalizeVaultCredits`, `listVaultCredits`, `transferVaultCredits` | `scripts/creditLock.ts`, `vault/creditSpend.ts` |
+| Vault-locked credits | `buildVaultCreditScript`, `decodeBsv21Owned`, `vaultKeysOfScript`; `internalizeVaultCredits`, `listVaultCredits`, `transferVaultCredits` (redeem), `signVaultCreditListing` (market listing; proceeds to the vault) | `scripts/creditLock.ts`, `vault/creditSpend.ts` |
 | Lighthouse | `buildLighthousePledge`, `verifyLighthousePledge`, `cosignLighthouse`, `cancelLighthousePledge`, `lighthouseLockingScript` | `pool/lighthouse.ts`, `scripts/lighthouse.ts` |
 | Vault (Track D) | `VaultSigner`, `VaultOwnerSigner`, `pledgeFromVault`, `spendFromVault`, … | `signers/VaultSigner.ts`, `scripts/vault.ts` |
 | Chain | `fetchChainPolicy` (Arcade fee rate and height) | `util/arcade.ts` |

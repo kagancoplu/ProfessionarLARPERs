@@ -7,8 +7,10 @@
  * guard"); the owner can. A coordinator that flips the lock either way is refused.
  *
  * The plan is built and signed directly (no coordinator), like the skeleton.
- * Track B's overlay still runs the default (P2PKH) rules, so the vault-locked
- * output's admission is checked with the rules' ownerKinds flag and verifyLineage.
+ * The rules' ownerKinds flag and verifyLineage are checked directly; Track B's
+ * overlay runs ownerKinds ['p2pkh','vault'] since B-A5. Last: V lists its
+ * remaining vault-locked credits (agent + guard SINGLE|ACP, proceeds to the
+ * vault; D's guard 'list') and P sweeps them through the overlay.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
@@ -23,6 +25,7 @@ import {
   assembleSettlement, buildBsv21Script, buildPledge, buildReserveAndAnnounce, decodeBsv21Owned, identifyAdmissible, inputScriptValid, internalizeSettlement,
   parseOutpoint, planSettlement, receivePkh, signOffer, signSettlementInput, toChecksigSignature, vaultCosignUnlock, vaultOwnerUnlock,
   vaultSighash, verifyLineage, verifySettlementPlan, VAULT_COSIGN_UNLOCK_LENGTH, internalizeVaultCredits, listVaultCredits, transferVaultCredits,
+  buildSweep, signVaultCreditListing, verifyListing,
   type Offer, type PledgeCandidate, type PoolTerms, type SettlementPlan
 } from '@agentcoop/core'
 import { VaultOwnerSigner, VaultSigner, adoptVaultOutput, httpCosigner, listVaultUtxos, CosignRejected, type Cosigner, type VaultPledge } from '@agentcoop/core/signers/VaultSigner'
@@ -30,6 +33,8 @@ import { startOverlay, type RunningOverlay } from '../packages/overlay/src/serve
 import { Guard } from '../apps/guard/src/guard'
 import { createGuardApp } from '../apps/guard/src/server'
 import { createVault, fundVault, putPolicy, registerVault, type VaultInfo } from '../apps/owner-cli/src/vault-ops'
+import { OverlayLookup } from '../apps/coordinator/src/overlay'
+import { verifyListing as coordinatorVerifyListing } from '../apps/coordinator/src/verifyListing'
 import { createMockChain, type MockChain } from './helpers/mockchain'
 
 let chain: MockChain
@@ -60,6 +65,8 @@ describe('vault-locked credits in a settlement (A 5.3)', () => {
   let plan: SettlementPlan
   let settlement: Transaction
   let j: number // V's participant index; its input is 1 + j, its credit output 1 + j
+  let guardUrl: string
+  const policy = { maxPerPoolSats: 6_000, weeklyCapSats: 20_000, maxFeeSats: 500, hotWalletDailySats: 0 }
 
   const candidates = (): PledgeCandidate[] => [pPledge, vPledge].map(p => {
     const sourceTx = Transaction.fromAtomicBEEF(p.beef)
@@ -99,11 +106,11 @@ describe('vault-locked credits in a settlement (A 5.3)', () => {
 
     const guard = await Guard.create({ wallet: guardWallet, fetchTx, log: () => {} })
     guardServer = createGuardApp(guard, guardWallet).listen(0)
-    const guardUrl = `http://127.0.0.1:${(guardServer.address() as AddressInfo).port}`
+    guardUrl = `http://127.0.0.1:${(guardServer.address() as AddressInfo).port}`
     cosign = httpCosigner(guardUrl)
     vault = await createVault(owner, { agent: agentV.identityKey, guard: guardWallet.identityKey })
     await registerVault(new AuthFetch(owner), guardUrl, vault)
-    await putPolicy(new AuthFetch(owner), guardUrl, agentV.identityKey, { allowProviders: [provider.identityKey], maxPerPoolSats: 6_000, weeklyCapSats: 20_000, maxFeeSats: 500, hotWalletDailySats: 0 })
+    await putPolicy(new AuthFetch(owner), guardUrl, agentV.identityKey, { allowProviders: [provider.identityKey], ...policy })
     const f = await fundVault(owner, vault, 20_000)
     await adoptVaultOutput(agentV, vault.record.vaultId, f.tx, f.vout)
   })
@@ -221,5 +228,31 @@ describe('vault-locked credits in a settlement (A 5.3)', () => {
     back.inputs[0].unlockingScript = await new VaultOwnerSigner(owner, { vaultId: vault.record.vaultId }).sign(back, 0)
     expect(inputScriptValid(back, 0)).toBe(true)
     await expect(new VaultOwnerSigner(agentV, { vaultId: vault.record.vaultId }).sign(back, 0)).rejects.toThrow(/not locked to this owner/)
+  })
+
+  it('5.4 list: V lists its 250 vault-locked credits (agent + guard SINGLE|ACP, proceeds to the vault); P sweeps them through the overlay', async () => {
+    const vaultId = vault.record.vaultId
+    const [credit] = await listVaultCredits(agentV, vaultId)
+    expect(credit.amt).toBe(250n)
+    const { txid } = parseOutpoint(credit.outpoint)
+    await kitA.overlay.submit(Transaction.fromBEEF(credit.beef, txid).toAtomicBEEF()) // the 5.4 redeem (overlay: vault-locked input admitted)
+
+    await expect(signVaultCreditListing(agentV, { vaultId, credit, askSats: '5000', cosign })).rejects.toThrow(/minAskSatsPerCredit/) // listing off
+    await putPolicy(new AuthFetch(owner), guardUrl, agentV.identityKey, { allowProviders: [provider.identityKey], ...policy, minAskSatsPerCredit: 20 })
+    await expect(signVaultCreditListing(agentV, { vaultId, credit, askSats: '4999', cosign })).rejects.toThrow(CosignRejected) // below 250 × 20
+    const listing = await signVaultCreditListing(agentV, { vaultId, credit, askSats: '5000', cosign })
+    expect(listing).toMatchObject({ outpoint: credit.outpoint, credits: '250', askSats: '5000', payScriptHex: vault.lockingScriptHex, seller: agentV.identityKey })
+    verifyListing(listing, { sourceTx: Transaction.fromBEEF(credit.beef, txid) })
+    // Track B's POST /listings check against the overlay's view of the credit output.
+    expect(coordinatorVerifyListing(listing, await new OverlayLookup(overlay.url).tokenOutput(listing.outpoint)).outpoint).toBe(listing.outpoint)
+
+    const swept = await buildSweep(agentP, kitA, [listing], { lineage: { fetchTx }, getBeef: async () => credit.beef })
+    expect(swept.credits).toBe('250')
+    expect(swept.tx.outputs[0].satoshis).toBe(5_000)
+    expect(swept.tx.outputs[0].lockingScript.toHex()).toBe(vault.lockingScriptHex) // the proceeds stay under the vault's rules
+    await kitA.sync()
+    expect((await kitA.balances()).find(b => b.tokenId === terms.tokenId)?.overlay).toBe(850n)
+    // The seller's wallet learns of the spend only when it syncs; the overlay already knows.
+    expect((await new OverlayLookup(overlay.url).tokenOutput(listing.outpoint))?.spent).toBe(true)
   })
 })

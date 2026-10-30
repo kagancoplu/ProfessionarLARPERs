@@ -3,23 +3,30 @@
  * creditLock 'vault' the agent's credits sit on its vault script
  * (scripts/creditLock.ts). Moving them needs agent + guard (2-of-2) or the owner:
  *
- *   in 0      vault-locked credits (VaultSigner, guard context.kind 'redeem' | 'list')
+ *   in 0      vault-locked credits (VaultSigner, guard context.kind 'redeem')
  *   in 1..    the agent wallet's own funding (miner fee)
- *   out 0     amt credits → toPkh (P2PKH: the provider's redeem address, or my listing key)
+ *   out 0     amt credits → toPkh (P2PKH: the provider's redeem address, proven with creditPayees)
  *   out 1     the rest, back on the same vault script (only when amt < the input)
  *   out 2..   wallet change
+ *
+ * Selling vault-locked credits is not a transfer: moving them to the agent's own
+ * listing key would bypass the guard (D refuses it). signVaultCreditListing signs
+ * the vault credit UTXO itself SINGLE|ANYONECANPAY (agent + guard, guard kind
+ * 'list'), with the proceeds going back to the vault script: a market Listing
+ * any buyer sweeps with buildSweep.
  *
  * The guard's policy for 'redeem' / 'list' (who may receive credits, how many) is
  * Track D's; this module only builds and signs. Overlays need the ownerKinds
  * ['p2pkh','vault'] rules to count the vault-locked input (Track B).
  */
-import { Beef, Transaction, type WalletInterface } from '../sdk'
+import { Beef, Transaction, UnlockingScript, type WalletInterface } from '../sdk'
 import { AgentCoopError } from '../errors'
 import { buildBsv21Script } from '../kit/inscription'
 import { buildVaultCreditScript, decodeBsv21Owned } from '../scripts/creditLock'
-import { VAULT_COSIGN_UNLOCK_LENGTH } from '../scripts/vault'
-import { VAULT_CREDITS_BASKET, type SettlementPlan } from '../types'
-import { coopOutpoint, toWalletOutpoint } from '../util/outpoint'
+import { VAULT_COSIGN_UNLOCK_LENGTH, VAULT_LIST_SIGHASH } from '../scripts/vault'
+import { offerSkeleton } from '../pool/offer'
+import { VAULT_CREDITS_BASKET, type Listing, type SettlementPlan } from '../types'
+import { coopOutpoint, parseOutpoint, toWalletOutpoint } from '../util/outpoint'
 import { broadcastResult, VaultSigner, vaultTag, type CosignContext, type Cosigner } from '../signers/VaultSigner'
 
 export interface VaultCredit {
@@ -75,9 +82,10 @@ export async function listVaultCredits (wallet: WalletInterface, vaultId: string
 }
 
 /**
- * Move `amt` of a vault-locked credit UTXO to a P2PKH (redeem at the provider, or into a
- * listing key). Agent + guard sign; a refusal aborts the action and throws CosignRejected.
- * Returns the AtomicBEEF to submit to tm_agentcoop (parents first).
+ * Move `amt` of a vault-locked credit UTXO to a P2PKH (redeem at the provider: pass
+ * `context.creditPayees` so the guard can check the recipient). Agent + guard sign; a refusal
+ * aborts the action and throws CosignRejected. Returns the AtomicBEEF to submit to tm_agentcoop
+ * (parents first). `kind: 'list'` is refused by Track D's guard: use signVaultCreditListing.
  */
 export async function transferVaultCredits (wallet: WalletInterface, args: {
   vaultId: string
@@ -132,5 +140,38 @@ export async function transferVaultCredits (wallet: WalletInterface, args: {
     txid,
     beef: tx,
     ...(restScript !== undefined ? { rest: { outpoint: coopOutpoint(txid, 1), tokenId: credit.tokenId, amt: rest, lockingScriptHex: restScript, beef: tx } } : {})
+  }
+}
+
+/**
+ * List a whole vault-locked credit UTXO on the market (D-P2b 'list'): input 0 = the credits,
+ * output 0 = askSats back to the same vault script, signed SINGLE|ANYONECANPAY|FORKID by
+ * agent + guard. The guard checks the owner's floor (minAskSatsPerCredit) and that the proceeds
+ * go to the vault. The result is an ordinary market Listing (POST /listings, buildSweep);
+ * cancelling = spending the UTXO (transferVaultCredits, or the owner alone).
+ */
+export async function signVaultCreditListing (wallet: WalletInterface, args: {
+  vaultId: string
+  credit: VaultCredit
+  askSats: string
+  cosign: Cosigner
+  originator?: string
+}): Promise<Listing> {
+  const { credit, originator } = args
+  if (!/^[1-9]\d*$/.test(args.askSats)) throw new AgentCoopError('BAD_LISTING', 'askSats must be a positive integer string')
+  const d = decodeBsv21Owned(credit.lockingScriptHex)
+  if (d === null || d.owner.kind !== 'vault' || d.op !== 'transfer' || d.amount !== credit.amt) throw new AgentCoopError('BAD_LISTING', `${credit.outpoint} is not ${credit.amt} vault-locked credits`)
+  const { txid, vout } = parseOutpoint(credit.outpoint)
+  const sourceTx = Transaction.fromBEEF(credit.beef, txid)
+  if (sourceTx.outputs[vout]?.lockingScript.toHex() !== credit.lockingScriptHex) throw new AgentCoopError('BAD_LISTING', `${credit.outpoint}: locking script mismatch`)
+  const payScriptHex = d.owner.vaultScriptHex
+  const skeleton = offerSkeleton(sourceTx, vout, { payScriptHex, priceSats: args.askSats })
+  skeleton.inputs[0].unlockingScript = new UnlockingScript([]) // serializable for the guard (txBEEF)
+  const signer = new VaultSigner(wallet, { vaultId: args.vaultId, cosign: args.cosign, context: { kind: 'list', tokenId: credit.tokenId }, scope: VAULT_LIST_SIGHASH, originator })
+  const unlock = await signer.sign(skeleton, 0)
+  const { publicKey: seller } = await wallet.getPublicKey({ identityKey: true }, originator)
+  return {
+    outpoint: credit.outpoint, tokenId: credit.tokenId, credits: credit.amt.toString(), askSats: args.askSats, seller,
+    unlockingScriptHex: unlock.toHex(), lockingScriptHex: credit.lockingScriptHex, payScriptHex
   }
 }
