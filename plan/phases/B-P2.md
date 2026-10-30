@@ -1,13 +1,13 @@
 # B-P2 — Koordinatör: lock-in, imza turu, yayın (→ S2)
 
 > Track B, Faz 2. Kaynak: `plan/track-B-overlay-coordinator.md` Faz 2, MASTER §3.2 (sıralama, %120, 3 tur, 60 sn), §3.4, §3.5 (WS), FINAL-IDEA §4.3–4.5.
-> Yazıldı: 30.10 ~17:20. Branch `trackB`. Node 22.
+> Yazıldı: 30.10 ~16:34. Branch `trackB`. Node 22.
 
 ## 1. Amaç
 
 Havuz dolunca koordinatör: (1) deterministik planı kurdurur, (2) her katılımcıdan WS üzerinden imza toplar, (3) en fazla 3 tur dener (imzalamayan outpoint kara listeye, yerine bekleme listesinden biri), (4) imzalar tamamsa settlement'ı Arcade'e yayınlar ve overlay'e submit eder. Son tarihi geçen dolmamış havuz için `pool_failed` yayınlar ve hiçbir şey yayınlanmaz. Koordinatör hiçbir aşamada para veya fon kontrol eden anahtar tutmaz.
 
-## 2. Bağımlılıkların durumu (17:20)
+## 2. Bağımlılıkların durumu (16:34)
 
 | Bağımlılık | Durum | Ne yapıyorum |
 |---|---|---|
@@ -106,7 +106,7 @@ apps/coordinator/test/
 | Overlay submit hatası (yayından sonra) | log + yeniden deneme (3×); tx zincirde olduğu için `settled` WS'i yine gönderilir |
 | Koordinatör yeniden başlar | açık turlar kaybolur → havuzlar `open`; bir sonraki tick yeni tur açar (Faz 3.5 kalıcılık) |
 
-## 8. Sonuç (17:55)
+## 8. Sonuç (16:43)
 
 Mockchain kabulü tamam: koordinatör 10/10 (P1'in 5'i + P2'nin 5'i; 6 senaryo), overlay 15/15; iki ardışık koşuda kararsızlık yok. Plandan farklar:
 - Pledge'ler testlerde ayrı bloklarda mine edilip merkle yoluyla overlay'e veriliyor; böylece `(height, txid)` sıralaması da sınanıyor ve tur kompozisyonu deterministik.

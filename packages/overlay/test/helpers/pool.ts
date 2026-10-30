@@ -13,7 +13,7 @@ import { coinFrom, deployCredits, p2pkhFor, PLEDGE_PROTOCOL, providerPayScript, 
 const UNLOCK_P2PKH = 108
 
 /** createAction with one custom P2PKH input + signAction (kit TokenKit.spendInputs pattern). */
-async function spendCoin (wallet: WalletInterface, coin: Coin, outputs: any[], description: string): Promise<number[]> {
+export async function spendCoin (wallet: WalletInterface, coin: Coin, outputs: any[], description: string): Promise<number[]> {
   const created = await wallet.createAction({
     description,
     inputBEEF: coin.sourceTransaction.toBEEF(),

@@ -76,8 +76,29 @@ export class CoordinatorEngine {
   private readonly starting = new Set<string>()
   private timer?: NodeJS.Timeout
   private ticking = false
+  private again = false
 
   constructor (private readonly deps: EngineDeps, private readonly opts: EngineOptions) {}
+
+  /** Restore blacklists, attempts and last rounds saved before a restart (B.P3). */
+  async load (): Promise<void> {
+    for (const { poolId, json } of await this.deps.store.allProgress()) {
+      this.progress.set(poolId, {
+        attempts: json.attempts ?? 0,
+        blacklist: new Map(json.blacklist ?? []),
+        ...(json.lastRound !== undefined ? { lastRound: json.lastRound } : {}),
+        failedAnnounced: json.failedAnnounced === true,
+        ...(json.gaveUp !== undefined ? { gaveUp: json.gaveUp } : {})
+      })
+    }
+  }
+
+  private persist (poolId: string): void {
+    const p = this.progress.get(poolId)
+    if (p === undefined) return
+    const json = { attempts: p.attempts, blacklist: [...p.blacklist], lastRound: p.lastRound, failedAnnounced: p.failedAnnounced, gaveUp: p.gaveUp }
+    this.deps.store.saveProgress(poolId, json).catch(e => this.deps.log('persist_failed', { poolId, error: String((e as Error).message ?? e) }))
+  }
 
   start (): void {
     void this.tick()
@@ -107,10 +128,21 @@ export class CoordinatorEngine {
     }
   }
 
-  /** Look at every open pool: announce missed deadlines, start rounds for full pools. */
+  /** Look at every open pool: announce missed deadlines, start rounds for full pools. A call during a tick runs one more. */
   async tick (): Promise<void> {
-    if (this.ticking) return
+    if (this.ticking) { this.again = true; return }
     this.ticking = true
+    try {
+      do {
+        this.again = false
+        await this.tickOnce()
+      } while (this.again)
+    } finally {
+      this.ticking = false
+    }
+  }
+
+  private async tickOnce (): Promise<void> {
     try {
       const [pools, height] = await Promise.all([this.deps.overlay.pools(), this.deps.height.height()])
       for (const pool of pools) {
@@ -122,6 +154,7 @@ export class CoordinatorEngine {
             prog.failedAnnounced = true
             this.deps.feed.broadcast(pool.poolId, { type: 'pool_failed', poolId: pool.poolId })
             this.deps.log('pool_failed', { poolId: pool.poolId, pledgedCredits: pool.pledgedCredits, target: pool.target, height })
+            this.persist(pool.poolId)
           }
           continue
         }
@@ -132,8 +165,6 @@ export class CoordinatorEngine {
       }
     } catch (e) {
       this.deps.log('tick_failed', { error: String((e as Error).message ?? e) })
-    } finally {
-      this.ticking = false
     }
   }
 
@@ -156,13 +187,15 @@ export class CoordinatorEngine {
       for (const c of fresh) {
         if (spent.get(c.view.outpoint) === true) prog.blacklist.set(c.view.outpoint, 'spent on chain')
       }
+      if (fresh.some(c => spent.get(c.view.outpoint) === true)) this.persist(poolId)
       const eligible = fresh.filter(c => !prog.blacklist.has(c.view.outpoint))
       const key = eligible.map(c => c.view.outpoint).join(',')
       if (prog.gaveUp !== undefined) {
-        if (prog.gaveUp.key === undefined) prog.gaveUp.key = key
+        if (prog.gaveUp.key === undefined) { prog.gaveUp.key = key; this.persist(poolId) }
         if (prog.gaveUp.key === key) return // nothing new since we gave up
         prog.gaveUp = undefined
         prog.attempts = 0
+        this.persist(poolId)
       }
       if (eligible.reduce((s, c) => s + BigInt(c.view.credits), 0n) < BigInt(pool.target)) return
       const creditSourceTx = await this.deps.overlay.poolTx(poolId)
@@ -262,6 +295,7 @@ export class CoordinatorEngine {
         this.deps.log('broadcast', { poolId, round, txid })
         await this.submitWithRetry(poolId, tx.toBEEF())
         prog.lastRound = { round, outcome: 'settled', missing: [], txid }
+        this.persist(poolId)
         this.rounds.delete(poolId)
         this.deps.feed.broadcast(poolId, { type: 'settled', poolId, txid })
         this.deps.log('settled', { poolId, round, txid, participants: state.inputs.size })
@@ -283,11 +317,12 @@ export class CoordinatorEngine {
 
     prog.attempts = round
     prog.lastRound = { round, outcome: 'failed', missing }
+    if (round >= this.opts.maxRounds) prog.gaveUp = {}
+    this.persist(poolId)
     this.rounds.delete(poolId)
     this.deps.feed.broadcast(poolId, { type: 'round_failed', poolId, round, missing })
     this.deps.log('round_failed', { poolId, round, missing, reasons: Object.fromEntries([...state.failed].map(([i, r]) => [state.inputs.get(i)!.outpoint, r])) })
     if (round >= this.opts.maxRounds) {
-      prog.gaveUp = {}
       this.deps.log('gave_up', { poolId, rounds: round })
       return
     }

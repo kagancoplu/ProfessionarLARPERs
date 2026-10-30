@@ -178,7 +178,7 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 | `GET` | `/pools` · `/pools/:poolId` | Terms + ilerleme (`pledgedCredits`, `target`, `status: open\|locking\|settled\|failed\|cancelled`, `hasOffer`). `cancelled` = kredi UTXO'su settlement dışı bir tx'le harcandı. `failed` ve `locking` yan API'de türetilir (yükseklik / koordinatör turu); overlay yalnızca `open\|settled\|cancelled` bilir |
 | `GET` | `/pools/:poolId/pledges` | Harcanmamış pledge'ler (overlay'den) |
 | (ek) | `/pools/:poolId` cevabında `coordinator` | Havuz turlandıysa: `{ round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome: 'settled'\|'failed', missing, txid? } }` (B.P2). `GET /healthz` → `engine: true\|false` |
-| `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri |
+| `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri. `POST` zincire karşı doğrular (outpoint overlay'de admit edilmiş, harcanmamış kredi çıktısı; `tokenId`/`credits` eşleşiyor; imza `0xC3` ve girdi ↔ aynı index'teki çıktı = `askSats → payScriptHex`). `GET` yalnızca hâlâ harcanmamışları, en ucuz (`askSats/credits`) önce döndürür (B.P3) |
 | `WS` | `/ws` | Katılımcı oturumu ve canlı akış |
 
 **WS mesajları** (JSON, `type` alanı):
@@ -220,6 +220,11 @@ Cevaptaki her çıktının `context`'i (UTF-8 JSON, B.P1):
 **Pledge geçerlilik kuralı** (sorgu anında; `buildPledge` buna uymalı): havuz var ve `open`; `minCredits ≤ credits ≤ credits(N)`; `out1.satoshis ≥ feeSats` ve `out1.lockingScript = payScriptHex`; `out0.satoshis ≥ ceil(credits × priceSats / N) + 1`. `pledgedCredits` = geçerli ve harcanmamış pledge'lerin `credits` toplamı.
 
 **Kayıt indeksleme:** `agentcoop` OP_RETURN kayıt çıktıları (0 sat) topic'e **admit edilir** (lookup cevapları depodaki çıktılara çözüldüğü için). Settle kaydı yalnızca `in0 = poolId` ise geçerli.
+
+**Vault'lar (B.P3):** `vault` kaydının çıktısı ve vault şablonuna uyan **her** çıktı (`OP_IF <33> OP_CHECKSIG OP_ELSE OP_2 <33> <33> OP_2 OP_CHECKMULTISIG OP_ENDIF`, kayıt taşımayan para üstleri dahil) admit edilir; script hex ile birleştirilir. `{ op:'vaults', owner?, includeUnverified? }` / `{ op:'vault', vaultId }` → `{ vaultId, owner, agent, guard, scriptHex, verified, balanceSats, utxos: [{ outpoint, satoshis }] }`. `verified` = kayıttaki script, `owner/agent/guard` kimliklerinden `[1,'agentcoop vault']`, keyID = `vaultId`, `'anyone'` ile türetilen anahtarlarla yeniden hesaplanan script'e eşit. Doğrulanmamış kayıtlar varsayılan olarak gösterilmez. **D:** fonlama tx'i bu kaydı taşımalı; script D 1.1'deki gibi.
+`{ op:'listings', tokenId? }` → zincirdeki opsiyonel `OP_RETURN list` kayıtları (ham). Esas liste defteri koordinatörün `GET /listings`'i.
+
+**Olay akışı (B.P3):** overlay `GET /agentcoop/events` (SSE) → her kabul/harcanmada `data: { type: 'admitted'|'spent', txid }`. Koordinatör ve UI anlık güncelleme için abone olabilir.
 
 ### 3.9 Ortam değişkenleri (`.env.example`, D yönetir)
 

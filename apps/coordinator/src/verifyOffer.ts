@@ -36,23 +36,34 @@ export function verifyOffer (offer: Offer, pool: PoolView | undefined, credit: {
     if (offer.terms[k] !== pool.terms[k]) throw new OfferError('TERMS_MISMATCH', `offer terms.${k} differs from the on-chain pool record`)
   }
 
+  checkSingleAcpSignature(offer.unlockingScriptHex, pool.poolId, credit, pool.terms.payScriptHex, Number(pool.terms.priceSats))
+  return { ...offer, terms: pool.terms }
+}
+
+/**
+ * The SINGLE|ANYONECANPAY|FORKID signature in `unlockingScriptHex` unlocks the
+ * output `outpoint` ("txid_vout") for "the output at my index pays `sats` to
+ * `payScriptHex`". SINGLE|ACP commits to that one input and the output at the
+ * same index only, so a one-input, one-output transaction is enough, and the
+ * result holds at any input index (offers at input 0, listings in a sweep).
+ * Version 1, lockTime 0, sequence 0xffffffff, as in MASTER §3.2.
+ */
+export function checkSingleAcpSignature (unlockingScriptHex: string, outpoint: string, credit: { lockingScriptHex: string, satoshis: number }, payScriptHex: string, sats: number): void {
   let unlock: UnlockingScript
   try {
-    unlock = UnlockingScript.fromHex(offer.unlockingScriptHex)
+    unlock = UnlockingScript.fromHex(unlockingScriptHex)
   } catch {
     throw new OfferError('SIGNATURE_INVALID', 'unlockingScriptHex does not parse')
   }
   const sig = unlock.chunks[0]?.data
   if (unlock.chunks.length !== 2 || sig === undefined || sig.length < 9) throw new OfferError('SIGNATURE_INVALID', 'expected <sig> <pubkey>')
   if (sig[sig.length - 1] !== OFFER_SCOPE) {
-    throw new OfferError('SIGHASH_NOT_SINGLE_ACP', `offer must be signed SIGHASH_SINGLE|ANYONECANPAY|FORKID (0x${OFFER_SCOPE.toString(16)}), got 0x${sig[sig.length - 1].toString(16)}`)
+    throw new OfferError('SIGHASH_NOT_SINGLE_ACP', `must be signed SIGHASH_SINGLE|ANYONECANPAY|FORKID (0x${OFFER_SCOPE.toString(16)}), got 0x${sig[sig.length - 1].toString(16)}`)
   }
-
-  // A one-input, one-output transaction is enough: SINGLE|ACP commits only to input 0 and output 0.
-  const [txid, vout] = pool.poolId.split('_')
+  const [txid, vout] = outpoint.split('_')
   const tx = new Transaction()
   tx.addInput({ sourceTXID: txid, sourceOutputIndex: Number(vout), unlockingScript: unlock, sequence: 0xffffffff })
-  tx.addOutput({ lockingScript: LockingScript.fromHex(pool.terms.payScriptHex), satoshis: Number(pool.terms.priceSats) })
+  tx.addOutput({ lockingScript: LockingScript.fromHex(payScriptHex), satoshis: sats })
   let ok = false
   try {
     ok = new Spend({
@@ -71,6 +82,5 @@ export function verifyOffer (offer: Offer, pool: PoolView | undefined, credit: {
   } catch {
     ok = false
   }
-  if (!ok) throw new OfferError('SIGNATURE_INVALID', 'signature does not unlock the credit UTXO for output 0 = priceSats → payScriptHex')
-  return { ...offer, terms: pool.terms }
+  if (!ok) throw new OfferError('SIGNATURE_INVALID', `signature does not unlock ${outpoint} for the output at its index = ${sats} sat → payScriptHex`)
 }

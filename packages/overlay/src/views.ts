@@ -45,3 +45,15 @@ export interface SettlementView {
   pledgeListHash: string
   inputs: string[]
 }
+
+export interface VaultView {
+  vaultId: string
+  owner: string
+  agent: string
+  guard: string
+  scriptHex: string
+  /** the script equals the one derived from owner/agent/guard for this vaultId (MASTER §3.8) */
+  verified: boolean
+  balanceSats: number
+  utxos: Array<{ outpoint: string, satoshis: number }>
+}

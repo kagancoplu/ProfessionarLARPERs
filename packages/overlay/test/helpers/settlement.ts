@@ -150,8 +150,8 @@ export function buildSettlement (args: {
   return tx
 }
 
-/** kit client/signer.ts signWalletP2pkhInput, with the sighash scope as a parameter. */
-export async function signInput (wallet: WalletInterface, tx: Transaction, inputIndex: number, key: KeyRef, scope: number): Promise<UnlockingScript> {
+/** Checksig-format signature (DER + sighash byte) for one input, signed by the wallet over the BIP-143 preimage. */
+export async function checksigFor (wallet: WalletInterface, tx: Transaction, inputIndex: number, key: KeyRef, scope: number): Promise<number[]> {
   const input = tx.inputs[inputIndex]
   const sourceTx = input.sourceTransaction!
   const source = sourceTx.outputs[input.sourceOutputIndex]
@@ -169,9 +169,14 @@ export async function signInput (wallet: WalletInterface, tx: Transaction, input
     scope
   })
   const { signature } = await wallet.createSignature({ hashToDirectlySign: Hash.hash256(preimage), ...key, counterparty: 'anyone' })
-  const { publicKey } = await wallet.getPublicKey({ ...key, counterparty: 'anyone', forSelf: true })
   const sig = Signature.fromDER([...signature])
-  const checksig = new TransactionSignature(sig.r, sig.s, scope).toChecksigFormat()
+  return new TransactionSignature(sig.r, sig.s, scope).toChecksigFormat()
+}
+
+/** kit client/signer.ts signWalletP2pkhInput, with the sighash scope as a parameter. */
+export async function signInput (wallet: WalletInterface, tx: Transaction, inputIndex: number, key: KeyRef, scope: number): Promise<UnlockingScript> {
+  const checksig = await checksigFor(wallet, tx, inputIndex, key, scope)
+  const { publicKey } = await wallet.getPublicKey({ ...key, counterparty: 'anyone', forSelf: true })
   const pub = Utils.toArray(publicKey, 'hex')
   return new UnlockingScript([{ op: checksig.length, data: checksig }, { op: pub.length, data: pub }])
 }

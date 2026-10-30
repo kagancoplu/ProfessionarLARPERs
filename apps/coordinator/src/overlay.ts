@@ -75,11 +75,16 @@ export class OverlayLookup {
   }
 
   /** The credit output a pool's offer spends (out0 of the pool tx), as the overlay holds it. */
-  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean } | undefined> {
-    const [txid, vout] = poolId.split('_')
-    const [r] = await this.lookup<{ spent: boolean }>({ op: 'outpoint', txid, vout: Number(vout) })
+  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+    return await this.tokenOutput(poolId)
+  }
+
+  /** An admitted credit (BSV-21) output by outpoint "txid_vout", with its token id, amount and spent flag. */
+  async tokenOutput (outpoint: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+    const [txid, vout] = outpoint.split('_')
+    const [r] = await this.lookup<{ spent: boolean, tokenId: string, amt: string }>({ op: 'outpoint', txid, vout: Number(vout) })
     if (r === undefined) return undefined
     const out = r.tx.outputs[r.outputIndex]
-    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent }
+    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent, tokenId: r.context.tokenId, amt: r.context.amt }
   }
 }

@@ -4,7 +4,7 @@ The AgentCoop coordinator and side API (MASTER §3.5). It reads pools and pledge
 
 **It holds no funds and no keys.** An offer is the provider's `SIGHASH_SINGLE|ANYONECANPAY` signature: it can only ever pay the provider its price at output 0. Every participant checks the whole settlement and signs `SIGHASH_ALL`, so the coordinator cannot change any output. Anyone can run a coordinator (FINAL-IDEA §4.5).
 
-Status: **Track B, Faz 2** (mock chain). Signing rounds run once Track A's protocol is plugged in (see below).
+Status: **Track B, Faz 3** (mock chain). Signing rounds run once Track A's protocol is plugged in (see below). Run it with the overlay via `node infra/run.mjs` (see `infra/README.md`).
 
 ## Run
 
@@ -38,13 +38,15 @@ npm test                 # mock chain: overlay + API + WS + signing rounds end t
 | `GET` | `/pools` | every pool: overlay view + `status` + `hasOffer` + `height` |
 | `GET` | `/pools/:poolId` | one pool |
 | `GET` | `/pools/:poolId/pledges` | valid unspent pledges in coordinator order; `?all=1` adds spent and invalid ones with `invalidReason` |
+| `POST` | `/listings` | Body: `Listing` (MASTER §3.3). The outpoint (`txid_vout` or `txid.vout`) must be a credit output the overlay admitted and has not seen spent, holding exactly `credits` of `tokenId`; the seller's signature is `SINGLE\|ANYONECANPAY\|FORKID` and unlocks it for "the output at my index pays `askSats` to `payScriptHex`" (valid at any position in a sweep). `201` or `400/404/409 { code, error }` |
+| `GET` | `/listings?tokenId=` | unspent listings, cheapest per credit first; swept or cancelled ones are dropped |
 | `GET` | `/healthz` | overlay reachable, current height, `engine` (signing rounds on/off) |
 
 `GET /pools/:poolId` also carries `coordinator: { round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome, missing, txid? } }` once the pool has had a round.
 
 `status`: `open`, `locking` (signing round running, Faz 2), `settled`, `failed` (height ≥ `deadlineHeight`, no settlement), `cancelled` (the provider spent the credit UTXO outside a settlement).
 
-Error codes: `OFFER_INVALID_FORMAT`, `BAD_POOL_ID`, `POOL_NOT_FOUND`, `POOL_INVALID`, `POOL_NOT_OPEN`, `CREDIT_MISMATCH`, `TERMS_MISMATCH`, `SIGHASH_NOT_SINGLE_ACP`, `SIGNATURE_INVALID`, `OFFER_NOT_FOUND`, `OVERLAY_UNAVAILABLE` (502).
+Error codes: `LISTING_INVALID_FORMAT`, `LISTING_NOT_ON_OVERLAY`, `LISTING_SPENT`, `LISTING_MISMATCH`, `OFFER_INVALID_FORMAT`, `BAD_POOL_ID`, `POOL_NOT_FOUND`, `POOL_INVALID`, `POOL_NOT_OPEN`, `CREDIT_MISMATCH`, `TERMS_MISMATCH`, `SIGHASH_NOT_SINGLE_ACP`, `SIGNATURE_INVALID`, `OFFER_NOT_FOUND`, `OVERLAY_UNAVAILABLE` (502).
 
 ```bash
 curl -s localhost:8090/pools | jq '.[] | {poolId, status, pledgedCredits, target}'
@@ -72,6 +74,10 @@ height ≥ deadline, not full ──▶ pool_failed (once); nothing is broadcast
 ```
 
 Before each round the plan's input 0 is checked with the provider's stored offer signature, and pledge coins can be checked against WhatsOnChain so a coin spent elsewhere is blacklisted instead of failing the broadcast. Every decision is one JSON log line (`round_start`, `sign_ok`, `sign_bad`, `sign_reject`, `round_failed`, `broadcast`, `settled`, `gave_up`, `pool_failed`, `plan_failed`, …).
+
+Blacklists, attempt counts and last rounds are stored in the coordinator's database, so a restart does not reset the griefing protection. A round in progress is not stored: after a restart the pool is `open` and the next tick starts a fresh round.
+
+Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
 
 The plan itself comes from Track A (`planSettlement`, `assembleSettlement`, `broadcastEF`, MASTER §3.4), injected through `src/protocol.ts` (`SettlementProtocol`). Without it, `npm run coordinator` runs the side API and the feed only, and `/healthz` reports `engine: false`. The tests use `test/helpers/devProtocol.ts`, a test-only stand-in.
 
