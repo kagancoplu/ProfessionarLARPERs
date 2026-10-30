@@ -21,6 +21,8 @@ export const PLEDGE_BASKET = 'agentcoop'
 /** Vault keys: keyID = vaultId, counterparty 'anyone'. */
 export const VAULT_PROTOCOL: WalletProtocol = [1, 'agentcoop vault']
 export const VAULT_BASKET = 'agentcoop vault'
+/** Lighthouse pledge coins (A-P5 5.5): keys are VAULT_PROTOCOL with keyID = lhId. Separate basket: not "one active pledge". */
+export const LIGHTHOUSE_BASKET = 'agentcoop lighthouse'
 
 /** Provider revenue keys: keyID = poolNonce, counterparty 'anyone'. Settlement output 0 and fees land here. */
 export const PROVIDER_PROTOCOL: WalletProtocol = [1, 'agentcoop provider']
@@ -85,6 +87,9 @@ export interface PledgeRecord {       // OP_RETURN op=pledge
   tokenIndex: string                  // kredi çıktısının gideceği receive address index'i (kit addresses.ts)
   signer: 'p2pkh' | 'vault'           // pledge coin'in tipi → koordinatör unlockingScriptLength'i buradan bilir
   creditLock?: 'vault'                // A-P5 5.3, yalnızca signer:'vault' ile: kredi çıktısı P2PKH yerine pledge coin'in vault script'ine kilitli (scripts/creditLock.ts)
+  mode?: 'lighthouse'                 // A-P5 5.5, signer:'vault' ile: insan bir kez SINGLE|ACP imzalar, çevrimdışı; guard settlement'ta ALL ortak imzalar
+  guard?: string                      // lighthouse: insanın seçtiği guard'ın identity key'i
+  lhId?: string                       // lighthouse: anahtar keyID'si (32 hex); coin script'i = lighthouseLockingScript(participant, guard, lhId)
 }
 // Pledge tx düzeni (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
 // Para üstü kuralı: settlement'ta katılımcının para üstü, pledge coin'in KENDİ locking script'ine döner.
@@ -115,6 +120,7 @@ export interface SettlementParticipant {
   signer: 'p2pkh' | 'vault'
   changeSats: string
   creditLock?: 'vault'                // pledge kaydından; doğrulayıcılar zincirdeki kayıtla karşılaştırır
+  mode?: 'lighthouse'                 // para üstü yok (changeSats '0'); lighthouse katılımcıları etkileşimlilerden SONRA gelir
 }
 
 export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular

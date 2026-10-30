@@ -5,6 +5,11 @@
  *   in 0      offer (N credits, 1 sat, SINGLE|ACP)  ↔  out 0       P sats → payScript
  *   in 1..n   pledge coins (ALL)                    ↔  out 1..n    BSV-21 transfer k_i → receivePkh(participant_i, tokenIndex_i)
  *                                                                   (record.creditLock 'vault': → coin_i's own vault script, A 5.3)
+ *
+ * Lighthouse pledges (A 5.5, record.mode 'lighthouse') come after every interactive
+ * pledge and have no change output: their coin is exact (share + 1 + the fee the
+ * human fixed), so the outputs are 1 + n credits/payment, then change for the
+ * interactive ones only, then the settle record. Interactive change stays at n+1+j.
  *                                                      out n+1..2n  change_i → pledge coin_i's own locking script
  *                                                      out 2n+1     OP_RETURN agentcoop settle
  *
@@ -20,7 +25,8 @@ import { AgentCoopError } from '../errors'
 import { buildOpReturn } from '../scripts/opreturn'
 import { buildVaultCreditScript } from '../scripts/creditLock'
 import { isVaultLockingScriptHex } from '../scripts/vault'
-import { P2PKH_UNLOCKING_SCRIPT_LENGTH, type Offer, type PledgeRecord, type SettlementParticipant, type SettlementPlan } from '../types'
+import { isLighthouseRecord, lighthouseLockingScript } from '../scripts/lighthouse'
+import { P2PKH_UNLOCKING_SCRIPT_LENGTH, type Offer, type PledgeRecord, type PoolTerms, type SettlementParticipant, type SettlementPlan } from '../types'
 import { parseOutpoint } from '../util/outpoint'
 import { creditsCost, termsHash, validateTerms } from './terms'
 
@@ -55,8 +61,11 @@ export interface PlanOptions {
 export const VAULT_UNLOCKING_SCRIPT_LENGTH = 1 + 74 + 74 + 1 // OP_0 dummy, 2 × (push + ≤73-byte sig), OP_FALSE branch selector
 
 /** 'vault' when the pledge record asks for vault-locked credits (only a vault pledge can); else undefined. */
-export const creditLockOf = (r: Pick<PledgeRecord, 'signer' | 'creditLock'> | undefined): 'vault' | undefined =>
-  r?.signer === 'vault' && r.creditLock === 'vault' ? 'vault' : undefined
+export const creditLockOf = (r: Pick<PledgeRecord, 'signer' | 'creditLock' | 'mode'> | undefined): 'vault' | undefined =>
+  r?.signer === 'vault' && r.creditLock === 'vault' && r.mode === undefined ? 'vault' : undefined
+
+/** A lighthouse pledge's fixed fee contribution: whatever its exact coin holds beyond its share and its credit output. */
+const lighthouseFee = (t: PoolTerms, p: PledgeCandidate): number => p.satoshis - Number(creditsCost(t, p.record.credits)) - 1
 
 /** The credit output a participant receives: P2PKH to its receive address, or its coin's vault script (A 5.3). */
 export function creditScriptFor (tokenId: string, p: Pick<PledgeCandidate, 'record' | 'lockingScriptHex'>): LockingScript {
@@ -101,13 +110,16 @@ function buildTemplate (offer: Offer, chain: ChainInfo, chosen: PledgeCandidate[
     const { vout: pv } = parseOutpoint(p.outpoint)
     tx.addInput({ sourceTransaction: p.sourceTx, sourceOutputIndex: pv, unlockingScript: new UnlockingScript(), sequence: 0xffffffff })
     tx.addOutput({ lockingScript: creditScriptFor(t.tokenId, p), satoshis: 1 })
-    const change = p.satoshis - Number(creditsCost(t, p.record.credits)) - 1 - fees[i]
+    const lighthouse = isLighthouseRecord(p.record)
+    const change = lighthouse ? 0 : p.satoshis - Number(creditsCost(t, p.record.credits)) - 1 - fees[i]
     participants.push({
       outpoint: p.outpoint, participant: p.record.participant, credits: p.record.credits, signer: p.record.signer, changeSats: String(change),
-      ...(creditLockOf(p.record) === 'vault' ? { creditLock: 'vault' as const } : {})
+      ...(creditLockOf(p.record) === 'vault' ? { creditLock: 'vault' as const } : {}),
+      ...(lighthouse ? { mode: 'lighthouse' as const } : {})
     })
   })
   chosen.forEach((p, i) => {
+    if (isLighthouseRecord(p.record)) return // exact coin, no change
     tx.addOutput({ lockingScript: LockingScript.fromHex(p.lockingScriptHex), satoshis: Math.max(Number(participants[i].changeSats), 1) })
   })
   const listHash = pledgeListHash(chosen.map(p => p.outpoint))
@@ -184,18 +196,28 @@ export function planSettlement (offer: Offer, pledges: PledgeCandidate[], chain:
     const k = BigInt(p.record.credits)
     // A vault-locked credit needs a vault pledge coin to take its script from.
     const lockOk = p.record.creditLock === undefined || (creditLockOf(p.record) === 'vault' && isVaultLockingScriptHex(p.lockingScriptHex))
-    return !exclude.has(p.outpoint) && p.record.poolId === t.poolId && p.record.v === '1' && k >= BigInt(t.minCredits) && k <= n && lockOk
+    // A lighthouse coin must sit on the script its record names, and hold at least its share + 1.
+    const modeOk = p.record.mode === undefined || (isLighthouseRecord(p.record) && p.record.creditLock === undefined &&
+      p.lockingScriptHex === lighthouseLockingScript(p.record).toHex() && lighthouseFee(t, p) >= 0)
+    return !exclude.has(p.outpoint) && p.record.poolId === t.poolId && p.record.v === '1' && k >= BigInt(t.minCredits) && k <= n && lockOk && modeOk
   })
   const dropped = new Set<PledgeCandidate>()
   for (;;) {
-    const chosen = pickExact(ordered.filter(p => !dropped.has(p)), n)
-    if (chosen === null) throw new AgentCoopError('BAD_PLAN', `pledges cannot fill exactly ${t.credits} credits`)
+    const picked = pickExact(ordered.filter(p => !dropped.has(p)), n)
+    if (picked === null) throw new AgentCoopError('BAD_PLAN', `pledges cannot fill exactly ${t.credits} credits`)
+    // Interactive pledges first (their change keeps index n+1+j), then lighthouse pledges.
+    const chosen = [...picked.filter(p => !isLighthouseRecord(p.record)), ...picked.filter(p => isLighthouseRecord(p.record))]
+    const interactive = chosen.filter(p => !isLighthouseRecord(p.record)).length
     const zero = chosen.map(() => 0)
     const size = signedSize(buildTemplate(offer, chain, chosen, zero, round).tx, chosen)
     const fee = Math.ceil(size * chain.satsPerKb / 1000)
-    const base = Math.floor(fee / chosen.length)
-    const fees = chosen.map((_, i) => base + (i < fee % chosen.length ? 1 : 0))
-    const short = chosen.filter((p, i) => p.satoshis - Number(creditsCost(t, p.record.credits)) - 1 - fees[i] < 1)
+    // Lighthouse coins pay the fee their human fixed; the interactive pledges share the rest.
+    const covered = chosen.reduce((s, p) => s + (isLighthouseRecord(p.record) ? lighthouseFee(t, p) : 0), 0)
+    const rest = Math.max(fee - covered, 0)
+    if (interactive === 0 && rest > 0) throw new AgentCoopError('BAD_PLAN', `lighthouse pledges cover ${covered} of a ${fee}-sat fee and no interactive pledge can pay the rest`)
+    const base = interactive === 0 ? 0 : Math.floor(rest / interactive)
+    const fees = chosen.map((p, i) => isLighthouseRecord(p.record) ? 0 : base + (i < rest % interactive ? 1 : 0))
+    const short = chosen.filter((p, i) => !isLighthouseRecord(p.record) && p.satoshis - Number(creditsCost(t, p.record.credits)) - 1 - fees[i] < 1)
     if (short.length > 0) { short.forEach(p => dropped.add(p)); continue }
     const { tx, participants, listHash } = buildTemplate(offer, chain, chosen, fees, round)
     return { poolId: t.poolId, round, participants, pledgeListHash: listHash, templateBEEF: tx.toAtomicBEEF() }
