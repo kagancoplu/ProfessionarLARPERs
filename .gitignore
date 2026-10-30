@@ -1,0 +1,25 @@
+# Created early by Track D (ops) so server wallet keys are protected before A.P0.
+# Track A: extend this file, do not drop the secret/data rules below.
+
+# dependencies and build output
+node_modules/
+dist/
+
+# secrets: server wallet keys, API keys (.env.example is committed)
+.env
+.env.*
+!.env.example
+
+# wallet databases, overlay db, payment hand-off files, guard ledger
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# EVM tooling (Coop Rail)
+contracts/**/out/
+contracts/**/cache/
+contracts/**/broadcast/
+
+.DS_Store

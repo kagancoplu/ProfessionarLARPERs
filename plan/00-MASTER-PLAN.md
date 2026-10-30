@@ -65,6 +65,8 @@
 
 **ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) `@bsv/sdk`'yı **tek bir yerden** import eder: `packages/core/src/sdk.ts` → `export * from '@bsv/sdk'` ve tsconfig `paths` ile CJS build'e yönlendirilir. A bunu P0'da kurar; herkes `@agentcoop/core/sdk` üzerinden import eder. Hata belirtisi: `script[serializedBytes] is not a function`.
 
+> **Doğrulama notu (D, 2026-10-30 16:20; tsx 4.23 + Node 24, `@bsv/sdk` 3.2.1, wallet-toolbox 2.14.9).** (a) `"type":"module"` bir pakette tsx altında `import { PrivateKey } from '@bsv/sdk'` ESM build'i yüklüyor, wallet-toolbox ise CJS build'i: `PrivateKey === require('@bsv/sdk').PrivateKey` → **false** (iki kopya). (b) tsconfig `paths` ile `@bsv/sdk` → `dist/cjs/mod.js` tsx'te uygulanıyor, ama ESM'den **isimli** import başarısız oluyor (`does not provide an export named 'PrivateKey'`). Yani yukarıdaki yöntem tsx çalışma zamanında olduğu gibi çalışmıyor. (c) **Çalışan yol:** wallet-toolbox kullanan paket **CommonJS** olarak çalışır (`package.json`'da `"type"` yok; tsx import'ları `require`'a çevirir → tek kopya, **true**). Tip denetimi için tsconfig `"module": "NodeNext", "moduleResolution": "NodeNext"` (bizim kod da wallet-toolbox da `dist/cjs` tiplerini görür). Top-level await yerine `main().catch(…)`. Örnek: `scripts/package.json`, `scripts/tsconfig.json`. Testlerde kit'in vitest alias'ı aynen çalışıyor. A, `@agentcoop/core` için hangi yolu seçtiğini STATUS'a yazar.
+
 ### 3.2 Sabitler
 
 | Ad | Değer | Not |
@@ -313,9 +315,12 @@ Toplam ≈ **300k sat** marj dahil. Settlement ücreti birkaç yüz sat, 402 öd
 > 3. We index our own overlay topic (`tm_agentcoop`). Is that encouraged? Any public overlay hosting we can use?
 > 4. Participants sign a coordinator-built multi-party tx with `createSignature({ hashToDirectlySign })`. Any plan for BSV Desktop to show structured sign requests? (For our threat model note.)
 > 5. A short-lived, capped prepaid balance at the provider when credits are redeemed for API calls (≤ one session, returnable): acceptable within non-custodial judging?
+> 6. Cross-chain: an HTLC atomic swap USDC (Base) ↔ BSV, with the BSV refund as a pre-signed nLockTime tx (no CLTV). Does that count as a "cross-chain flow", and is a $1–2 swap on Base mainnet OK for the demo?
 > Our treasury address for sats: `<adres>`. Thanks!
 
-Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır.
+Sats talebi soru mesajından **ayrı ve önce** gönderilir (adres + takım adı + miktar: ana demo için ~300k, 50 ajanlık ölçek testi için ek ~250k sat). Hazır metin: `plan/phases/D-P0.md` §2.
+
+Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır, 6 evet; Base mainnet yalnızca Faz 5 A yolunda ve $2'yi aşmayan tutarlarla.
 
 ---
 

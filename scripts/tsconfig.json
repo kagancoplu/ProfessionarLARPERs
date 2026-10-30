@@ -1,0 +1,19 @@
+{
+  // CommonJS package on purpose (no "type": "module" in package.json): wallet-toolbox
+  // is CJS and require()s the CJS build of @bsv/sdk. Under tsx, an ESM import of
+  // @bsv/sdk loads the ESM build, so SDK classes exist twice
+  // ("script[serializedBytes] is not a function"). In CJS mode both resolve to one copy.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["*.ts", "lib/**/*.ts", "test/**/*.ts"]
+}

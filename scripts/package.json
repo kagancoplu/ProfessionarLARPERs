@@ -1,0 +1,31 @@
+{
+  "name": "@agentcoop/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentCoop ops scripts: server wallet keys, wallets, funding, balances (Track D)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "keygen": "tsx keygen.ts",
+    "identities": "tsx identities.ts",
+    "fund": "tsx fund.ts",
+    "receive": "tsx receive.ts",
+    "balances": "tsx balances.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bsv/sdk": "3.2.1",
+    "@bsv/wallet-toolbox": "2.14.9",
+    "better-sqlite3": "^13.0.3",
+    "knex": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}
