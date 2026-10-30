@@ -57,10 +57,11 @@ const DRAWN = {
     '................', '................', '...cccccccccc...', '..cKKKKKKKKKKc..', '..cKwwwYYwwwKc..', '..cKwwwYYwwwKc..',
     '..cKKKKKKKKKKc..', '..cKddddddddKc..', '..cKddKYYKddKc..', '..cKddKYYKddKc..', '..cKddddddddKc..', '..cKKKKKKKKKKc..',
     '...cccccccccc...', '................', '................', '................'],
+  // a plain gold coin with an embossed ring and a shine (no currency logo: BSVA logo rules)
   coin: [
-    '................', '.....cccccc.....', '....cKKKKKKc....', '...cKYYYYYYKc...', '..cKYYyyyyYYKc..', '..cKYyYYYYyYKc..',
-    '..cKYyYKKYyYKc..', '..cKYyYKYYyYKc..', '..cKYyYKKYyYKc..', '..cKYyYKYYyYKc..', '..cKYyYKKYyYKc..', '..cKYyYYYYyYKc..',
-    '..cKYYoooo YYKc..'.replace(' ', ''), '...cKYYYYYYKc...', '....cKKKKKKc....', '.....cccccc.....'],
+    '................', '.....cccccc.....', '....cKKKKKKc....', '...cKYYYYYYKc...', '..cKYYppYYYyKc..', '..cKYpYYYYYyKc..',
+    '..cKYYYyyYYyKc..', '..cKYYyYYyYyKc..', '..cKYYyYYyYyKc..', '..cKYYYyyYYyKc..', '..cKYYYYYYYyKc..', '..cKyYYYYYyoKc..',
+    '...cKyyyyyoKc...', '....cKKKKKKc....', '.....cccccc.....', '................'],
   sack: [
     '................', '......cccc......', '.....cKKKKc.....', '....cKwwwwKc....', '.....cKKKKc.....', '....cKWWWWKc....',
     '...cKWWwwWWKc...', '..cKWWwwwwWWKc..', '..cKWwwwwwwWKc..', '..cKWwwwwwwWKc..', '..cKWWwwwwWWKc..', '..cKWWWwwWWWKc..',

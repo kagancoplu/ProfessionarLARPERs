@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { makeLabel } from './dom'
+import { ICONS } from '../../ui/icons.generated'
 
 export type Profile = 'finetune' | 'eval' | 'inference' | 'visitor'
 export type Facing = 'down' | 'side' | 'up'
@@ -45,7 +46,7 @@ export class Villager extends Phaser.GameObjects.Container {
     this.home = { x, y }
     ensureCharAnims(scene, char)
     this.sprite = scene.add.sprite(0, 0, 'chars', `${char}_idle_down_0`).setOrigin(0.5, feetOrigin(scene, char))
-    this.purse = scene.add.sprite(9, -30, 'town', 'icon_res_0').setOrigin(0.5, 1).setVisible(false)
+    this.purse = scene.add.sprite(9, -30, 'icons', ICONS.sack).setOrigin(0.5, 1).setVisible(false)
     this.nameLabel = makeLabel(scene, 0, -34, label, { size: 6 })
     this.add([this.sprite, this.purse, this.nameLabel])
     this.setSize(16, 28)

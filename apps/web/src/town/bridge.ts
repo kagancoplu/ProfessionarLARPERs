@@ -91,7 +91,24 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
         town.boatClaim(vault?.vaultId)
         break
       }
+      case 'listing_added': {
+        const seller = town.villagers.get(e.data.listing.seller)
+        const stall = town.stallFor(e.data.listing.outpoint)
+        if (seller !== undefined && stall !== undefined && !seller.player) {
+          stall.show(e.data.listing.outpoint, e.data.listing.credits, e.data.listing.askSats)
+          seller.busy = true
+          void seller.walkTo(stall.x + 4, stall.y - 3).then(() => { seller.say(`${e.data.listing.credits} credits for ${e.data.listing.askSats} sat!`, 'gold', 3000) })
+        }
+        break
+      }
+      case 'listing_cancelled': {
+        const seller = town.villagers.get(e.data.listing.seller)
+        if (seller !== undefined && !seller.player) { seller.busy = false; void seller.goHome() }
+        break
+      }
       case 'listing_filled': {
+        const seller = town.villagers.get(e.data.listing.seller)
+        if (seller !== undefined && !seller.player) { seller.say('Sold!', 'gold', 2000); seller.busy = false; void seller.goHome() }
         const buyer = e.data.buyer !== undefined ? town.villagers.get(e.data.buyer) : undefined
         const stall = town.stalls.find(s => s.outpoint === e.data.listing.outpoint)
         if (stall !== undefined) town.fx.enqueue('sweep', sweepFx(town, stall, buyer, e.data.listing.credits))

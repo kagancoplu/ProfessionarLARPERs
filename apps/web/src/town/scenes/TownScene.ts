@@ -6,7 +6,8 @@
 import Phaser from 'phaser'
 import type { AppStoreApi } from '../../store'
 import type { EventBus } from '../../events/bus'
-import { Bell, Cart, House, Stall, Workshop, placeAnimated, placeStatic, Building } from '../entities/Buildings'
+import { Bell, Cart, House, Stall, Workshop, ensureAnim, placeAnimated, placeStatic, Building } from '../entities/Buildings'
+import { ICONS } from '../../ui/icons.generated'
 import { Guard, Stranger, VaultChest } from '../entities/Guard'
 import { Board } from '../entities/Board'
 import { CHARS, Villager, type Profile } from '../entities/Villager'
@@ -61,6 +62,7 @@ export class TownScene extends Phaser.Scene {
     for (let f = 0; f < WATER_FRAMES; f++) this.load.image(`t_water_${f}`, `/game/terrain/water_${f}.png`)
     this.load.atlas('town', '/game/town.png', '/game/town.json')
     this.load.atlas('chars', '/game/chars.png', '/game/chars.json')
+    this.load.spritesheet('icons', '/ui/icons.png', { frameWidth: 16, frameHeight: 16 })
   }
 
   create (): void {
@@ -80,6 +82,8 @@ export class TownScene extends Phaser.Scene {
       if (p.kind === 'house' || p.kind === 'workshop' || p.kind === 'coop' || p.kind === 'board' || p.kind === 'fountain' || p.kind === 'stall' || p.kind === 'fisherman' || p.kind === 'boat') continue
       if (p.anim !== undefined) placeAnimated(this, p.frame.replace(/_\d+$/, ''), p.anim.frames, p.anim.fps, p.x, p.y, Math.floor(p.x / 7))
       else placeStatic(this, p.frame, p.x, p.y)
+      // the mill's sails turn around the hub on the tower's front (32, 40 in the 64×112 tower; 64×80 frames centred on the hub)
+      if (p.kind === 'windmill') this.add.sprite(p.x, p.y - 72, 'town', 'windmill_sail_0').setDepth(p.y + 1).play(ensureAnim(this, 'windmill_sail', 4, 3))
       if (p.kind === 'lantern') this.lamps.push(this.add.image(p.x, p.y - 34, 'glow').setTint(0xffb347).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setDepth(DEPTH.lights))
     }
     const door = (p: { x: number, y: number, door?: { dx: number, dy: number } }) => ({ x: p.x + (p.door?.dx ?? 0) * TILE, y: p.y + (p.door?.dy ?? 1) * TILE })
@@ -90,7 +94,7 @@ export class TownScene extends Phaser.Scene {
     const gate = POINTS.gate!
     this.guard = new Guard(this, gate.x + 58, gate.y + 8)
     const harbor = PLACES.find(p => p.kind === 'fisherman')!
-    this.harbor = new Building(this, harbor.x, harbor.y, harbor.frame, 'Harbor office · Coop Rail (experimental)', { x: harbor.x, y: harbor.y + TILE })
+    this.harbor = new Building(this, harbor.x, harbor.y, harbor.frame, 'Harbor · Rail (experimental)', { x: harbor.x, y: harbor.y + TILE })
     const boatPlace = PLACES.find(p => p.kind === 'boat')!
     this.boat = placeStatic(this, boatPlace.frame, boatPlace.x, boatPlace.y)
     this.boatHome = { x: boatPlace.x, y: boatPlace.y }
@@ -201,7 +205,7 @@ export class TownScene extends Phaser.Scene {
 
   boatClaim (vaultId: string | undefined): void {
     const chest = vaultId !== undefined ? this.chests.get(vaultId) : undefined
-    const coin = this.add.image(this.boat.x, this.boat.y - 16, 'town', 'icon_res_12').setOrigin(0.5, 1).setDepth(DEPTH.banner)
+    const coin = this.add.image(this.boat.x, this.boat.y - 16, 'icons', ICONS.coin).setOrigin(0.5, 1).setDepth(DEPTH.banner)
     const to = chest ?? { x: this.harbor.x, y: this.harbor.y - 20 }
     this.tweens.add({ targets: coin, x: to.x, y: to.y - 10, duration: 1100, ease: 'Quad.InOut', onComplete: () => { coin.destroy(); chest?.setBalance(Number(this.deps.store.getState().vaults.byId[vaultId ?? '']?.balanceSats ?? 0)) } })
   }

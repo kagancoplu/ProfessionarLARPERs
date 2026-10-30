@@ -6,6 +6,7 @@
 import Phaser from 'phaser'
 import { makeLabel } from './dom'
 import { Villager } from './Villager'
+import { ICONS } from '../../ui/icons.generated'
 
 export class Guard extends Villager {
   readonly post: { x: number, y: number }
@@ -81,7 +82,7 @@ export class VaultChest extends Phaser.GameObjects.Container {
   /** the owner withdrew: the chest opens and the gold leaves */
   open (): void {
     this.chest.setFrame('chest_gold_5')
-    const coin = this.scene.add.image(this.x, this.y - 10, 'town', 'icon_res_12').setOrigin(0.5, 1).setDepth(this.y + 1)
+    const coin = this.scene.add.image(this.x, this.y - 10, 'icons', ICONS.coin).setOrigin(0.5, 1).setDepth(this.y + 1)
     this.scene.tweens.add({ targets: coin, y: this.y - 60, alpha: 0, duration: 900, onComplete: () => coin.destroy() })
   }
 }

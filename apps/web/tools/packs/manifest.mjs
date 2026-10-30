@@ -17,7 +17,8 @@ const ALL_SPRITES = [
   ...['Red', 'Blue', 'Black'].map(c => ({ name: `inn_${c.toLowerCase()}`, file: `${B}/Unique_Buildings/Inn/Inn_${c}.png` })),
   ...['Red', 'Blue', 'Black'].map(c => ({ name: `shed_${c.toLowerCase()}`, file: `${B}/Unique_Buildings/Shed/Shed_Base_${c}.png` })),
   ...['Red', 'Blue', 'Black'].map(c => ({ name: `fisherman_${c.toLowerCase()}`, file: `${B}/Unique_Buildings/Fisherman_House/Fisherman_House_Base_${c}.png` })),
-  { name: 'windmill', file: `${B}/Unique_Buildings/Windmill/Windmill.png` },
+  // the sheet holds the tower (left 64 px) and a loose sail; the sail is drawn from Windmill_Sail_Anim
+  { name: 'windmill', file: `${B}/Unique_Buildings/Windmill/Windmill.png`, rect: [0, 0, 64, 112] },
   { name: 'windmill_sail', file: `${B}/Unique_Buildings/Windmill/Windmill_Sail_Anim.png`, rect: [0, 0, 64, 80], frames: { count: 4, dx: 64 } },
   { name: 'silo', file: `${B}/Unique_Buildings/Silo/Silo.png` },
   { name: 'tent_big', file: `${B}/Tent/Tent_Big.png` },

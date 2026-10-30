@@ -10,6 +10,7 @@ import type { Stall } from '../entities/Buildings'
 import { banner } from '../entities/Buildings'
 import { shortHex } from '../../api/woc'
 import { DEPTH } from '../game'
+import { ICONS } from '../../ui/icons.generated'
 
 export function pledgeFx (town: TownScene, v: Villager, credits: string, coinSats: number) {
   return async (ctx: FxContext): Promise<void> => {
@@ -19,7 +20,7 @@ export function pledgeFx (town: TownScene, v: Villager, credits: string, coinSat
       if (!ctx.reducedMotion) await v.walkTo(to.x + (v.slotIndex % 2 === 0 ? -10 : 10), to.y + 4)
       if (ctx.cancelled()) return
       // the coin arcs into the sack, but the purse only glows: the sats stay in the wallet
-      const coin = town.add.sprite(v.x, v.y - 14, 'town', 'icon_res_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
+      const coin = town.add.sprite(v.x, v.y - 14, 'icons', ICONS.coin).setOrigin(0.5, 1).setDepth(DEPTH.banner)
       await new Promise<void>(resolve => town.tweens.add({ targets: coin, x: town.board.x + 14, y: town.board.y - 6, duration: 500 / ctx.speed, ease: 'Quad.Out', onComplete: () => { coin.destroy(); resolve() } }))
       town.board.flyCredits(`+${credits} credits`)
       v.setPurse('reserved')
@@ -56,7 +57,7 @@ export function settlementFx (town: TownScene, txid: string, participants: numbe
       await ctx.wait(400)
       const house = town.houseOf(v.identity)
       if (house !== undefined) void house.dropChest()
-      const coin = town.add.sprite(v.x, v.y - 16, 'town', 'icon_res_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
+      const coin = town.add.sprite(v.x, v.y - 16, 'icons', ICONS.coin).setOrigin(0.5, 1).setDepth(DEPTH.banner)
       town.tweens.add({ targets: coin, x: town.workshop.door.x, y: town.workshop.door.y - 10, duration: 900 / ctx.speed, ease: 'Quad.In', onComplete: () => coin.destroy() })
       v.setPurse('idle')
       v.busy = false
