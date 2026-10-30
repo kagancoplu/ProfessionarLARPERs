@@ -30,6 +30,11 @@
 
 **Çıktılar:** kök konfigürasyon; `packages/core/src/{types,sdk,index}.ts`, `src/kit/*`, `src/scripts/opreturn.ts`, `src/signers/P2pkhWalletSigner.ts`; `scripts/spike-sighash.ts`; `test/helpers/mockchain.ts`.
 
+> **Durum (2026-10-30): ✓ mockchain, mainnet koşusu bekliyor.** Ayrıntı ve sonuç: `plan/phases/A-P0.md`. Plandan sapmalar:
+> - `sdk.ts` tsconfig `paths` yerine CJS build'i **göreli dosya yoluyla** yeniden dışa aktarır (SDK `exports` haritası `dist/cjs`'e izin vermiyor). Kural: herkes `@agentcoop/core/sdk`'dan import eder.
+> - Ek dosyalar: `src/errors.ts` (`AgentCoopError`), `src/signers/sighash.ts` (`signP2pkhWithScope`, `sighashFor`), `src/scripts/{vault,htlc}.ts` iskeletleri, `src/kit/lookupTypes.ts`; `OverlayClient`'a opsiyonel `topic`/`service`.
+> - 0.4'ün mockchain yarısı: `test/spike-sighash.mockchain.test.ts`. Mainnet yarısı (`scripts/spike-sighash.ts`) Desktop + sats bekliyor (STATUS Blokajlar).
+
 ### ✋ Checkpoint (Faz 0 sonu)
 1. **Plan hâlâ iyi mi?** Test 2 başarısızsa `FINAL-IDEA.md §12.2`'deki B planı devreye girer: sağlayıcı teklifleri sunucu cüzdanından çıkar. Bu dosyanın Faz 1.2'sini ve MASTER §3.3 `Offer` notunu güncelle; STATUS "Plan değişiklikleri"ne yaz. Başka öğrendiğin bir şey planı değiştiriyorsa aynı şekilde.
 2. **Bu faz bitti** → STATUS Track A bölümünü güncelle (faz, dosya yolları, bilinen sorunlar).
@@ -59,6 +64,13 @@
 
 **Çıktılar:** `packages/core/src/pool/*`, `scripts/skeleton.ts`, `test/skeleton.mockchain.test.ts`.
 
+> **Durum (2026-10-30): ✓ mockchain, mainnet (S1) bekliyor.** Ayrıntı ve sonuç: `plan/phases/A-P1.md`. Plandan sapmalar:
+> - 1.1: kredi UTXO'su token receive adresinde değil, `[1,'agentcoop provider']` keyID `offer <poolNonce>` anahtarına taşınır, basket `agentcoop offers` (TokenKit dokunmasın). Pool OP_RETURN json = terms − `poolId` + `nonce`. MASTER §3.2'de.
+> - 1.2: `verifyOffer(offer, { sourceTx })` çevrimdışı (miktar, token, imza Spend ile). Harcanmamışlık kontrolü çağırana (koordinatör: overlay/Arcade) kaldı.
+> - 1.4: `pledgeListHash` = sha256(join(',', sort_lex(outpoint'ler))). %120 penceresi, yetersiz coin düşürülünce yeniden hesaplanır. Ücret, gerçek imza boyutu × `fetchChainPolicy()` (Arcade `/health`).
+> - 1.6: sign/assemble/broadcast/internalize tek dosyada: `src/pool/settle.ts`. `broadcastEF` = `POST {arcade}/tx` JSON `{ rawTx: EF hex }` (wallet-toolbox Arcade.js ile aynı). Yeni: `internalizeSettlement` (para üstü `change:true` ile basket'e, harcanan pledge `relinquishOutput`).
+> - 1.7: overlay olarak testte kit overlay'i (`tm_tokenkit`); B'nin `tm_agentcoop`'u gelince `OverlayClient(..., COOP_TOPIC, COOP_SERVICE)`.
+
 ### ✋ Checkpoint (Faz 1 sonu)
 1. **Plan hâlâ iyi mi?** Skeleton'da ücret, BEEF ya da overlay kabulü ile ilgili sürpriz çıktıysa Faz 2'yi ve MASTER §3.3/3.4'ü güncelle; STATUS'a yaz. Overlay reddettiyse (doğrulama testi 1) B ile birlikte `rules.ts` genişletmesine karar ver.
 2. **Bu faz bitti** → STATUS Track A güncelle; txid'leri yaz.
@@ -87,6 +99,12 @@
 **Kabul:** sahte kredi içeren bir plan `verifySettlementPlan`'da düşüyor (test); mainnet'te bir liste + sweep (T8) yapıldı; S2 için A tarafı ✓.
 
 **Çıktılar:** `src/verify/lineage.ts`, `src/market/*`, testler, MASTER §3.2/3.4 güncellemeleri.
+
+> **Durum (2026-10-30): ✓ mockchain, mainnet (test 7, T8) bekliyor.** Ayrıntı ve sonuç: `plan/phases/A-P2.md`. Plandan sapmalar:
+> - 2.1: `verifyLineage` yalnız **aynı token'ın** girdilerini yürür, getirilen her tx'in txid'ini yeniden hesaplar, ata imzalarını Spend ile doğrular. `fetchTx` enjekte edilebilir. CLI: `scripts/lineage-check.ts`.
+> - 2.3: liste kredisi `[1,'agentcoop market']` keyID `list <nonce>`'a taşınır (`reserveListing`, basket `agentcoop listings`), `OP_RETURN list` aynı tx'te. Sonra `signListing`, `verifyListing`. İptal = `cancelListing` (krediyi geri alır). Havuz iptali için `cancelPool`.
+> - 2.4: `src/market/sweep.ts` yerine `src/market/listing.ts` içinde. **İmza değişti:** `buildSweep(wallet, kit, listings[], opts)` → `{ txid, credits, tx }` (MASTER §3.4 + STATUS).
+> - 2.5 ve 2.6 Faz 1'de yapıldı. 2.7: kodlar MASTER §3.4'te (`BAD_LISTING`, `LINEAGE_FAILED` …). 2.8: test dosyaları `packages/core/test/{pool.plan,lineage}.test.ts`, `test/market.mockchain.test.ts`.
 
 ### ✋ Checkpoint (Faz 2 sonu)
 1. **Plan hâlâ iyi mi?** `beefFromArcade` onaylanmamış atalarda yetersiz kaldıysa WoC fallback'i birincil yap ve bunu planla; `verifyLineage` çok yavaşsa önbellek stratejisini yaz. Değişiklikleri STATUS'a.
