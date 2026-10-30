@@ -10,8 +10,12 @@ export function loadDotEnv (file = join(REPO_ROOT, '.env')): void {
   if (existsSync(file)) process.loadEnvFile(file)
 }
 
-/** `DATA_DIR` or `<repo>/data` (gitignored): wallets, ledgers, logs. */
-export const dataDir = (): string => resolve(process.env.DATA_DIR ?? join(REPO_ROOT, 'data'))
+/**
+ * `DATA_DIR` or `<repo>/data` (gitignored): wallets, ledgers, logs. An empty `DATA_DIR=` (as in
+ * .env.example) counts as unset; it used to resolve to the working directory, so the apps opened
+ * `<repo>/wallets/*.sqlite` while scripts/fund.ts funded `<repo>/data/wallets/*.sqlite`.
+ */
+export const dataDir = (): string => resolve(process.env.DATA_DIR?.trim() || join(REPO_ROOT, 'data'))
 
 export function requireEnv (name: string): string {
   const value = process.env[name]
