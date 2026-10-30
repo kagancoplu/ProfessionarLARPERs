@@ -33,3 +33,6 @@ apps/web/test-results/
 
 .DS_Store
 backups/
+
+# raw third-party art packs (apps/web): licenses forbid redistribution; only processed atlases are committed
+apps/web/assets/packs/

@@ -3,46 +3,49 @@ import type { PoolEntry } from '../../store/types'
 import { blocksToHuman } from '../../api/arcade'
 import { formatInt } from '../../ui/Counter'
 import { makeLabel } from './dom'
+import { ensureAnim } from './Buildings'
 
-/** The notice board with its sack: one active pool at a time (the newest open/locking pool). */
+/** The notice board (a hanging sign post) with a chest that fills as pledges arrive; one active pool at a time. */
 export class Board extends Phaser.GameObjects.Container {
   readonly board: Phaser.GameObjects.Image
-  readonly sack: Phaser.GameObjects.Image
+  readonly sack: Phaser.GameObjects.Sprite
   readonly hourglass: Phaser.GameObjects.Sprite
   private label: Phaser.GameObjects.DOMElement
   poolId?: string
 
   constructor (scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y)
-    this.board = scene.add.image(0, 0, 'atlas', 'board_0').setOrigin(0.5, 1)
-    this.sack = scene.add.image(14, 2, 'atlas', 'sack_0').setOrigin(0.5, 1)
-    this.hourglass = scene.add.sprite(0, -34, 'atlas', 'hourglass_0').setOrigin(0.5, 1).setVisible(false)
-    this.label = makeLabel(scene, 0, -36, 'No pool on the board', { size: 6 })
+    this.board = scene.add.image(0, 0, 'town', 'sign_post_0').setOrigin(0.5, 1)
+    this.sack = scene.add.sprite(14, 0, 'town', 'chest_gold_0').setOrigin(0.5, 1)
+    // a lit lantern on the post during the signing round
+    this.hourglass = scene.add.sprite(-14, 0, 'town', 'lantern_0').setOrigin(0.5, 1).setVisible(false)
+    this.label = makeLabel(scene, 0, -52, 'No pool on the board', { size: 6 })
     this.add([this.board, this.sack, this.hourglass, this.label])
-    this.setSize(32, 32)
-    this.setInteractive(new Phaser.Geom.Rectangle(-16, -32, 32, 32), Phaser.Geom.Rectangle.Contains)
+    this.setSize(32, 48)
+    this.setInteractive(new Phaser.Geom.Rectangle(-16, -48, 32, 48), Phaser.Geom.Rectangle.Contains)
+    this.setDepth(y)
     scene.add.existing(this)
-    if (!scene.anims.exists('hourglass_turn')) scene.anims.create({ key: 'hourglass_turn', frames: [{ key: 'atlas', frame: 'hourglass_0' }, { key: 'atlas', frame: 'hourglass_1' }], frameRate: 2, repeat: -1 })
+    ensureAnim(scene, 'lantern', 6, 6)
   }
 
   /** Where villagers stand to pledge. */
-  get approach (): { x: number, y: number } { return { x: this.x - 4, y: this.y + 12 } }
+  get approach (): { x: number, y: number } { return { x: this.x, y: this.y + 14 } }
 
   setPool (pool: PoolEntry | undefined, height?: number): void {
     this.poolId = pool?.poolId
     this.scene.tweens.killTweensOf(this.board)
     this.board.setAlpha(1).setY(0)
-    if (pool === undefined) { this.label.setHTML('No pool on the board'); this.sack.setFrame('sack_0'); this.hourglass.setVisible(false); return }
+    if (pool === undefined) { this.label.setHTML('No pool on the board'); this.sack.setFrame('chest_gold_0'); this.hourglass.setVisible(false); return }
     const target = Number(pool.terms.credits)
     const pledged = Number(pool.pledgedCredits)
     const ratio = target > 0 ? Math.min(1, pledged / target) : 0
-    this.sack.setFrame(`sack_${Math.round(ratio * 4)}`)
+    this.sack.setFrame(`chest_gold_${Math.round(ratio * 5)}`)
     const h = height ?? pool.height
     const left = h !== undefined ? Number(pool.terms.deadlineHeight) - h : undefined
     const when = pool.status === 'settled' ? 'settled' : pool.status === 'failed' ? 'did not fill' : pool.status === 'locking' ? 'signing round' : left !== undefined ? `Festival in ${blocksToHuman(left)}` : 'open'
     this.label.setHTML(`${pool.terms.label}<br>${formatInt(pledged)}/${formatInt(target)} credits · ${when}`)
     this.hourglass.setVisible(pool.status === 'locking')
-    if (pool.status === 'locking') this.hourglass.play('hourglass_turn', true)
+    if (pool.status === 'locking') this.hourglass.play('anim_lantern', true)
     if (pool.status === 'failed') this.fade()
   }
 

@@ -1,22 +1,7 @@
-/** Phaser config (track-E §5.2): 16×16 tiles at 3×, pixelArt, no antialias. The Town scene arrives in P1. */
-import type Phaser from 'phaser'
-import { COLORS } from './colors'
-
+/** Phaser constants (E-V1): 16 px tiles, integer camera zoom, pixelArt. The canvas follows its parent (Scale.RESIZE). */
 export const TILE = 16
-export const SCALE = 3
-export const LOGICAL = { width: 960, height: 540 }
-
-export function gameConfig (parent: HTMLElement, scenes: Phaser.Types.Scenes.SceneType[], PhaserLib: typeof Phaser): Phaser.Types.Core.GameConfig {
-  return {
-    type: PhaserLib.AUTO,
-    parent,
-    width: LOGICAL.width,
-    height: LOGICAL.height,
-    backgroundColor: COLORS.parchment,
-    pixelArt: true,
-    antialias: false,
-    roundPixels: true,
-    scale: { mode: PhaserLib.Scale.FIT, autoCenter: PhaserLib.Scale.CENTER_BOTH },
-    scene: scenes
-  }
-}
+export const ZOOM_DEFAULT = 3
+export const ZOOM_MIN = 2
+export const ZOOM_MAX = 4
+/** depth bands: ground 0, decor 1, world objects = their y (0..600), overlay 900, lights 901, labels follow their container */
+export const DEPTH = { overlay: 900, lights: 901, banner: 950 }

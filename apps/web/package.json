@@ -17,7 +17,9 @@
     "test:e2e": "playwright test",
     "sprites": "tsx tools/sprites.mjs",
     "px": "tsx tools/px.mjs",
-    "record:mock": "tsx tools/record-mock.mjs"
+    "record:mock": "tsx tools/record-mock.mjs",
+    "packs": "node tools/packs/index.mjs",
+    "map": "tsx tools/town-map.mjs"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0",

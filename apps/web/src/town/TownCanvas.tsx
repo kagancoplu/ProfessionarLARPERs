@@ -3,9 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRuntime } from '../app-context'
 import { store } from '../store'
 import { LoadingState } from '../ui'
-import { COLORS } from './colors'
 import { FxQueue } from './fx/queue'
-import { LOGICAL } from './game'
 import { TownDrawer } from './TownDrawer'
 
 export default function TownCanvas () {
@@ -23,9 +21,9 @@ export default function TownCanvas () {
     void Promise.all([import('phaser'), import('./scenes/TownScene')]).then(([{ default: Phaser }, { TownScene }]) => {
       if (cancelled) return
       game = new Phaser.Game({
-        type: Phaser.AUTO, parent, width: LOGICAL.width, height: LOGICAL.height, backgroundColor: COLORS.grassHex,
+        type: Phaser.AUTO, parent, backgroundColor: '#1d1f2b',
         pixelArt: true, antialias: false, roundPixels: true, dom: { createContainer: true },
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scale: { mode: Phaser.Scale.RESIZE, width: parent.clientWidth, height: parent.clientHeight },
         scene: [new TownScene({ store, bus, fx })]
       })
       game.events.once('ready', () => setStatus('ready'))
@@ -35,7 +33,7 @@ export default function TownCanvas () {
   }, [bus])
   return (
     <div className="relative" data-testid="town">
-      <div ref={ref} className="pixelated mx-auto border-2 border-wood bg-grass shadow-hard" style={{ width: '100%', maxWidth: 1232, aspectRatio: `${LOGICAL.width} / ${LOGICAL.height}` }} data-status={status} />
+      <div ref={ref} className="pixelated relative mx-auto overflow-hidden border-2 border-wood bg-ink shadow-hard" style={{ width: '100%', aspectRatio: '16 / 9' }} data-status={status} />
       {status === 'loading' && <div className="absolute inset-0 flex items-center justify-center"><LoadingState title="Building the town…" body="Phaser, atlas and tiles" /></div>}
       {status === 'error' && <div className="absolute inset-0 flex items-center justify-center bg-surface-2/80 p-6 font-display text-danger-dark">The town could not start: {error}</div>}
       <p className="label mt-2 text-ink-muted">drag to pan · wheel to zoom (2×–4×) · click a villager, the board or the workshop</p>

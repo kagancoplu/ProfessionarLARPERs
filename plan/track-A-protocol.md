@@ -199,6 +199,8 @@
 - 6.5 Mainnet: 1 OrdLock listesi + alım (T8b); 1Sat Market / BananaBlocks'ta göründüğünün ekran görüntüsü ve linki STATUS'a.
 - 6.6 **Covenant vault araştırması (zaman kutusu 3 saat):** Chronicle'ın geri getirdiği opcode'ları (`OP_CAT`, `OP_SUBSTR`, `OP_LEFT`/`OP_RIGHT`, `OP_SPLIT`, sayısal opcode'lar; liste **resmi Chronicle spec'inden** alınır) ve OP_PUSH_TX (sighash ön görüntüsünü script içinde doğrulama) tekniğiyle: "çıktı yalnızca allowlist'teki `payScript`'e ve ≤ X sat gidebilir, para üstü aynı script'e döner" kuralını guard'sız zorlayan bir script prototipi. Çıktı: `plan/phases/A-P6-covenant-report.md` (yapılabilir mi, script boyutu, ücret maliyeti, SDK `Spend` ile yerel doğrulama sonucu, öneri). Kod yalnızca `src/research/` altında, çekirdekten import edilmez. Mainnet'e çıkmaz.
 
+**Durum (30.10):** 6.1 bulgusu `plan/phases/A-P6-ordlock-notes.md`: OrdLock v1 oluşturması 1Sat'ta kaldırıldı (2026-09-11), v2 (2026-10-27, `@bsv/sdk ^4`) çok yeni → kullanıcı kararıyla **6.2–6.5 atlandı**. 6.6 tamam: `plan/phases/A-P6-covenant-report.md`.
+
 **Kabul:** 1Sat formatına uyan bir OrdLock listesi mainnet'te alındı (txid STATUS'ta) **veya** format doğrulanamadığı STATUS'ta gerekçesiyle yazıldı; covenant raporu var; çekirdek testler değişmeden yeşil.
 
 **Çıktılar:** `src/market/ordlock.ts`, testler, `plan/phases/A-P6-*.md`, `src/research/covenant/*`.

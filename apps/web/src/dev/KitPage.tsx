@@ -1,10 +1,9 @@
 /** /_kit — the design system in one place (track-E 0.2): tokens, type, components, states, sprites, atlas. */
-import { lazy, Suspense, useState } from 'react'
+import { useState } from 'react'
 import { store, useStore } from '../store'
 import { Counter, DemoPricingTag, EmptyState, ErrorState, ExperimentalTag, IdentityChip, LoadingState, PixelButton, Scroll, ServiceBadge, Signboard, SimulatedJobsTag, Sprite, Tag, Timer, TxLink } from '../ui'
 import { SPRITE_DATA, type SpriteName } from '../ui/sprites.generated'
 
-const AtlasPreview = lazy(() => import('../town/AtlasPreview'))
 
 const TOKENS = ['surface', 'surface-2', 'surface-3', 'ink', 'ink-muted', 'wood', 'wood-dark', 'wood-light', 'gold', 'gold-dark', 'grass', 'grass-dark', 'danger', 'danger-dark', 'sky', 'water', 'warn']
 
@@ -97,9 +96,6 @@ export default function KitPage () {
         </div>
       </Signboard>
 
-      <Signboard title="Phaser atlas (public/game/atlas.png)">
-        <Suspense fallback={<LoadingState title="Loading Phaser…" />}><AtlasPreview /></Suspense>
-      </Signboard>
     </div>
   )
 }
