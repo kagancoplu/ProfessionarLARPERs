@@ -43,6 +43,8 @@ export interface ProcurementOptions {
 export class Procurement {
   /** poolId → pledged credits when last decided (decide again only when the pool moved). */
   private readonly decided = new Map<string, string>()
+  /** Last "why no decision" line, so a quiet pool check explains itself once instead of every tick. */
+  private lastIdle?: string
   /** pledge outpoint → the part of its cost that comes back if the pool does not settle with it. */
   private readonly refundable = new Map<string, number>()
 
@@ -73,13 +75,21 @@ export class Procurement {
   async considerPools (): Promise<Decision | undefined> {
     const { agent, participant, brain } = this.opts
     this.settleBudget()
+    if (participant === undefined) return undefined
+    if (participant.busy) return this.idle(`waiting for "${participant.active!.label}" (pledged ${participant.active!.credits})`)
     // Never pledge while off the coordinator's WS: an agent that cannot sign gets its coin blacklisted.
-    if (participant === undefined || participant.busy || !participant.connected) return undefined
+    if (!participant.connected) return this.idle(`not on the coordinator's WS (${this.opts.coopApiUrl ?? 'no COOP_API_URL'}); no pledges until it reconnects`)
     const product = await agent.product()
-    if (product.tokenId === null) return undefined
-    const candidates = (await this.openPools())
+    if (product.tokenId === null) return this.idle(`the provider's catalog has no credit token for ${product.id} (minted after provider-api started? restart provider-api)`)
+    const all = await this.openPools()
+    const candidates = all
       .filter(p => p.status === 'open' && p.hasOffer && p.terms.tokenId === product.tokenId && this.decided.get(p.poolId) !== p.pledgedCredits)
       .sort((a, b) => Number(a.terms.priceSats) / Number(a.terms.credits) - Number(b.terms.priceSats) / Number(b.terms.credits))
+    if (candidates.length === 0) {
+      const why = all.map(p => `${p.poolId.slice(0, 8)}… ${p.status}${p.hasOffer ? '' : ', no offer'}${p.terms.tokenId === product.tokenId ? '' : ', other token'}${this.decided.get(p.poolId) === p.pledgedCredits ? ', decided' : ''}`)
+      return this.idle(all.length === 0 ? 'no pools at the coordinator' : `no pool to decide on: ${why.join('; ')}`)
+    }
+    this.lastIdle = undefined
     let last: Decision | undefined
     for (const pool of candidates) {
       this.decided.set(pool.poolId, pool.pledgedCredits)
@@ -107,6 +117,12 @@ export class Procurement {
       last = decision
     }
     return last
+  }
+
+  private idle (why: string): undefined {
+    if (why !== this.lastIdle) this.opts.agent.log.info(`Pool check: ${why}.`)
+    this.lastIdle = why
+    return undefined
   }
 
   private async context (pool: ApiPool): Promise<DecisionContext> {

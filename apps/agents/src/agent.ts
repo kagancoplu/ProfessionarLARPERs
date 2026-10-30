@@ -146,7 +146,9 @@ export class Agent {
   }
 
   async product (): Promise<CatalogProduct> {
-    const p = (await this.catalog()).products.find(x => x.id === this.profile.product)
+    let p = (await this.catalog()).products.find(x => x.id === this.profile.product)
+    // A token minted after the agent started: ask the provider again rather than keep a stale catalog.
+    if (p === undefined || p.tokenId === null) p = (await this.catalog(true)).products.find(x => x.id === this.profile.product)
     if (p === undefined) throw new Error(`provider does not sell ${this.profile.product}`)
     return p
   }
