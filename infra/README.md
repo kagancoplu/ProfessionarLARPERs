@@ -58,3 +58,12 @@ sudo systemctl start agentcoop
 ```
 
 Tried locally (30.10): backup while both services ran, data dir deleted, restore, restart: the coordinator's rows and the overlay key (mode 600) came back.
+
+## Mainnet preflight
+
+```bash
+node infra/preflight.mjs             # runtime, .env names, identities, Arcade, WhatsOnChain, services, BSV Desktop
+node infra/preflight.mjs --wallets   # + server wallet balances against their targets
+```
+
+Spends nothing and never prints a key. Exit 1 if something blocks S1. The ordered mainnet steps for every track are in `plan/MAINNET-RUNBOOK.md`.
