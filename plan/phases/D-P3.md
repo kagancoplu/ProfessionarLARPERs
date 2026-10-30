@@ -73,7 +73,8 @@ Sonuç satırı bu yüzden "**kısmen başarılı (offline)**" olabilir; Faz 5'i
 | `packages/core/src/scripts/htlc.ts` | (D gövdesi) `RAIL_PROTOCOL`, `deriveRailPub`, `railScriptFor`, `parseHtlcLockingScript`, unlock'lar ve uzunluklar |
 | `apps/guard/src/rail.ts` | `evaluateRail` (§4.5) |
 | `apps/maker/test/htlc.evm.test.ts`, `test/e2e.rail.mockchain.test.ts` | §9 |
-| `scripts/validation4.ts` | Doğrulama 4 (mainnet, hazır) |
+| `scripts/validation4.ts` | Doğrulama 4 (mainnet, hazır; `npm run validation4 -w @agentcoop/scripts`) |
+| `apps/maker/test/server.test.ts` | `/quote` ve olay akışı |
 | `docs/RAIL-POC.md` | Sonuç |
 
 ---
@@ -134,6 +135,12 @@ Aksilik: ajan claim etmezse maker H+6'dan sonra iadeyi yayınlar; maker funding'
 
 ---
 
-## 11. Checkpoint
+## 11. Checkpoint (2026-10-30 19:55; zaman kutusunun ~1 saati kullanıldı)
 
-*(Faz sonunda doldurulur.)*
+| Soru | Cevap |
+|---|---|
+| **Plan hâlâ iyi mi?** | Evet, fakat FINAL-IDEA §4.10'un iki varsayımı **hâlâ doğrulanmadı**: nLockTime'ın yükseklik semantiği (doğrulama 4) ve v1 tx'in malleability'den korunması (doğrulama 6). Offline'da çürüyen bir şey çıkmadı: v1 funding `noSend` ile yayından önce sabit txid veriyor, ön-imzalı iade ELSE dalında doğrulanıyor, claim secret'ı açığa çıkarıyor ve maker bununla Base'de claim ediyor. Testler 4/6 başarısız çıkarsa §4.10 ve §8 güncellenir (Rail "trustless değil" ya da "kapsam dışı"). Foundry yerine `solc` + `@ethereumjs/evm` kullanıldı (STATUS Plan değişiklikleri) |
+| **Bitti mi?** | Kabulün offline kısmı ✓: `docs/RAIL-POC.md` var, **Sonuç: kısmen başarılı (offline)**; zaman kutusu aşılmadı. Testler: `apps/maker/test/*` (EVM + HTTP), `test/e2e.rail.mockchain.test.ts` (uçtan uca swap, iade yolu, redler); kök `npm test` 34 dosya / 197 test yeşil, typecheck temiz. **Açık:** doğrulama 4 (betik hazır) ve 6 (plan yazıldı) mainnet sats; Base Sepolia deploy (betik hazır, dry-run Sepolia'ya bağlandı) ETH; canlı swap ikisini de ister |
+| **Diğer track'ler?** (19:50) | **S3 tamamlanmadı.** A: P2 ✓, P3 (vault pledge yolu) başlamadı (`buildPledge('vault')` hâlâ `NOT_IMPLEMENTED`; `pledgeFromVault` hazır). B: P6a ✓ (denetim + metrikler), kalanlar S3 sonrası. C: P2 ✓ mockchain (ajanlar tahmin, pledge, imza), P3 (vault'lu ajan) sırada. E: P0 başladı; liman sahnesi için maker `GET /quote`/`/events` hazır. README bölümleri: S3'e yaklaşırken her track'ten istenecek (Faz 4) |
+| **Sonraki faz bağımlılıkları** | Genişletme fazları (5, 6, 7) **S3 olmadan başlamaz**. Faz 5'in A/B seçimi Rail'in canlı adımlarına bağlı: fon gelirse kalan zaman kutusu (≈ 3 sa) doğrulama 4/6 + Sepolia swap'a; gelmezse Faz 5 B yolu. S3 beklenirken: D'nin S3 maddeleri (vault'lu settlement'ın mainnet koşusu A.P3 + C.P3 ile) ve Faz 4'ün bağımsız kısımları (README iskeleti, threat model, value note taslağı) |
+| **Arayüz değişikliği?** | MASTER §3.2 (rail anahtarları), §3.7 (`kind:'rail'`), §3.9 (Rail değişkenleri), §3.10 (maker uçları ✅). STATUS "Arayüz değişiklikleri" 19:55 |

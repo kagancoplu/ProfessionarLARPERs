@@ -45,6 +45,7 @@ CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the
 |---|---|---|
 | `pay` | `txBEEF`: AtomicBEEF with every input's source | `payees?: [{ vout, provider, keyID }]` (provider payments) · `hotWallet?: [{ vout, derivationPrefix, derivationSuffix }]` (top-up of the agent's own hot wallet) · `poolBEEF?` (the pool tx, when the tx is a vault pledge; otherwise the guard fetches it) |
 | `settle` | `plan`: the coordinator's `SettlementPlan`; **the guard builds the tx itself** (`planTransaction`) | `poolId` (required), `expectedCredits?`, `tokenId?` (cross-checks; the guard reads the truth from the chain) |
+| `rail` | `txBEEF`: the claim of a Coop Rail HTLC (D-P3) | `swapId` (required). The guard signs with its rail key `[1,'agentcoop rail']`/swapId; the BSV must land in the agent's vault |
 
 Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `new VaultSigner(wallet, { vaultId, cosign, context, plan? })` (an `InputSigner` for A's `signSettlementInput`); `httpCosigner(GUARD_URL)`. A refusal throws `CosignRejected { status, reason }`.
 
@@ -80,6 +81,7 @@ Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFro
 | **Settle**: per-pool and weekly caps on the real cost (S7) | `maxPerPoolSats exceeded`, `weeklyCapSats exceeded` | A policy tightened between pledge and settlement |
 | **Hot wallet** (2.2): output = the agent's own BRC-29 key from 'anyone' (H1, H2) | `hot wallet proof mismatch` | Paying a third party disguised as a top-up |
 | **Hot wallet**: rolling 24 h cap (H3) | `hotWalletDailySats exceeded` | A compromised agent draining the vault through its hot wallet |
+| **Rail** (D-P3): the HTLC names this guard's and this agent's keys for the swap; final; agent signature; the HTLC's sats land in the agent's registered vault; fee cap (R1–R6) | `not a rail HTLC for this guard`, `agent mismatch`, `rail funds must land in the vault` | **"Coop Rail claim bypasses the vault policy"** (closed: claim = agent + guard 2-of-2 and the guard only signs into the vault) |
 | Rolling weekly cap, one ledger entry per vault input (G12) | `weeklyCapSats exceeded` | Bounded loss if the agent (or the agent and the guard) is compromised |
 | One request at a time, decision log (G13) | — | Racing two requests under the cap; auditability |
 
