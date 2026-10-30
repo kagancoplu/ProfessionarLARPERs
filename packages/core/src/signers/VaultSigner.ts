@@ -38,10 +38,12 @@ import {
   verifyVaultSignature,
   type VaultKeys
 } from '../scripts/vault'
+import { vaultKeysOfScript } from '../scripts/creditLock'
 
 // ── guard protocol (MASTER §3.7) ─────────────────────────────────────────────
 
-export type CosignKind = 'settle' | 'pay' | 'rail'
+/** 'redeem' | 'list': spending vault-locked credits (A 5.4; the guard's policy for them is Track D's). */
+export type CosignKind = 'settle' | 'pay' | 'rail' | 'redeem' | 'list'
 
 /** Proof that output `vout` pays `provider`: its script is P2PKH(derive([1,'agentcoop provider'], keyID, provider, 'anyone')). */
 export interface PayeeProof {
@@ -118,7 +120,8 @@ function vaultKeysOfInput (tx: Transaction, inputIndex: number): VaultKeys {
   const input = tx.inputs[inputIndex]
   const source = input?.sourceTransaction?.outputs[input.sourceOutputIndex]
   if (source === undefined) throw new Error(`input ${inputIndex} has no source output`)
-  const keys = parseVaultLockingScript(source.lockingScript)
+  // A plain vault output, or vault-locked credits (A 5.4): the same keys either way.
+  const keys = vaultKeysOfScript(source.lockingScript)
   if (keys === null) throw new Error(`input ${inputIndex} is not a vault output`)
   return keys
 }

@@ -23,6 +23,7 @@ export * from './pool/plan'
 export * from './pool/verify'
 export * from './pool/settle'
 export * from './pool/lighthouse'
+export * from './vault/creditSpend'
 export * from './verify/lineage'
 export * from './market/listing'
 
