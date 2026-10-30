@@ -95,7 +95,8 @@ describe('validation test 1: overlay admits a mixed DvP settlement', () => {
     const { status, body } = await submitToOverlay(overlay.url, settlement.toBEEF())
     console.log('[validation 1] settlement', settlement.id('hex'), 'bytes', settlement.toBinary().length, 'STEAK', JSON.stringify(body))
     expect(status).toBe(200)
-    expect(body.tm_agentcoop.outputsToAdmit).toEqual([1, 2, 3]) // only the credit outputs
+    // The credit outputs, plus (since B.P1) the OP_RETURN settle record (last output); never the payment or change.
+    expect(body.tm_agentcoop.outputsToAdmit).toEqual([1, 2, 3, settlement.outputs.length - 1])
     expect(body.tm_agentcoop.coinsToRetain).toEqual([0]) // the provider's credit input, kept as history
   })
 
@@ -151,7 +152,7 @@ describe('validation test 1: overlay admits a mixed DvP settlement', () => {
     await signAll(tx, d.coin, [{ wallet: agent1, p }])
     await broadcastMock(chain.services, tx) // miners do not check BSV-21
     const { body } = await submitToOverlay(overlay.url, tx.toBEEF())
-    expect(body.tm_agentcoop.outputsToAdmit).toEqual([])
+    expect(body.tm_agentcoop.outputsToAdmit).toEqual([tx.outputs.length - 1]) // only the settle record, no credits
     expect(body.tm_agentcoop.coinsToRetain).toEqual([0]) // the credits are consumed (burned)
     expect(await lookup(overlay.url, { op: 'outpoint', txid: tx.id('hex'), vout: 1 })).toEqual([])
   })

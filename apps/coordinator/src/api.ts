@@ -1,0 +1,97 @@
+/**
+ * Side API (MASTER §3.5): offers, pools, pledges. Pool data comes from the
+ * overlay (chain records); the API only adds what the chain cannot say:
+ * `failed` (deadline passed, from the block height), `locking` (a signing
+ * round is running, Faz 2) and `hasOffer`.
+ */
+import express, { type Router } from 'express'
+import type { Offer } from '../../../packages/overlay/src/stub/types'
+import type { PoolView } from '../../../packages/overlay/src/views'
+import type { HeightSource } from './chain'
+import { OverlayUnavailableError, type OverlayLookup } from './overlay'
+import type { CoordinatorStore } from './store'
+import { OfferError, verifyOffer } from './verifyOffer'
+
+export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
+export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true }
+
+export interface ApiDeps {
+  overlay: OverlayLookup
+  store: CoordinatorStore
+  height: HeightSource
+  /** Pools with a signing round in progress (Faz 2 engine). */
+  locking: () => ReadonlySet<string>
+}
+
+const POOL_ID_RE = /^[0-9a-f]{64}_\d+$/
+
+/** Overlay view + derived status. Shared by the HTTP API and the WS feed. */
+export async function derivePools (deps: ApiDeps, views: PoolView[]): Promise<ApiPool[]> {
+  const [height, offers] = await Promise.all([deps.height.height(), deps.store.offerPoolIds()])
+  const locking = deps.locking()
+  return views.map(v => {
+    let status: ApiPoolStatus = v.status
+    if (v.status === 'open' && locking.has(v.poolId)) status = 'locking'
+    else if (v.status === 'open' && height !== undefined && height >= Number(v.terms.deadlineHeight)) status = 'failed'
+    return { ...v, status, hasOffer: offers.has(v.poolId), ...(height !== undefined ? { height } : { heightUnknown: true as const }) }
+  })
+}
+
+export function createApiRouter (deps: ApiDeps): Router {
+  const r = express.Router()
+  r.use(express.json({ limit: '1mb' }))
+
+  const wrap = (fn: (req: express.Request, res: express.Response) => Promise<void>) =>
+    (req: express.Request, res: express.Response): void => {
+      fn(req, res).catch(e => {
+        if (e instanceof OfferError) res.status(e.status).json({ code: e.code, error: e.message })
+        else if (e instanceof OverlayUnavailableError) res.status(502).json({ code: 'OVERLAY_UNAVAILABLE', error: e.message })
+        else res.status(500).json({ code: 'INTERNAL', error: String((e as Error).message ?? e) })
+      })
+    }
+  const poolIdParam = (req: express.Request): string => {
+    const id = String(req.params.poolId)
+    if (!POOL_ID_RE.test(id)) throw new OfferError('BAD_POOL_ID', 'poolId must be "<txid>_<vout>"')
+    return id
+  }
+
+  r.post('/offers', wrap(async (req, res) => {
+    const offer = req.body as Offer
+    const poolId = typeof offer?.poolId === 'string' && POOL_ID_RE.test(offer.poolId) ? offer.poolId : undefined
+    if (poolId === undefined) throw new OfferError('OFFER_INVALID_FORMAT', 'offer.poolId must be "<txid>_<vout>"')
+    const [pool, credit] = await Promise.all([deps.overlay.pool(poolId), deps.overlay.creditOutput(poolId)])
+    const verified = verifyOffer(offer, pool, credit)
+    await deps.store.saveOffer(verified)
+    res.status(201).json({ poolId, accepted: true })
+  }))
+
+  r.get('/offers/:poolId', wrap(async (req, res) => {
+    const offer = await deps.store.getOffer(poolIdParam(req))
+    if (offer === undefined) { res.status(404).json({ code: 'OFFER_NOT_FOUND', error: 'no offer for this pool' }); return }
+    res.json(offer)
+  }))
+
+  r.get('/pools', wrap(async (_req, res) => {
+    res.json(await derivePools(deps, await deps.overlay.pools()))
+  }))
+
+  r.get('/pools/:poolId', wrap(async (req, res) => {
+    const view = await deps.overlay.pool(poolIdParam(req))
+    if (view === undefined) { res.status(404).json({ code: 'POOL_NOT_FOUND', error: 'pool is not on the overlay' }); return }
+    res.json((await derivePools(deps, [view]))[0])
+  }))
+
+  r.get('/pools/:poolId/pledges', wrap(async (req, res) => {
+    const all = req.query.all === '1'
+    res.json(await deps.overlay.pledges(poolIdParam(req), { includeSpent: all, includeInvalid: all }))
+  }))
+
+  r.get('/healthz', wrap(async (_req, res) => {
+    let overlay = true
+    try { await deps.overlay.pools() } catch { overlay = false }
+    const height = await deps.height.height()
+    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null })
+  }))
+
+  return r
+}
