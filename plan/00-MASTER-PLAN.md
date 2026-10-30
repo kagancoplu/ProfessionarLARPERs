@@ -125,6 +125,9 @@ export interface PledgeRecord {       // OP_RETURN op=pledge
   signer: 'p2pkh' | 'vault'           // pledge coin'in tipi → koordinatör unlockingScriptLength'i buradan bilir
   creditLock?: 'vault'                // A-P5 5.3, yalnızca signer:'vault' ile: settlement'ta kredi çıktısı pledge coin'in vault script'ine kilitli
                                       // (zincirdeki kayıt esas: doğrulayıcılar planı buna göre kontrol eder, koordinatör seçemez)
+  mode?: 'lighthouse'                 // A-P5 5.5, signer:'vault' ile: insan bir kez SINGLE|ACP imzalar, çevrimdışı; guard settlement'ta ALL ortak imzalar
+  guard?: string                      // lighthouse: insanın seçtiği guard (identity key)
+  lhId?: string                       // lighthouse: keyID (32 hex). coin = lighthouseLockingScript({ participant, guard, lhId }); para üstü yok
 }
 // Pledge tx düzeni (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
 // Para üstü kuralı: settlement'ta katılımcının para üstü, pledge coin'in KENDİ locking script'ine döner.
@@ -144,7 +147,8 @@ export interface Listing {            // market (op=list OP_RETURN + zincir dı�
 
 export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular
   poolId: string; round: number
-  participants: Array<{ outpoint: string; participant: string; credits: string; signer: 'p2pkh'|'vault'; changeSats: string; creditLock?: 'vault' }>
+  participants: Array<{ outpoint: string; participant: string; credits: string; signer: 'p2pkh'|'vault'; changeSats: string; creditLock?: 'vault'; mode?: 'lighthouse' }>
+// A-P5 5.6: lighthouse katılımcıları etkileşimlilerden SONRA; çıktılar 1 + n + nEtkileşimli + 1 (lighthouse'un para üstü yok, changeSats '0')
   pledgeListHash: string
   templateBEEF: number[]              // imzasız tx + tüm girdilerin kaynak tx'leri (AtomicBEEF)
 }
@@ -203,6 +207,13 @@ verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache?, owne
 //   identifyAdmissible(tx, prev, { ownerKinds?: ['p2pkh'] | ['p2pkh','vault'] })   // varsayılan = kit, birebir
 //   creditLockOf(record), creditScriptFor(tokenId, candidate), pledgeRecordOf(pledgeTx)
 //   buildPledge(…,'vault', …, { vault: { …, creditLock?: 'vault' } }) · pledgeFromVault({ …, creditLock?: 'vault' })
+// A-P5 Lighthouse (pool/lighthouse.ts, scripts/lighthouse.ts):
+//   buildLighthousePledge(wallet, terms, credits, { tokenIndex, guard, feeSats? }) → LighthousePledge
+//     { outpoint, record, satoshis, humanSignatureHex (DER‖0xc3), creditLockingScriptHex, beef }   // zincir dışı; koordinatöre
+//   verifyLighthousePledge(lp, { sourceTx, tokenId }) → record           // koordinatör POST'ta, guard imzadan önce
+//   cosignLighthouse(guardWallet, { plan, offer, inputIndex, pledge, lineage?, maxFeeSats? }) → UnlockingScript   // guard tarafı
+//   cancelLighthousePledge(wallet, outpoint) → { txid, beef }            // insan tek başına, ayrı 'withdraw <lhId>' anahtarıyla
+//   lighthouseLockingScript({ participant, guard, lhId }) = OP_IF <insan withdraw> CHECKSIG ELSE 2 <insan lhId> <guard lhId> 2 CHECKMULTISIG ENDIF
 reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint, beef }>   // signListing'den önce
 signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
 buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
@@ -225,6 +236,7 @@ publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRe
 | `GET` | `/offers/:poolId` | Offer getir |
 | `GET` | `/pools` · `/pools/:poolId` | Terms + ilerleme (`pledgedCredits`, `target`, `status: open\|locking\|settled\|failed\|cancelled`, `hasOffer`). `cancelled` = kredi UTXO'su settlement dışı bir tx'le harcandı. `failed` ve `locking` yan API'de türetilir (yükseklik / koordinatör turu); overlay yalnızca `open\|settled\|cancelled` bilir |
 | `GET` | `/pools/:poolId/pledges` | Harcanmamış pledge'ler (overlay'den) |
+| `POST` | `/pledges/lighthouse` **(A-P5 isteği, B)** | `LighthousePledge` kaydet; `verifyLighthousePledge` ile doğrula. Turda `mode:'lighthouse'` katılımcının `sign_request`'i insana değil, kaydındaki `guard`'a gider (`/cosign kind:'lighthouse'`) |
 | (ek) | `/pools/:poolId` cevabında `coordinator` | Havuz turlandıysa: `{ round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome: 'settled'\|'failed', missing, txid? } }` (B.P2). `GET /healthz` → `engine: true\|false` |
 | `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri. `POST` zincire karşı doğrular (outpoint overlay'de admit edilmiş, harcanmamış kredi çıktısı; `tokenId`/`credits` eşleşiyor; imza `0xC3` ve girdi ↔ aynı index'teki çıktı = `askSats → payScriptHex`). `GET` yalnızca hâlâ harcanmamışları, en ucuz (`askSats/credits`) önce döndürür (B.P3) |
 | `GET` | `/pools/:poolId/audit` | (B.P6a) Settle edilmiş havuzun denetimi, zincirden yeniden hesaplanır: `{ poolId, settlement: { txid, round, pledgeListHash, termsHash }, included[], checks: { hashMatches, termsHashMatches, providerPaid, creditsDelivered, allIncludedValid, selectionMatches }, skippedEarlier: [{ outpoint, participant, credits, reason }], verdict: 'consistent'\|'inconsistent'\|'unexplained-skips' }`. Kara liste nedenleri koordinatörün beyanıdır; seçim A'nın `planSettlement`'ı o beyanla yeniden çalıştırılarak kontrol edilir. Settle edilmemişse `409 NOT_SETTLED` |
@@ -262,6 +274,7 @@ publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRe
 | `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sayılar sat, tam sayı; sahip imzasıyla, BRC-103 AuthFetch). **(sahip, ajan) çiftine yazılır**; sahibin o ajanla kayıtlı vault'u yoksa 404 |
 | `GET` | `/vaults/:vaultId` **(D.P1 eki)** | sahip veya ajan (BRC-103): kayıt, script, politika, son 7 günde harcanan (`spentLast7dSats`), **(D.P2)** son 24 sa sıcak cüzdan (`hotLast24hSats`) |
 | `POST` | `/cosign` `{ txBEEF? \| plan?, inputIndex, agent, agentSignatureHex, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId?, payees?: [{ vout, provider, keyID }], poolBEEF?, hotWallet?: [{ vout, derivationPrefix, derivationSuffix }] } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex, guardPub }` veya `403 { reason }` / `400 { reason }`. **(D.P1 ekleri:)** `agentSignatureHex` = ajanın aynı sighash üzerindeki imzası (guard sighash'i **kendisi** hesaplar ve önce bunu doğrular); imzalar checksig biçimi (DER ‖ `0x41`), hex; `txBEEF` AtomicBEEF (`number[]` veya hex), her girdinin kaynağıyla; `payees` = ödeme çıktılarının alıcı kanıtı (guard `P2PKH(derive([1,'agentcoop provider'], keyID, provider, 'anyone'))`'i yeniden hesaplar). Tx başına vault başına tek girdi; tx final olmalı (lockTime 0). Kontrol listesi: `plan/phases/D-P1.md` §7.2. **(D.P2 ekleri, `plan/phases/D-P2.md` §6–7:)** **`kind:'settle'`** → **`plan` (SettlementPlan) zorunlu, `txBEEF` gönderilmez/yok sayılır**: guard tx'i `planTransaction(plan)` ile kendisi kurar; `context.poolId` zorunlu (= `plan.poolId`), `expectedCredits`/`tokenId` yalnız çapraz kontrol; terms + `nonce` girdi 0'ın kaynak tx'indeki `pool` kaydından, beklenen kredi pledge coin'in kaynak tx'indeki `pledge` kaydından (`participant` = ajan, `signer:'vault'`); sağlayıcı ∈ allowlist, `payScriptHex` = sağlayıcının gelir anahtarı, teklif UTXO'su sağlayıcının `offer <nonce>` anahtarında; A'nın `verifySettlementPlan(…, { expectedCredits, expectedCreditPkh: receivePkh(agent, tokenIndex), maxFeeSats, verifyLineage: true })`; havuz başına + haftalık tavan. **`kind:'pay'` + `agentcoop pledge` kaydı** (A.3.1 düzeni: out0 pledge coin = vault script'i, out1 bedel → `payScriptHex`, out2 kayıt) → pledge anında aynı sağlayıcı kanıtları + `verifyLineage(poolId)` (önbellekli), bedel + coin ≤ `maxPerPoolSats`, coin haftalık tavana rezerve; havuz tx'i `poolBEEF`'ten (AtomicBEEF/BEEF/ham, txid ile doğrulanır) ya da guard Arcade'den çeker. **`hotWallet`** → çıktı = `P2PKH(KeyDeriver('anyone').derivePublicKey([2,'3241645161d8'], '<prefix> <suffix>', vault.agent))` (BRC-29, gönderici `'anyone'`; ajan `internalizeAction` `senderIdentityKey` = `1·G` ile alır), kayan 24 sa `hotWalletDailySats`. **`kind:'rail'` (D.P3):** `txBEEF` + `context.swapId`; girdi guard'ın ve isteyen ajanın `swapId` anahtarlarını taşıyan HTLC olmalı, tx final, HTLC tutarı (madenci ücreti hariç) ajanın **kayıtlı vault script'ine** iner, ücret ≤ `maxFeeSats`; giriş olduğu için tavana sayılmaz; guard rail anahtarıyla imzalar (`guardPub` cevapta) |
+| `POST` | `/cosign` `kind:'lighthouse'` **(A-P5 isteği, D)** | `{ plan, inputIndex, pledge: LighthousePledge, offer? }` → A'nın `cosignLighthouse(guardWallet, …)` (kayıt guard = ben, havuz eşleşiyor, `verifySettlementPlan` + `verifyLineage`, insan imzası bu plan için geçerli) → `{ unlockingScriptHex }`. Vault kaydı/politikası gerekmez (insanın kendi seçtiği guard) |
 | `GET` | `/healthz` | `{ ok, identityKey, network }` |
 | `GET` | `/policies/:agentIdentity` **(E için; D.P2 ✅)** | sahip veya ajan (BRC-103): `{ owner, agent, policy, updatedAt }` (ajan, kendisi için en son yazılanı alır); yoksa 404 |
 | `GET` | `/decisions?agent=&limit=` **(E için; D.P2 ✅)** | ajanın kendisi veya ajanın bir vault'unun sahibi (BRC-103): `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason? }] }` yeni → eski, ≤ 500 (`data/guard/decisions.jsonl`). `txid` yok: guard imza anında tx'in son txid'ini bilmez (diğer girdiler henüz imzasız). `kind`: `pay`, `pay/pledge`, `pay/hot`, `settle` |
