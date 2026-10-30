@@ -6,7 +6,7 @@ import { createHandlers } from './handlers'
 import { MockScenario } from './scenario'
 import { createMockWorld, type MockWorld } from './state'
 
-export interface MockRuntime { world: MockWorld, scenario: MockScenario, stop: () => void }
+export interface MockRuntime { world: MockWorld, scenario: MockScenario, stop: () => void, /** play the injection + guard refusal beat now */ injectNow: (agent?: string) => void }
 
 export async function startMockMode (bus: EventBus, opts: { speed?: number, worker?: boolean } = {}): Promise<MockRuntime> {
   const world = createMockWorld()
@@ -21,5 +21,5 @@ export async function startMockMode (bus: EventBus, opts: { speed?: number, work
   for (const service of services) bus.publish(makeEvent('web', 'service_health', { service, ok: true, detail: 'mock' }))
   const scenario = new MockScenario({ bus, world, speed: opts.speed ?? 1, loop: true })
   scenario.start()
-  return { world, scenario, stop: () => { scenario.stop(); stopWorker() } }
+  return { world, scenario, stop: () => { scenario.stop(); stopWorker() }, injectNow: agent => scenario.injectNow(agent) }
 }

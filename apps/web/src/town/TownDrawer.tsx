@@ -3,7 +3,8 @@ import { shortHex } from '../api/woc'
 import { PoolDetail } from '../consoles/pools/PoolDetail'
 import { store, useStore } from '../store'
 import { selectDrawer } from '../store/selectors'
-import { Counter, Drawer, IdentityChip, SimulatedJobsTag, Tag, TxLink } from '../ui'
+import { Counter, Drawer, IdentityChip, PixelButton, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
+import { useNavigate } from 'react-router'
 
 function AgentCard ({ identity }: { identity: string }) {
   const a = useStore(s => s.agents.byIdentity[identity])
@@ -42,14 +43,51 @@ function TxScroll ({ id }: { id: string }) {
   )
 }
 
+function VaultCard ({ vaultId }: { vaultId: string }) {
+  const v = useStore(s => s.vaults.byId[vaultId])
+  const agent = useStore(s => (v !== undefined ? s.agents.byIdentity[v.agent] : undefined))
+  if (v === undefined) return <p>No such vault.</p>
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2"><span className="mono">{shortHex(v.vaultId, 6)}</span><Tag tone={v.verified ? 'ok' : 'neutral'}>{v.verified ? 'verified' : 'registered'}</Tag>{v.paused === true && <Tag tone="warn">paused</Tag>}</div>
+      <Counter value={v.balanceSats} size="m" unit="sat" tone="gold" />
+      <p className="text-[14px] leading-5">Agent {agent?.name ?? ''} <IdentityChip identity={v.agent} role="agent" compact /> · owner <IdentityChip identity={v.owner} role="owner" compact /> · guard <IdentityChip identity={v.guard} role="guard" compact /></p>
+      <p className="text-[14px] leading-5 text-ink-muted">The owner alone can empty it; the agent spends only with the guard's co-signature inside the policy. Nobody else, ever.</p>
+      <div>
+        <p className="label text-ink-muted">Guard decisions</p>
+        {v.decisions.length === 0 ? <p className="text-[14px] text-ink-muted">None yet.</p> : v.decisions.slice(0, 8).map(d => (
+          <p key={d.id} className="flex gap-2 border-b border-surface-3 py-1 text-[14px] leading-5"><Tag tone={d.outcome === 'denied' ? 'danger' : 'ok'}>{d.outcome}</Tag><span>{d.kind}{d.sats !== undefined ? ` · ${formatInt(d.sats)} sat` : ''}{d.reason !== undefined ? ` · ${d.reason}` : ''}</span></p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ListingCard ({ outpoint }: { outpoint: string }) {
+  const l = useStore(s => s.listings.byOutpoint[outpoint])
+  const navigate = useNavigate()
+  if (l === undefined) return <p>That listing is gone (swept or cancelled).</p>
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline gap-2"><Counter value={l.credits} size="s" /><span className="text-ink-muted">credits for</span><Counter value={l.askSats} size="s" unit="sat" tone="gold" /></div>
+      <p className="text-[14px] leading-5">{(Number(l.askSats) / Number(l.credits)).toFixed(1)} sat/credit · seller <IdentityChip identity={l.seller} role="agent" compact /></p>
+      <p className="text-[14px] leading-5 text-ink-muted">Signed SIGHASH_SINGLE|ANYONECANPAY: anyone can sweep it while the seller is offline; the credits' lineage is verified before buying.</p>
+      <TxLink txid={outpoint.split(/[_.]/)[0]!} chars={6} />
+      <PixelButton size="sm" onClick={() => { store.getState().closeDrawer(); void navigate('/market') }}>Open the market</PixelButton>
+    </div>
+  )
+}
+
 export function TownDrawer () {
   const drawer = useStore(selectDrawer)
-  const title = drawer === undefined ? '' : drawer.kind === 'pool' ? 'Pool' : drawer.kind === 'agent' ? 'Villager' : drawer.kind === 'tx' ? 'Transaction' : drawer.kind === 'me' ? 'Workshop' : 'Details'
+  const title = drawer === undefined ? '' : drawer.kind === 'pool' ? 'Pool' : drawer.kind === 'agent' ? 'Villager' : drawer.kind === 'tx' ? 'Transaction' : drawer.kind === 'me' ? 'Workshop' : drawer.kind === 'vault' ? 'Vault' : drawer.kind === 'listing' ? 'Stall' : 'Details'
   return (
     <Drawer open={drawer !== undefined} title={title} onClose={() => store.getState().closeDrawer()}>
       {drawer?.kind === 'pool' && <PoolDetail poolId={drawer.id} />}
       {drawer?.kind === 'agent' && <AgentCard identity={drawer.id} />}
       {drawer?.kind === 'tx' && <TxScroll id={drawer.id} />}
+      {drawer?.kind === 'vault' && <VaultCard vaultId={drawer.id} />}
+      {drawer?.kind === 'listing' && <ListingCard outpoint={drawer.id} />}
       {drawer?.kind === 'me' && <div className="flex flex-col gap-2"><p>The provider's workshop. Credits are H100 GPU-hours; jobs are <SimulatedJobsTag />, payments and settlements are real.</p><p className="text-ink-muted text-[14px]">The provider console (mint, open a pool, revenue) arrives in Phase 2.</p></div>}
     </Drawer>
   )

@@ -4,15 +4,15 @@
  * exactly like the live adapters would, so the Town, the store and the e2e tests see no difference.
  */
 import type { WalletInterface } from '@bsv/sdk'
-import type { Catalog, PledgeView, ProviderJob } from '../../api/types'
+import type { Catalog, Listing, PledgeView, ProviderJob, VaultView } from '../../api/types'
 import type { EventBus } from '../../events/bus'
 import { makeEvent } from '../../events/types'
-import { makeMockPledge, makeMockPool, MOCK_IDS, MOCK_PRODUCT, mockTxid } from '../../mock/data'
+import { makeMockPledge, makeMockPool, MOCK_IDS, MOCK_PRODUCT, MOCK_TOKEN_ID, mockTxid } from '../../mock/data'
 import type { MockWorld } from '../../mock/state'
 import type { AppStoreApi } from '../../store'
 import { mine } from '../mine'
 import { createStepper } from './steps'
-import { FlowError, type FlowsApi, type MyPledge, type SignReview } from './types'
+import { FlowError, type FlowsApi, type MyPledge, type MyVault, type SignReview } from './types'
 
 export interface MockFlowDeps { world: MockWorld, bus: EventBus, store: AppStoreApi, getWallet: () => WalletInterface | undefined }
 
@@ -222,6 +222,112 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const res = await s.step(`Sweep ${world.me.revenue.length} revenue output(s), ${total} sat, into your balance`, 'BRC-100', () => wallet().createAction({ description: 'Sweep AgentCoop pool revenue', outputs: [out(total, 'revenue → your balance')] }), r => ({ txid: r.txid }))
       world.me.revenue = []
       return { txid: res.txid!, satoshis: total }
+    },
+
+    // ── owner: vault + guard (MASTER §3.7; mock guard answers from the world) ──
+    async createVault (agent) {
+      const s = createStepper(bus, 'createVault')
+      if (!world.agents.some(a => a.identity === agent)) throw new FlowError('createVault', 'Pick one of the agents in the square.')
+      if ([...world.vaults.values()].some(v => v.agent === agent)) throw new FlowError('createVault', 'That agent already has a vault.')
+      const owner = me()
+      const vaultId = mockTxid('vault').replace('mock_vault_', 'c0ffee') .padEnd(32, '0').slice(0, 32)
+      const scriptHex = '63' + '21' + owner + 'ac67' + '5221' + agent + '21' + MOCK_IDS.guard + '52ae68'
+      await s.step('Derive the vault keys in BSV Desktop (owner key from your identity, keyID = vaultId)', 'BRC-100', () => wallet().getPublicKey({ protocolID: [1, 'agentcoop vault'], keyID: vaultId, counterparty: 'anyone', forSelf: true }))
+      await s.step('Register the vault at the guard (BRC-103); it must derive the same script', '2-of-2', () => wait(200), () => ({ detail: 'OP_IF owner OP_CHECKSIG OP_ELSE 2 agent guard 2 OP_CHECKMULTISIG OP_ENDIF' }))
+      const view: VaultView = { vaultId, owner, agent, guard: MOCK_IDS.guard, scriptHex, verified: true, balanceSats: 0, utxos: [] }
+      world.vaults.set(vaultId, view)
+      const agentInfo = world.agents.find(a => a.identity === agent)
+      if (agentInfo !== undefined) { agentInfo.mode = 'vault'; agentInfo.vaultId = vaultId }
+      const my: MyVault = { vaultId, agent, guard: MOCK_IDS.guard, lockingScriptHex: scriptHex, record: { v: '1', vaultId, owner, agent, guard: MOCK_IDS.guard }, createdAt: ts(), fundedSats: 0 }
+      mine.getState().addVault(my)
+      bus.publish(makeEvent('guard', 'vault_registered', { vaultId, owner, agent }, { agent }))
+      return my
+    },
+
+    async fundVault (vaultId, satoshis) {
+      const s = createStepper(bus, 'fundVault')
+      const view = world.vaults.get(vaultId)
+      if (view === undefined) throw new FlowError('fundVault', 'No such vault.')
+      const res = await s.step(`Fund the vault with ${satoshis} sat in BSV Desktop (T9)`, 'BRC-100', () => wallet().createAction({ description: 'Fund AgentCoop vault', outputs: [out(satoshis, 'AgentCoop vault (2-of-2 agent+guard, owner exit)'), out(0, 'OP_RETURN vault record')] }), r => ({ txid: r.txid }))
+      const next: VaultView = { ...view, balanceSats: view.balanceSats + satoshis, utxos: [...view.utxos, { outpoint: `${res.txid}_0`, satoshis }] }
+      world.vaults.set(vaultId, next)
+      mine.getState().patchVault(vaultId, { fundedSats: (mine.getState().vaults.find(v => v.vaultId === vaultId)?.fundedSats ?? 0) + satoshis, lastTxid: res.txid! })
+      await s.step('Submit to the overlay (vault record)', 'overlay', () => wait(120))
+      bus.publish(makeEvent('overlay', 'vault_funded', { vault: next, txid: res.txid! }, { txid: res.txid, agent: next.agent }))
+      return { txid: res.txid! }
+    },
+
+    async putPolicy (agent, policy) {
+      const s = createStepper(bus, 'putPolicy')
+      await s.step('PUT /policies/:agent at the guard (BRC-103, signed with your identity; no transaction)', 'BRC-103', () => wait(200), () => ({ detail: `maxPerPool ${policy.maxPerPoolSats} · weekly ${policy.weeklyCapSats} · maxFee ${policy.maxFeeSats} · hot/day ${policy.hotWalletDailySats} · ${policy.allowProviders.length} provider(s)` }))
+      world.policies.set(agent, { owner: me(), policy, updatedAt: ts() })
+      bus.publish(makeEvent('guard', 'policy_updated', { agent, owner: me() }, { agent }))
+    },
+
+    async vaultStatus (vaultId) {
+      const vault = world.vaults.get(vaultId)
+      const pol = vault !== undefined ? world.policies.get(vault.agent) : undefined
+      const decisions = world.decisions.filter(d => d.vaultId === vaultId || (vault !== undefined && d.agent === vault.agent))
+      const spentLast7dSats = decisions.filter(d => d.outcome === 'approved').reduce((a, d) => a + (d.sats ?? 0), 0)
+      return { ...(vault !== undefined ? { vault } : {}), ...(pol !== undefined ? { policy: pol.policy, policyUpdatedAt: pol.updatedAt } : {}), decisions, spentLast7dSats }
+    },
+
+    async withdrawVault (vaultId) {
+      const s = createStepper(bus, 'withdrawVault')
+      const view = world.vaults.get(vaultId)
+      if (view === undefined) throw new FlowError('withdrawVault', 'No such vault.')
+      if (view.balanceSats === 0) throw new FlowError('withdrawVault', 'The vault is empty.')
+      const res = await s.step(`Spend ${view.utxos.length} vault output(s) through the owner branch (OP_IF), no guard, no agent`, 'BRC-100', () => wallet().createAction({ description: 'Withdraw AgentCoop vault', outputs: [out(view.balanceSats, 'vault → your balance')] }), r => ({ txid: r.txid }))
+      const next: VaultView = { ...view, balanceSats: 0, utxos: [] }
+      world.vaults.set(vaultId, next)
+      bus.publish(makeEvent('overlay', 'vault_spent', { vault: next, txid: res.txid!, by: 'owner' }, { txid: res.txid, agent: next.agent }))
+      return { txid: res.txid!, satoshis: view.balanceSats }
+    },
+
+    // ── market (A-P2 listings, B POST/GET /listings) ──
+    async listings () { return [...world.listings.values()] },
+
+    async listCredits (credits, askSats) {
+      const s = createStepper(bus, 'list')
+      if (credits < 1 || BigInt(credits) > world.me.credits) throw new FlowError('list', `You hold ${world.me.credits} credits.`)
+      if (askSats < 1) throw new FlowError('list', 'Ask at least 1 sat.')
+      const res = await s.step(`Move ${credits} credits to a listing key in BSV Desktop (basket agentcoop listings) + OP_RETURN list`, 'OP_RETURN', () => wallet().createAction({ description: 'AgentCoop: list credits', outputs: [out(1, `${credits} credits → listing key`), out(0, 'OP_RETURN agentcoop list')] }), r => ({ txid: r.txid }))
+      await s.step('Sign the listing once: SIGHASH_SINGLE|ANYONECANPAY ("the output at my index pays me askSats")', 'SINGLE|ACP', () => wallet().createSignature({ protocolID: [1, 'agentcoop market'], keyID: 'list mock', counterparty: 'anyone', data: [1] }))
+      await s.step('POST /listings at the coordinator (it verifies the outpoint and the signature)', 'HTTP', () => wait(150))
+      const listing: Listing = { outpoint: `${res.txid}_0`, tokenId: MOCK_TOKEN_ID, credits: String(credits), askSats: String(askSats), seller: me(), unlockingScriptHex: '', lockingScriptHex: '', payScriptHex: '' }
+      world.listings.set(listing.outpoint, listing)
+      world.me.listings.add(listing.outpoint)
+      world.me.credits -= BigInt(credits)
+      bus.publish(makeEvent('overlay', 'listing_added', { listing }, { txid: res.txid, agent: me() }))
+      return { txid: res.txid!, outpoint: listing.outpoint }
+    },
+
+    async cancelListing (outpoint) {
+      const s = createStepper(bus, 'cancelListing')
+      const listing = world.listings.get(outpoint)
+      if (listing === undefined || !world.me.listings.has(outpoint)) throw new FlowError('cancelListing', 'Not your listing.')
+      const res = await s.step('Spend the listed credits back to your token address (the signature now spends nothing)', 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: cancel listing', outputs: [out(1, `${listing.credits} credits → your bsv21 basket`)] }), r => ({ txid: r.txid }))
+      world.listings.delete(outpoint)
+      world.me.listings.delete(outpoint)
+      world.me.credits += BigInt(listing.credits)
+      bus.publish(makeEvent('overlay', 'listing_cancelled', { listing, txid: res.txid! }, { txid: res.txid, agent: me() }))
+      return { txid: res.txid! }
+    },
+
+    async sweep (outpoints) {
+      const s = createStepper(bus, 'sweep')
+      const picked = outpoints.map(o => world.listings.get(o)).filter((l): l is Listing => l !== undefined)
+      if (picked.length === 0) throw new FlowError('sweep', 'Those listings are gone (swept or cancelled).')
+      if (picked.some(l => l.seller === me())) throw new FlowError('sweep', 'You cannot buy your own listing; cancel it instead.')
+      const total = picked.reduce((a, l) => a + Number(l.askSats), 0)
+      const credits = picked.reduce((a, l) => a + BigInt(l.credits), 0n)
+      await s.step(`Verify each listing against its source transaction and the credit lineage back to the deploy (${picked.length})`, 'lineage', () => wait(350))
+      const res = await s.step(`Buy ${picked.length} listing(s): ${total} sat to the sellers, ${credits} credits to you, one transaction (SIGHASH_ALL)`, 'BRC-100', () => wallet().createAction({ description: `AgentCoop: buy ${picked.length} listing(s)`, outputs: [...picked.map(l => out(Number(l.askSats), `pay seller ${l.seller.slice(0, 8)}…`)), out(1, `${credits} credits → your bsv21 basket`)] }), r => ({ txid: r.txid }))
+      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', () => wait(120))
+      for (const l of picked) { world.listings.delete(l.outpoint); bus.publish(makeEvent('overlay', 'listing_filled', { listing: l, txid: res.txid!, buyer: me() }, { txid: res.txid, agent: me() })) }
+      world.me.credits += credits
+      bus.publish(makeEvent('agents', 'agent_payment', { kind: 'sweep', txid: res.txid!, sats: total }, { agent: me(), txid: res.txid }))
+      return { txid: res.txid!, credits: credits.toString(), satoshis: total }
     }
   }
 }

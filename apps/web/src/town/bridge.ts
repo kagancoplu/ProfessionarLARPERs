@@ -5,7 +5,7 @@
 import type { EventBus } from '../events/bus'
 import type { AppStoreApi } from '../store'
 import { resolveTheme } from '../theme'
-import { failedPoolFx, lockInFx, pledgeFx, redeemFx, settlementFx } from './fx/scenes'
+import { failedPoolFx, lockInFx, pledgeFx, redeemFx, settlementFx, sweepFx } from './fx/scenes'
 import type { TownScene } from './scenes/TownScene'
 
 export function activePool (s: ReturnType<AppStoreApi['getState']>): string | undefined {
@@ -26,6 +26,10 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
     const id = activePool(s)
     const pool = id !== undefined ? s.pools.byId[id] : undefined
     town.board.setPool(pool, pool?.height)
+    for (const v of Object.values(s.vaults.byId)) town.chestFor(v.vaultId, v.agent).setBalance(v.balanceSats)
+    const listings = Object.values(s.listings.byOutpoint)
+    for (const st of town.stalls) if (st.outpoint !== undefined && s.listings.byOutpoint[st.outpoint] === undefined) st.clear()
+    for (const l of listings) { const st = town.stallFor(l.outpoint); if (st !== undefined && st.outpoint !== l.outpoint) st.show(l.outpoint, l.credits, l.askSats) }
     town.setNight(resolveTheme(s.settings.theme, typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) === 'night')
     town.setSpeed(s.mode === 'replay' ? s.settings.replaySpeed : 1)
   }
@@ -60,11 +64,27 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
         }
         break
       case 'agent_injected':
-        if (e.agent !== undefined) town.villagers.get(e.agent)?.say(`Someone whispers: “${e.data.text}”`, 'danger', 5000)
+        if (e.agent !== undefined) town.fx.enqueue('injection', ctx => town.injection(e.agent!, e.data.text, ctx.speed))
+        break
+      case 'cosign_approved':
+        town.guard.approve(e.data.sats)
         break
       case 'cosign_denied': {
         const v = town.villagers.get(e.data.agent)
-        v?.say(`The guard refused: ${e.data.reason}`, 'danger', 5000)
+        town.fx.enqueue('refusal', async ctx => { await town.guard.refuse(v !== undefined ? { x: v.x, y: v.y } : undefined, e.data.reason, ctx.speed); town.strangerFlees(); v?.say(`Nothing was sent. ${e.data.reason}`, 'danger', 4000) })
+        break
+      }
+      case 'vault_spent':
+        if (e.data.by === 'owner') town.chests.get(e.data.vault.vaultId)?.open()
+        break
+      case 'policy_updated':
+        town.coop.sign.setHTML('Coop hall · policy updated')
+        town.time.delayedCall(4000, () => town.coop.sign.setHTML('Coop hall · vaults & guard'))
+        break
+      case 'listing_filled': {
+        const buyer = e.data.buyer !== undefined ? town.villagers.get(e.data.buyer) : undefined
+        const stall = town.stalls.find(s => s.outpoint === e.data.listing.outpoint)
+        if (stall !== undefined) town.fx.enqueue('sweep', sweepFx(town, stall, buyer, e.data.listing.credits))
         break
       }
       case 'credits_redeemed': {

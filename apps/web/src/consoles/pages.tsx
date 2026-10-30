@@ -4,9 +4,9 @@ import { lazy, Suspense, useState } from 'react'
  * concrete placeholders that already read the store (lists arrive in P1–P3).
  */
 import { store, useShallowStore, useStore } from '../store'
-import { selectAgents, selectMetrics, selectPools, selectTxs } from '../store/selectors'
+import { selectMetrics, selectPools, selectTxs } from '../store/selectors'
 import { TownDrawer } from '../town/TownDrawer'
-import { Counter, DemoPricingTag, EmptyState, IdentityChip, LoadingState, Signboard, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
+import { Counter, DemoPricingTag, EmptyState, LoadingState, Signboard, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
 import { t } from '../i18n/t'
 import { useQuery } from '@tanstack/react-query'
 import { coopApi } from '../api/coop'
@@ -51,24 +51,6 @@ export function TownPage () {
             ))}
         </Signboard>
       </div>
-    </div>
-  )
-}
-
-export function AgentsPage () {
-  const agents = useShallowStore(selectAgents)
-  return (
-    <div className="mx-auto grid max-w-[1280px] grid-cols-3 gap-4 p-6">
-      {agents.length === 0 && <EmptyState title="No agents in the square yet." body="Agents appear when their event stream (or the mock scenario) starts." />}
-      {agents.map(a => (
-        <Signboard key={a.identity} title={<span className="flex items-center gap-2">{a.name} <Tag tone={a.mode === 'vault' ? 'gold' : 'neutral'}>{a.mode ?? 'p2pkh'}</Tag></span>} className="cursor-pointer" onClick={() => store.getState().openDrawer('agent', a.identity)}>
-          <IdentityChip identity={a.identity} role="agent" />
-          {a.lastThought !== undefined && <p className="mt-2 italic">“{a.lastThought.text}”</p>}
-          {a.lastDecision !== undefined && <p className="mt-2 text-[14px] leading-5"><Tag tone={a.lastDecision.action === 'reject' ? 'danger' : 'ok'}>{a.lastDecision.action}</Tag> {a.lastDecision.reason}</p>}
-          {a.injected !== undefined && <p className="mt-2 border-2 border-danger-dark bg-surface-3 p-2 text-[14px] leading-5">Injected: “{a.injected.text}”</p>}
-        </Signboard>
-      ))}
-      <TownDrawer />
     </div>
   )
 }
@@ -141,6 +123,4 @@ const stub = (title: string, body: string) => function StubPage () {
   return <div className="mx-auto max-w-[1280px] p-6"><Signboard title={title}><EmptyState sprite="board" title={title} body={body} /></Signboard></div>
 }
 
-export const MarketPage = stub('Market stalls', 'Listings and sweeps arrive in Phase 3. Until then the live feed shows listing events.')
-export const OwnerPage = stub('Owner console', 'Create a vault, write the policy, watch the guard: Phase 3.')
 export const SettingsPage = stub('Settings', 'Sound, day/night and replay speed live in the top bar for now.')

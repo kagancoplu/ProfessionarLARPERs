@@ -6,11 +6,12 @@
 import Phaser from 'phaser'
 import type { AppStoreApi } from '../../store'
 import type { EventBus } from '../../events/bus'
-import { Bell, Cart, House, Workshop, placeAnimated, placeStatic, Building } from '../entities/Buildings'
+import { Bell, Cart, House, Stall, Workshop, placeAnimated, placeStatic, Building } from '../entities/Buildings'
+import { Guard, Stranger, VaultChest } from '../entities/Guard'
 import { Board } from '../entities/Board'
 import { CHARS, Villager, type Profile } from '../entities/Villager'
 import { FxQueue } from '../fx/queue'
-import { BOARD, COOP, HOUSES, POINTS, WORKSHOP } from '../layout'
+import { BOARD, COOP, HOUSES, POINTS, STALLS, WORKSHOP } from '../layout'
 import { ANIMALS, FOUNTAIN, PLACES, TREES } from '../map/places'
 import { Animal } from '../entities/Animal'
 import { MAP_H, MAP_W, TILE } from '../map/terrain'
@@ -27,6 +28,9 @@ export class TownScene extends Phaser.Scene {
   /** pledge walks in flight; settlement / lock-in wait for them */
   readonly inFlight = new Set<Promise<void>>()
   readonly houses: House[] = []
+  readonly stalls: Stall[] = []
+  readonly chests = new Map<string, VaultChest>()
+  guard!: Guard
   board!: Board
   workshop!: Workshop
   coop!: Building
@@ -69,7 +73,7 @@ export class TownScene extends Phaser.Scene {
 
     // props, trees, buildings (depth = y)
     for (const p of [...PLACES, ...TREES]) {
-      if (p.kind === 'house' || p.kind === 'workshop' || p.kind === 'coop' || p.kind === 'board' || p.kind === 'fountain') continue
+      if (p.kind === 'house' || p.kind === 'workshop' || p.kind === 'coop' || p.kind === 'board' || p.kind === 'fountain' || p.kind === 'stall') continue
       if (p.anim !== undefined) placeAnimated(this, p.frame.replace(/_\d+$/, ''), p.anim.frames, p.anim.fps, p.x, p.y, Math.floor(p.x / 7))
       else placeStatic(this, p.frame, p.x, p.y)
       if (p.kind === 'lantern') this.lamps.push(this.add.image(p.x, p.y - 34, 'glow').setTint(0xffb347).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setDepth(DEPTH.lights))
@@ -78,6 +82,9 @@ export class TownScene extends Phaser.Scene {
     this.workshop = new Workshop(this, WORKSHOP.x, WORKSHOP.y, WORKSHOP.frame, door(WORKSHOP))
     this.coop = new Building(this, COOP.x, COOP.y, COOP.frame, 'Coop hall · vaults & guard', door(COOP))
     for (const h of HOUSES) this.houses.push(new House(this, h.x, h.y, h.frame, (h.slot ?? 1) - 1))
+    for (const st of STALLS) this.stalls.push(new Stall(this, st.x, st.y, st.frame, (st.slot ?? 1) - 1))
+    const gate = POINTS.gate!
+    this.guard = new Guard(this, gate.x + 58, gate.y + 8)
     for (const a of ANIMALS) new Animal(this, a)
     this.board = new Board(this, BOARD.x, BOARD.y)
     this.bell = new Bell(this, FOUNTAIN.x, FOUNTAIN.y)
@@ -97,6 +104,8 @@ export class TownScene extends Phaser.Scene {
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
     const open = (kind: 'pool' | 'agent' | 'workshop', id: string) => () => { if (kind === 'workshop') this.deps.store.getState().openDrawer('me', 'workshop'); else this.deps.store.getState().openDrawer(kind, id) }
     this.board.on('pointerup', () => { if (this.board.poolId !== undefined) open('pool', this.board.poolId)() })
+    for (const st of this.stalls) st.on('pointerup', () => { if (st.outpoint !== undefined) this.deps.store.getState().openDrawer('listing', st.outpoint) })
+    this.coop.on('pointerup', () => { const first = [...this.chests.keys()][0]; if (first !== undefined) this.deps.store.getState().openDrawer('vault', first) })
     this.workshop.on('pointerup', open('workshop', 'workshop'))
     this.detach = attachBridge(this, this.deps.store, this.deps.bus)
     const teardown = (): void => { this.detach?.(); this.detach = undefined; this.deps.fx.clear() }
@@ -130,6 +139,36 @@ export class TownScene extends Phaser.Scene {
   focusOn (identity: string): void { const v = this.villagers.get(identity); if (v !== undefined) this.cameras.main.pan(v.x, v.y, 400) }
 
   houseOf (identity: string): House | undefined { return this.houses.find(h => h.owner === identity) }
+
+  /** The vault chest of an agent, created in front of its house (or by the coop hall when it has no house). */
+  chestFor (vaultId: string, agent: string): VaultChest {
+    const existing = this.chests.get(vaultId)
+    if (existing !== undefined) return existing
+    const house = this.houseOf(agent)
+    const spot = house !== undefined ? { x: house.x + house.img.width / 2 - 4, y: house.y + 8 } : { x: COOP.x + 40 + this.chests.size * 18, y: COOP.y + 6 }
+    const chest = new VaultChest(this, spot.x, spot.y, vaultId)
+    chest.on('pointerup', () => this.deps.store.getState().openDrawer('vault', vaultId))
+    this.chests.set(vaultId, chest)
+    return chest
+  }
+
+  /** The stall showing a listing, or a free one. */
+  stallFor (outpoint: string): Stall | undefined { return this.stalls.find(s => s.outpoint === outpoint) ?? this.stalls.find(s => s.outpoint === undefined) }
+
+  /** The prompt injection: a stranger comes in from the west edge and whispers to the agent. */
+  async injection (agentIdentity: string, text: string, speed: number): Promise<void> {
+    const v = this.villagers.get(agentIdentity)
+    if (v === undefined) return
+    const gate = POINTS.gate!
+    const stranger = new Stranger(this, gate.x - 24, gate.y + 12)
+    await stranger.whisper({ x: v.x, y: v.y }, text, speed)
+    v.say('…the instruction says to pledge everything', 'parchment', 2500)
+    this.pendingStranger = stranger
+  }
+
+  pendingStranger?: Stranger
+  /** After the guard's refusal the stranger runs away. */
+  strangerFlees (): void { const s = this.pendingStranger; this.pendingStranger = undefined; if (s !== undefined) { const gate = POINTS.gate!; void s.flee(gate.x - 40, gate.y + 12) } }
 
   track (p: Promise<void>): Promise<void> { this.inFlight.add(p); return p.finally(() => { this.inFlight.delete(p) }) }
   settle (): Promise<void> { return Promise.all([...this.inFlight]).then(() => {}) }

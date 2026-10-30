@@ -1,6 +1,6 @@
 /** One interface for every user action; live.ts talks to BSV Desktop + core, mock.ts to the mock world. */
 import type { PledgeInstructions, SettlementPlan } from '@agentcoop/core'
-import type { Catalog, ProviderJob } from '../../api/types'
+import type { Catalog, GuardDecision, GuardPolicy, Listing, ProviderJob, VaultView } from '../../api/types'
 import type { DataMode } from '../../env'
 
 export type PledgeStatus = 'pending' | 'signed' | 'settled' | 'failed' | 'withdrawn' | 'left-out'
@@ -40,6 +40,22 @@ export interface PoolDraft { label: string, credits: number, priceSats: number, 
 
 export interface RevenueSummary { outputs: number, satoshis: number }
 
+/** A vault I (the owner) created from this browser; enough to withdraw later without the guard (never a key). */
+export interface MyVault {
+  vaultId: string
+  agent: string
+  guard: string
+  lockingScriptHex: string
+  record: { v: '1', vaultId: string, owner: string, agent: string, guard: string }
+  createdAt: string
+  fundedSats: number
+  lastTxid?: string
+}
+
+export interface VaultStatus { vault?: VaultView, policy?: GuardPolicy, policyUpdatedAt?: string, decisions: GuardDecision[], spentLast7dSats?: number }
+
+export interface SweepPreview { listings: Listing[], totalSats: number, totalCredits: string, approvals: number }
+
 export interface FlowsApi {
   readonly mode: DataMode
   // participant
@@ -63,6 +79,17 @@ export interface FlowsApi {
   revenue: () => Promise<RevenueSummary>
   syncRevenue: () => Promise<{ added: number }>
   sweepRevenue: () => Promise<{ txid: string, satoshis: number } | undefined>
+  // owner (vault + guard)
+  createVault: (agent: string) => Promise<MyVault>
+  fundVault: (vaultId: string, satoshis: number) => Promise<{ txid: string }>
+  putPolicy: (agent: string, policy: GuardPolicy) => Promise<void>
+  vaultStatus: (vaultId: string) => Promise<VaultStatus>
+  withdrawVault: (vaultId: string) => Promise<{ txid: string, satoshis: number }>
+  // market
+  listings: () => Promise<Listing[]>
+  listCredits: (credits: number, askSats: number) => Promise<{ txid: string, outpoint: string }>
+  cancelListing: (outpoint: string) => Promise<{ txid: string }>
+  sweep: (outpoints: string[]) => Promise<{ txid: string, credits: string, satoshis: number }>
 }
 
 export class FlowError extends Error {

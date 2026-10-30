@@ -101,6 +101,33 @@ export class Bell extends Phaser.GameObjects.Sprite {
   }
 }
 
+/** A market stall: empty, or showing a listing (crate + price label). */
+export class Stall extends Phaser.GameObjects.Container {
+  readonly img: Phaser.GameObjects.Image
+  readonly crate: Phaser.GameObjects.Image
+  private label: Phaser.GameObjects.DOMElement
+  outpoint?: string
+  constructor (scene: Phaser.Scene, x: number, y: number, frame: string, readonly slot: number) {
+    super(scene, x, y)
+    this.img = scene.add.image(0, 0, 'town', frame).setOrigin(0.5, 1)
+    this.crate = scene.add.image(0, -6, 'town', 'chest_0').setOrigin(0.5, 1).setVisible(false)
+    this.label = makeLabel(scene, 0, -52, '', { size: 6, tone: 'gold' })
+    this.label.setVisible(false)
+    this.add([this.img, this.crate, this.label])
+    this.setSize(48, 48)
+    this.setInteractive(new Phaser.Geom.Rectangle(-24, -48, 48, 48), Phaser.Geom.Rectangle.Contains)
+    this.setDepth(y)
+    scene.add.existing(this)
+  }
+  get front (): { x: number, y: number } { return { x: this.x, y: this.y + 10 } }
+  show (outpoint: string, credits: string, askSats: string): void {
+    this.outpoint = outpoint
+    this.crate.setVisible(true)
+    this.label.setHTML(`${credits} credits · ${Number(askSats).toLocaleString('en-GB').replace(/,/g, ' ')} sat`).setVisible(true)
+  }
+  clear (): void { this.outpoint = undefined; this.crate.setVisible(false); this.label.setVisible(false) }
+}
+
 /** A short parchment banner in the world (settlement summary). */
 export function banner (scene: Phaser.Scene, x: number, y: number, html: string, ms: number): Promise<void> {
   const el = makeLabel(scene, x, y, html, { size: 7, tone: 'parchment', maxWidth: 220 })

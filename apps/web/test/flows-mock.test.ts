@@ -104,3 +104,58 @@ describe('mock flows (provider)', () => {
     expect(await flows.sweepRevenue()).toBeUndefined()
   })
 })
+
+describe('mock flows (owner: vault + guard)', () => {
+  it('create → fund (T9) → policy → status → withdraw, with events for the store and the Town', async () => {
+    const eval_ = MOCK_IDS.agents.eval
+    const v = await flows.createVault(eval_)
+    expect(v.agent).toBe(eval_)
+    expect(v.record.owner).toBe(MOCK_IDS.me)
+    expect(mine.getState().vaults[0]?.vaultId).toBe(v.vaultId)
+    expect(store.getState().vaults.byId[v.vaultId]?.agent).toBe(eval_)
+    await expect(flows.createVault(eval_)).rejects.toThrow(/already has a vault/)
+    const f = await flows.fundVault(v.vaultId, 20_000)
+    expect(f.txid.startsWith('mock_')).toBe(true)
+    expect(store.getState().vaults.byId[v.vaultId]?.balanceSats).toBe(20_000)
+    expect(store.getState().txs.some(t => t.kind === 'T9')).toBe(true)
+    await flows.putPolicy(eval_, { allowProviders: [MOCK_IDS.provider], maxPerPoolSats: 1_000, weeklyCapSats: 5_000, maxFeeSats: 100, hotWalletDailySats: 500 })
+    const st = await flows.vaultStatus(v.vaultId)
+    expect(st.policy?.maxPerPoolSats).toBe(1_000)
+    expect(st.vault?.balanceSats).toBe(20_000)
+    const w = await flows.withdrawVault(v.vaultId)
+    expect(w.satoshis).toBe(20_000)
+    expect(store.getState().vaults.byId[v.vaultId]?.balanceSats).toBe(0)
+    await expect(flows.withdrawVault(v.vaultId)).rejects.toThrow(/empty/)
+  })
+  it('injectNow plays the refusal beat: denial recorded on the vault, metrics count it', async () => {
+    scenario.injectNow()
+    await new Promise(r => setTimeout(r, 2_800))
+    const vault = Object.values(store.getState().vaults.byId).find(v => v.agent === MOCK_IDS.agents.finetune)
+    expect(vault?.decisions.some(d => d.outcome === 'denied')).toBe(true)
+    expect(store.getState().metrics.deniedByGuard).toBeGreaterThanOrEqual(1)
+    expect(store.getState().agents.byIdentity[MOCK_IDS.agents.finetune]?.injected).toBeDefined()
+  })
+})
+
+describe('mock flows (market)', () => {
+  it('list → shows at the stall → cancel; sweep another agent\'s listing → credits arrive', async () => {
+    world.me.credits = 120n
+    const l = await flows.listCredits(50, 1_500)
+    expect(store.getState().listings.byOutpoint[l.outpoint]?.seller).toBe(MOCK_IDS.me)
+    expect(world.me.credits).toBe(70n)
+    await expect(flows.sweep([l.outpoint])).rejects.toThrow(/own listing/)
+    await flows.cancelListing(l.outpoint)
+    expect(store.getState().listings.byOutpoint[l.outpoint]).toBeUndefined()
+    expect(world.me.credits).toBe(120n)
+    // the scenario's inference agent lists 100 credits at 3 000 sat
+    const steps = scenario.buildCycle(0, Date.parse('2026-10-30T18:00:00Z'))
+    steps.find(s => s.label === 'inference lists credits')!.run()
+    const listing = Object.values(store.getState().listings.byOutpoint)[0]!
+    const r = await flows.sweep([listing.outpoint])
+    expect(r.credits).toBe('100')
+    expect(r.satoshis).toBe(3_000)
+    expect(world.me.credits).toBe(220n)
+    expect(store.getState().listings.byOutpoint[listing.outpoint]).toBeUndefined()
+    expect(store.getState().txs.some(t => t.kind === 'T8')).toBe(true)
+  })
+})

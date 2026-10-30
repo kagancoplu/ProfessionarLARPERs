@@ -6,6 +6,7 @@
 import type { FxContext } from './queue'
 import type { TownScene } from '../scenes/TownScene'
 import type { Villager } from '../entities/Villager'
+import type { Stall } from '../entities/Buildings'
 import { banner } from '../entities/Buildings'
 import { shortHex } from '../../api/woc'
 import { DEPTH } from '../game'
@@ -66,6 +67,19 @@ export function settlementFx (town: TownScene, txid: string, participants: numbe
     const link = txid.startsWith('mock_') ? `<span style="font-family:var(--font-counter)">${txid}</span>` : `<span style="font-family:var(--font-counter)">${shortHex(txid, 5)}</span>`
     await banner(town, town.squareCentre.x, town.squareCentre.y - 40, `1 transaction · ${participants} participants · 0 sat held by anyone<br>${link}`, 5000 / ctx.speed)
     for (const v of vs) void v.goHome()
+  }
+}
+
+/** A sweep: the buyer walks to the stall, the crate goes with them, the stall empties. */
+export function sweepFx (town: TownScene, stall: Stall, buyer: Villager | undefined, credits: string) {
+  return async (ctx: FxContext): Promise<void> => {
+    if (buyer !== undefined && !ctx.reducedMotion) { buyer.busy = true; await buyer.walkTo(stall.front.x, stall.front.y) }
+    const crate = town.add.image(stall.x, stall.y - 6, 'town', 'chest_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
+    stall.clear()
+    const to = buyer ?? { x: stall.x, y: stall.y - 40 }
+    await new Promise<void>(resolve => town.tweens.add({ targets: crate, x: to.x, y: to.y - 20, alpha: buyer !== undefined ? 1 : 0, duration: 500 / ctx.speed, onComplete: () => { crate.destroy(); resolve() } }))
+    buyer?.say(`Bought ${credits} credits at the stall`, 'gold', 3000)
+    if (buyer !== undefined) { buyer.busy = false; void buyer.goHome() }
   }
 }
 

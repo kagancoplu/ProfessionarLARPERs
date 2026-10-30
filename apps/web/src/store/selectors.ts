@@ -27,3 +27,7 @@ export const selectMetrics = (s: AppStore) => s.metrics
 export const selectDrawer = (s: AppStore) => s.ui.drawer
 export const selectToasts = (s: AppStore) => s.ui.toasts
 export const selectSettings = (s: AppStore) => s.settings
+export const selectVaults = (s: AppStore) => Object.values(s.vaults.byId).sort((a, b) => a.vaultId.localeCompare(b.vaultId))
+export const selectListings = (s: AppStore) => Object.values(s.listings.byOutpoint).sort((a, b) => Number(a.askSats) / Number(a.credits) - Number(b.askSats) / Number(b.credits))
+/** every guard refusal seen, newest first (owner console "Denials", Town guard) */
+export const selectDenials = (s: AppStore) => Object.values(s.vaults.byId).flatMap(v => v.decisions.filter(d => d.outcome === 'denied')).sort((a, b) => b.ts.localeCompare(a.ts))

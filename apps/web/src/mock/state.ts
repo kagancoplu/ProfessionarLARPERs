@@ -23,6 +23,8 @@ export interface MockWorld {
     revenue: number[]
     revenueSynced: Array<{ poolId: string, sats: number }>
     waitingSince?: number
+    /** listings I posted (outpoints) */
+    listings: Set<string>
   }
 }
 
@@ -44,7 +46,7 @@ export function createMockWorld (height = 920_000): MockWorld {
     }]]),
     decisions: [],
     agents: MOCK_AGENTS.map(a => ({ ...a })),
-    me: { pledges: new Map(), credits: 0n, prepaidMinutes: 0, jobs: new Map(), pools: new Set(), revenue: [], revenueSynced: [] },
+    me: { pledges: new Map(), credits: 0n, prepaidMinutes: 0, jobs: new Map(), pools: new Set(), revenue: [], revenueSynced: [], listings: new Set() },
     catalog: {
       provider: { name: 'AgentCoop simulated GPU provider (mock)', server: MOCK_IDS.providerServer },
       products: [{ ...MOCK_PRODUCT }],
