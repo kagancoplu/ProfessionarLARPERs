@@ -13,6 +13,13 @@ export class AgentLog {
   private readonly decisionsFile?: string
   readonly lines: string[] = []
   readonly decisions: string[] = []
+  private readonly listeners = new Set<(line: string, channel: 'info' | 'decision') => void>()
+
+  /** Every line as it is written (the agents' live feed turns them into agent_thought events). */
+  subscribe (fn: (line: string, channel: 'info' | 'decision') => void): () => void {
+    this.listeners.add(fn)
+    return () => { this.listeners.delete(fn) }
+  }
 
   /** `sink` receives every line too (e.g. a CLI that prints them its own way). */
   constructor (readonly agent: string, dir?: string, private readonly quiet = false, private readonly sink?: (line: string) => void) {
@@ -35,6 +42,7 @@ export class AgentLog {
     if (this.activityFile !== undefined) appendFileSync(this.activityFile, `${now.toISOString()} ${line}\n`)
     if (!this.quiet) console.log(`${COLORS[this.agent] ?? '\x1b[32m'}${this.agent.padEnd(9)}\x1b[0m ${line}`)
     this.sink?.(line)
+    for (const l of this.listeners) l(text, 'info')
   }
 
   decision (text: string): void {
@@ -45,5 +53,6 @@ export class AgentLog {
     if (this.activityFile !== undefined) appendFileSync(this.activityFile, `${now.toISOString()} ${line}\n`)
     if (!this.quiet) console.log(`${COLORS[this.agent] ?? '\x1b[32m'}${this.agent.padEnd(9)}\x1b[0m \x1b[1m${line}\x1b[0m`)
     this.sink?.(line)
+    for (const l of this.listeners) l(text, 'decision')
   }
 }

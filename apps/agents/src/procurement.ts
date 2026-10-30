@@ -83,6 +83,7 @@ export class Procurement {
       this.decided.set(pool.poolId, pool.pledgedCredits)
       const ctx = await this.context(pool)
       const decision = enforcePolicy(ctx, await brain.decide(ctx))
+      agent.emit('agent_decision', { action: decision.action, poolId: pool.poolId, credits: decision.credits, sats: decision.action === 'pledge' ? poolCost(ctx.pool, decision.credits) : undefined, reason: decision.reason }, { poolId: pool.poolId })
       for (const line of describe(ctx)) agent.log.decision(line)
       agent.log.decision(decision.action === 'pledge'
         ? `Decision: PLEDGE ${decision.credits} credits. ${decision.reason}. (brain: ${decision.brain})`

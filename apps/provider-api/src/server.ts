@@ -42,7 +42,7 @@ const overlay = new OverlayClient(
   COOP_TOPIC,
   COOP_SERVICE
 )
-const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL })
+const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL, corsOrigin: process.env.PROVIDER_CORS_ORIGIN })
 
 const server = app.listen(port, () => {
   console.log(`provider-api on http://localhost:${port}  (server identity ${identityKey}, ${network()}net, overlay ${overlay.url})`)

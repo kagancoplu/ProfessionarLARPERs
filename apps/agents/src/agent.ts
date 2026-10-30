@@ -16,6 +16,7 @@ import type { WalletInterface } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
 import { dataDir, network, requireEnv } from '@agentcoop/core/node/env'
 import { openServerWallet } from '@agentcoop/core/node/serverWallet'
+import type { AgentEvents, EventExtra } from './events'
 import { AgentLog } from './log'
 import type { AgentProfile } from './profile'
 import { ProviderClient, type Catalog, type CatalogProduct, type JobView } from './providerClient'
@@ -30,6 +31,8 @@ export interface AgentOptions {
   log?: AgentLog
   /** Where the weekly spend is kept (`<dir>/agents/<name>/state.json`). Omit to keep it in memory. */
   stateDir?: string
+  /** Live feed for the web app (events.ts). */
+  events?: AgentEvents
 }
 
 /** ISO week, e.g. "2026-W44": the owner's weekly budget resets with it. */
@@ -54,6 +57,7 @@ export class Agent {
   private identity?: string
   private cachedCatalog?: Catalog
   private readonly stateFile?: string
+  readonly events?: AgentEvents
   private spend: { week: string, sats: number }
 
   constructor (opts: AgentOptions) {
@@ -63,10 +67,17 @@ export class Agent {
     this.overlay = opts.overlay
     this.tokens = opts.overlay === undefined ? undefined : new TokenKit(opts.wallet, opts.overlay)
     this.log = opts.log ?? new AgentLog(opts.profile.name)
+    this.events = opts.events
+    this.log.subscribe(text => { this.emit('agent_thought', { text }) })
     this.stateFile = opts.stateDir === undefined ? undefined : join(opts.stateDir, 'agents', opts.profile.name, 'state.json')
     this.spend = this.stateFile !== undefined && existsSync(this.stateFile)
       ? JSON.parse(readFileSync(this.stateFile, 'utf8')) as { week: string, sats: number }
       : { week: isoWeek(), sats: 0 }
+  }
+
+  /** Publish a live-feed event for this agent (no-op without a feed). Call identityKey() once first. */
+  emit (type: string, data: unknown, extra: Omit<EventExtra, 'agent'> = {}): void {
+    this.events?.publish(type, data, { ...extra, agent: this.identity })
   }
 
   /** Sats spent this ISO week on pledges and retail jobs (the owner's weekly budget). */
@@ -90,7 +101,7 @@ export class Agent {
   }
 
   /** Opens the agent's server wallet (`data/wallets/agent-<name>.sqlite`) from the key in `profile.walletEnv`. */
-  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
+  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
     const { wallet, close } = await openServerWallet({
       name: `agent-${profile.name}`,
       rootKeyHex: requireEnv(profile.walletEnv),
@@ -104,7 +115,8 @@ export class Agent {
       providerUrl: opts.providerUrl ?? process.env.PROVIDER_API_URL ?? 'http://localhost:8092',
       overlay: opts.overlay,
       log: new AgentLog(profile.name, dataDir()),
-      stateDir: dataDir()
+      stateDir: dataDir(),
+      events: opts.events
     })
     return { agent, close }
   }
@@ -158,6 +170,8 @@ export class Agent {
       .find(o => o.txid === txid && o.ctx.ownerPkh === pkh)
     if (out === undefined) throw new Error(`credit transfer ${txid} is not on the overlay yet`)
     const res = await this.provider.redeem(out.beef, out.vout)
+    this.emit('agent_decision', { action: 'redeem', credits, reason: `prepaid now ${res.prepaidUnits} ${product.unit === 'GB' ? 'MB' : 'GPU-min'}` })
+    this.emit('agent_payment', { kind: 'redeem', txid }, { txid })
     this.log.info(`Redeemed ${credits} ${product.unit} credit${credits === 1 ? '' : 's'} at the provider (prepaid now ${res.prepaidUnits} GPU-min). https://whatsonchain.com/tx/${txid}`)
     return { credits, prepaidMinutes: res.prepaidUnits, txid }
   }
@@ -182,13 +196,17 @@ export class Agent {
 
     const submitted = await this.provider.submitJob({ kind: need.kind, minutes: need.minutes, product: product.id })
     const p = submitted.payment
+    this.emit('agent_job', { jobId: submitted.jobId, kind: need.kind, minutes: need.minutes, status: 'queued' })
     if (p.method === 'credits') {
       this.log.info(`Job ${submitted.jobId} paid from prepaid credits: ${p.minutes ?? p.units} GPU-min.`)
     } else {
       this.recordSpend(p.satoshis)
+      this.emit('agent_decision', { action: 'retail', sats: p.satoshis, reason: `${need.minutes} GPU-min at retail (HTTP 402)` })
+      this.emit('agent_payment', { kind: '402', txid: p.txid, sats: p.satoshis }, { txid: p.txid })
       this.log.info(`Job ${submitted.jobId} paid at retail: ${need.minutes} GPU-min at ${product.retailSatsPerCredit} sat/${product.unit} = ${sat(p.satoshis)} sat (HTTP 402, BRC-105). https://whatsonchain.com/tx/${p.txid}`)
     }
     const job = await this.provider.waitForJob(submitted.jobId)
+    this.emit('agent_job', { jobId: job.id, kind: need.kind, minutes: need.minutes, status: 'done' })
     this.log.info(`Job ${job.id} done on ${job.log[0]?.split(' ')[0] ?? 'GPU'} · result ${job.resultHash?.slice(0, 16) ?? '?'}…`)
     return job
   }

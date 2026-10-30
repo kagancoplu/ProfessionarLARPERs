@@ -28,6 +28,7 @@ import { loadProducts, PRODUCTS_DIR, type Product } from '../../../provider-api/
 import { mint, openPool, type CliContext, type OpenPoolArgs } from '../../../provider-cli/src/commands'
 import { PoolRegistry, type PoolRecord } from '../../../provider-cli/src/pools'
 import { Agent } from '../agent'
+import { AgentEvents, type AgentInfo } from '../events'
 import { rulesBrain, type Brain } from '../brain'
 import { AgentLog } from '../log'
 import { Market } from '../market'
@@ -69,6 +70,9 @@ export interface MockStack {
   tokenIds: Record<string, string>
   operator: CliContext
   lineage: LineageOptions
+  /** Every agent's live-feed events (serve them with startAgentsServer). */
+  events: AgentEvents
+  roster: AgentInfo[]
   overlayClient: () => OverlayClient
   openPool: (args: Omit<OpenPoolArgs, 'product'> & { product?: string }) => Promise<PoolRecord>
   agent: (profile: string) => Promise<DemoAgent>
@@ -147,6 +151,8 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
   const apiUrl = `http://localhost:${(api.address() as AddressInfo).port}`
 
   const agents: DemoAgent[] = []
+  const events = new AgentEvents()
+  const roster: AgentInfo[] = []
 
   return {
     chain,
@@ -160,6 +166,8 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
     tokenIds,
     operator,
     lineage,
+    events,
+    roster,
     overlayClient,
     openPool: async args => await openPool(operator, { ...args, product: args.product ?? 'gpu-h100' }),
     agent: async name => {
@@ -168,8 +176,11 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
       const profile = loadProfile(name)
       const log = new AgentLog(profile.name, dataDir, opts.quiet)
       const client = overlayClient()
-      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir })
-      const participant = new PoolParticipant({ wallet, kit: agent.tokens!, coopApiUrl: coop.url, log, lineage, reconnect: false })
+      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir, events })
+      const identity = await agent.identityKey()
+      roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode })
+      agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })
+      const participant = new PoolParticipant({ wallet, kit: agent.tokens!, coopApiUrl: coop.url, log, lineage, reconnect: false, emit: (t, d, x) => { agent.emit(t, d, x) } })
       await participant.connect()
       const market = new Market(agent, { coopApiUrl: coop.url, lineage })
       const procurement = new Procurement({ agent, brain: opts.brain ?? rulesBrain, participant, market, coopApiUrl: coop.url })

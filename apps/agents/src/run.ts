@@ -10,14 +10,19 @@
  * it stops after N jobs, waiting for a pending pledge to settle or fail
  * (--wait-ms); without it, it works until Ctrl+C.
  *
+ * Live feed for the web app: GET {AGENTS_URL}/events (SSE), /agents, /healthz
+ * (events.ts; AGENTS_URL default http://localhost:8093).
+ *
  * Env: WALLET_AGENT_1..3_KEY (per profile), PROVIDER_API_URL, OVERLAY_URL,
- * COOP_API_URL, AGENT_BRAIN=rules|llm (llm: ANTHROPIC_API_KEY), NETWORK,
- * ARCADE_URL, DATA_DIR. Offline demo instead: npm run demo:k1.
+ * COOP_API_URL, AGENTS_URL, AGENTS_CORS_ORIGIN, AGENT_BRAIN=rules|llm
+ * (llm: ANTHROPIC_API_KEY), NETWORK, ARCADE_URL, DATA_DIR.
+ * Offline demo instead: npm run demo:k1.
  */
 import { parseArgs } from 'node:util'
 import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { loadDotEnv, network } from '@agentcoop/core/node/env'
 import { Agent } from './agent'
+import { AgentEvents, startAgentsServer, type AgentInfo } from './events'
 import { brainFromEnv } from './llmBrain'
 import { Market } from './market'
 import { PoolParticipant } from './participant'
@@ -41,6 +46,11 @@ const intervalMs = Number(values['interval-ms'])
 const coopApiUrl = process.env.COOP_API_URL ?? 'http://localhost:8090'
 const brain = brainFromEnv()
 let stopping = false
+const events = new AgentEvents()
+const roster: AgentInfo[] = []
+const feedUrl = new URL(process.env.AGENTS_URL ?? 'http://localhost:8093')
+const feed = await startAgentsServer({ port: Number(feedUrl.port || 8093), events, agents: () => roster, corsOrigin: process.env.AGENTS_CORS_ORIGIN })
+console.log(`agents live feed on ${feed.url}/events`)
 
 /** The agent's own work, day after day from today. */
 function * workload (profile: ReturnType<typeof loadProfile>): Generator<ReturnType<typeof jobsForDay>[number]> {
@@ -54,8 +64,11 @@ function * workload (profile: ReturnType<typeof loadProfile>): Generator<ReturnT
 async function runAgent (name: string): Promise<void> {
   const profile = loadProfile(name)
   const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
-  const { agent, close } = await Agent.open(profile, { overlay })
-  const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log })
+  const { agent, close } = await Agent.open(profile, { overlay, events })
+  const identity = await agent.identityKey()
+  roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode })
+  agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })
+  const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log, emit: (t, d, x) => { agent.emit(t, d, x) } })
   try {
     agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…, brain ${brain.name}): ${profile.description}`)
     try {
@@ -88,3 +101,4 @@ async function runAgent (name: string): Promise<void> {
 
 process.on('SIGINT', () => { stopping = true; console.log('\nstopping after the current job…') })
 await Promise.all(names.map(runAgent))
+await feed.close()

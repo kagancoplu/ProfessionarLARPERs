@@ -48,6 +48,8 @@ export interface ParticipantOptions {
   lineage?: LineageOptions
   /** Reconnect when the coordinator drops the socket. Default true. */
   reconnect?: boolean
+  /** Live-feed events (Agent.emit). */
+  emit?: (type: string, data: unknown, extra?: { txid?: string, poolId?: string }) => void
 }
 
 const short = (txid: string): string => `${txid.slice(0, 12)}…`
@@ -146,6 +148,7 @@ export class PoolParticipant {
       status: 'pending', pricePerCredit: Number(terms.priceSats) / Number(terms.credits)
     }
     this.history.push(this.active)
+    this.opts.emit?.('agent_payment', { kind: 'pledge', txid: p.txid, sats: p.satoshis }, { txid: p.txid, poolId: terms.poolId })
     this.opts.log.decision(`Pledged ${credits} credits to "${terms.label}": ${p.satoshis.toLocaleString('en-US')} sat stay in my wallet as a pledge coin until settlement. https://whatsonchain.com/tx/${p.txid}`)
     return this.active
   }
@@ -190,6 +193,7 @@ export class PoolParticipant {
     } catch (e) {
       const reason = (e as Error).message
       this.send({ type: 'sign_reject', poolId: msg.poolId, round: msg.round, reason })
+      this.opts.emit?.('agent_decision', { action: 'reject', poolId: msg.poolId, reason }, { poolId: msg.poolId })
       this.opts.log.decision(`Refused to sign round ${msg.round} of "${a.label}": ${reason}`)
       return
     }
@@ -197,6 +201,7 @@ export class PoolParticipant {
     this.send({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: msg.yourInputIndex, unlockingScriptHex: unlock.toHex() })
     a.plan = msg.plan
     a.status = 'signed'
+    this.opts.emit?.('agent_decision', { action: 'sign', poolId: msg.poolId, credits: Number(a.credits), reason: `round ${msg.round}: whole settlement checked, provider credits traced to the deploy` }, { poolId: msg.poolId })
     const mine = msg.plan.participants.find(p => p.outpoint === a.outpoint)
     this.opts.log.info(`Round ${msg.round} of "${a.label}": checked the whole settlement (my ${a.credits} credits to my address, ${mine?.changeSats ?? '?'} sat change back, the provider's credits traced to the token deploy) → signed with SIGHASH_ALL.`)
   }

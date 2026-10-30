@@ -65,6 +65,7 @@ export class Market {
     const res = await fetch(`${this.opts.coopApiUrl}/listings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(listing) })
     if (!res.ok) throw new Error(`coordinator refused the listing: ${res.status} ${await res.text()}`)
     this.mine = outpoint
+    agent.emit('agent_decision', { action: 'list', credits, sats: askSats, reason: `${surplus} credits beyond my ${f.horizonDays}-day need; pool price × ${MARKUP}` })
     agent.log.decision(`Market: I hold ${surplus} credits beyond my ${f.horizonDays}-day need (${(f.needMinutes / mpc).toFixed(1)}). Listed ${credits} for ${sat(askSats)} sat ` +
       `(${(askSats / credits).toFixed(1)} sat/credit = pool price × ${MARKUP}, retail ${product.retailSatsPerCredit}), signed SINGLE|ANYONECANPAY: anyone who pays me gets them.`)
     return listing
@@ -105,6 +106,8 @@ export class Market {
     }
     const res = await buildSweep(agent.wallet, agent.tokens!, chosen, { lineage: this.opts.lineage, getBeef })
     agent.recordSpend(cost)
+    agent.emit('agent_decision', { action: 'buy', credits: Number(res.credits), sats: cost, reason: `${Math.round(100 * (retail - cost) / retail)}% under retail` })
+    agent.emit('agent_payment', { kind: 'sweep', txid: res.txid, sats: cost }, { txid: res.txid })
     agent.log.decision(`Market: bought ${res.credits} credits from ${chosen.length} listing(s) for ${sat(cost)} sat vs ${sat(retail)} sat at retail (saves ${Math.round(100 * (retail - cost) / retail)}%), ` +
       `each traced to the token deploy before paying; one tx paid every seller. https://whatsonchain.com/tx/${res.txid}`)
     return { txid: res.txid, credits: Number(res.credits), costSats: cost }

@@ -38,6 +38,8 @@ export interface ProviderAppOptions {
   overlay?: OverlayClient
   /** Override Track A's verifyLineage (tests). */
   verifyLineage?: VerifyLineage
+  /** Access-Control-Allow-Origin for browser clients (the web app). Default '*'. */
+  corsOrigin?: string
   /** Ancestor source for verifyLineage beyond the posted BEEF (tests: the mock chain). Default Arcade. */
   fetchTx?: TxFetcher
   arcadeUrl?: string
@@ -70,6 +72,13 @@ export function quoteJob (body: unknown, products: Product[]): JobQuote | { erro
   return { product, kind: b.kind, units, retailSats: retailSatsFor(product, units) }
 }
 
+/** BRC-103/104 auth and BRC-105 payment headers (CORS needs exact names, no wildcards). */
+export const AUTH_HEADERS = [
+  'x-bsv-auth-version', 'x-bsv-auth-identity-key', 'x-bsv-auth-nonce', 'x-bsv-auth-your-nonce', 'x-bsv-auth-signature',
+  'x-bsv-auth-message-type', 'x-bsv-auth-request-id', 'x-bsv-auth-requested-certificates'
+]
+export const PAYMENT_HEADERS = ['x-bsv-payment-version', 'x-bsv-payment-satoshis-required', 'x-bsv-payment-derivation-prefix', 'x-bsv-payment-satoshis-paid']
+
 const isJobRequest = (req: PaymentRequest): boolean => req.method === 'POST' && req.path === '/v1/jobs'
 const identityOf = (req: PaymentRequest): string => String(req.auth?.identityKey)
 
@@ -101,6 +110,15 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
   /** Jobs whose price was covered by prepaid credits (set by the price function). */
   const paidWithCredits = new WeakMap<object, { units: number, tokenId: string }>()
   const app = express()
+  // CORS for the web app (MASTER §3.10): browsers may call with AuthFetch and must read the BRC-103/105 headers.
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', opts.corsOrigin ?? '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', ['Content-Type', ...AUTH_HEADERS, 'x-bsv-payment'].join(', '))
+    res.setHeader('Access-Control-Expose-Headers', [...AUTH_HEADERS, ...PAYMENT_HEADERS].join(', '))
+    if (req.method === 'OPTIONS') { res.status(204).end(); return }
+    next()
+  })
   app.use(express.json())
 
   // Unauthenticated liveness probe, before the auth middleware.

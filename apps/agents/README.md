@@ -25,7 +25,9 @@ npm run provider            # provider-api :8092
 npm run agents              # all three agents (or: npm run agent -- eval --jobs 3)
 ```
 
-Env: `WALLET_AGENT_1..3_KEY`, `PROVIDER_API_URL`, `OVERLAY_URL`, `COOP_API_URL`, `AGENT_BRAIN=rules|llm` (`llm` needs Claude API credentials: `ANTHROPIC_API_KEY`), `NETWORK`, `ARCADE_URL`, `DATA_DIR`.
+`npm run agents` also serves the web app's live feed on `AGENTS_URL` (default `http://localhost:8093`, CORS open; `AGENTS_CORS_ORIGIN` to restrict). The routes are `GET /healthz`, `GET /agents` (name, profile, identity, mode) and `GET /events`. `/events` streams SSE of `CoopEvent` envelopes, keeps the last 500 and resumes from `Last-Event-ID` (MASTER §3.10). The event types are `agent_started`, `agent_thought` (every log line), `agent_decision` (`pledge` / `skip` / `redeem` / `retail` / `list` / `buy` / `sign` / `reject`), `agent_job` (`queued` / `done`) and `agent_payment` (`402` / `pledge` / `redeem` / `sweep`, with the txid).
+
+Env: `WALLET_AGENT_1..3_KEY`, `PROVIDER_API_URL`, `OVERLAY_URL`, `COOP_API_URL`, `AGENTS_URL`, `AGENT_BRAIN=rules|llm` (`llm` needs Claude API credentials: `ANTHROPIC_API_KEY`), `NETWORK`, `ARCADE_URL`, `DATA_DIR`.
 
 ## What an agent does
 
