@@ -69,6 +69,8 @@ export interface CosignContext {
   poolBEEF?: number[] | string
   /** pay: outputs that top up the agent's hot wallet. */
   hotWallet?: HotWalletProof[]
+  /** rail: the Coop Rail swap whose HTLC is claimed (keyID of the rail keys, D-P3). */
+  swapId?: string
 }
 
 export interface CosignRequest {

@@ -55,6 +55,8 @@ export interface Decision {
   /** 2.1b: the pledge coin committed to the pool. */
   committedSats?: number
   hotSats?: number
+  /** 'rail': sats a claim brought into the vault. */
+  inflowSats?: number
 }
 
 interface GuardState {
@@ -97,6 +99,10 @@ export class GuardStore {
 
   findVaultByScript (lockingScriptHex: string): RegisteredVault | undefined {
     return Object.values(this.state.vaults).find(v => v.lockingScriptHex === lockingScriptHex)
+  }
+
+  vaultsOfAgent (agent: string): RegisteredVault[] {
+    return Object.values(this.state.vaults).filter(v => v.record.agent === agent)
   }
 
   vaultsOf (owner: string, agent: string): RegisteredVault[] {

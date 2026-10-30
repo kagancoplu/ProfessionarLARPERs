@@ -19,6 +19,7 @@ import {
 import { CosignRejected, type CosignRequest, type CosignResponse, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
 import { decodeTxBEEF, evaluateCosign, inputOutpoint, validatePolicy, WEEK_MS, type CosignAllowed, type CosignDenied } from './policy'
 import { errorReason, findPledgeRecord, poolFactsFromTx, txFromBytes, type PoolFacts } from './pool'
+import { evaluateRail } from './rail'
 import { evaluateSettle } from './settle'
 import { GuardStore, type Decision } from './store'
 
@@ -282,6 +283,17 @@ export class Guard {
         reservationFor: (o, a, inputs) => this.store.findReservation(o, a, inputs, now),
         lineage: this.lineage
       })
+    } else if (kind === 'rail') {
+      r = evaluateRail({
+        tx: p.tx!,
+        inputIndex: req.inputIndex,
+        agent: req.agent,
+        agentSignatureHex: req.agentSignatureHex,
+        swapId: req.context.swapId,
+        guardIdentity: this.identityKey,
+        vaultsOfAgent: a => this.store.vaultsOfAgent(a),
+        policyFor: (o, a) => this.store.getPolicy(o, a)
+      })
     } else {
       const tx = p.tx!
       r = evaluateCosign({ ...common, tx, inputIndex: req.inputIndex, pledgePool: p.pledgePool, reservationKey: this.reservationOf(tx, req.inputIndex, now) })
@@ -293,13 +305,13 @@ export class Guard {
     const { vaultId, owner, agent } = r.vault.record
     const { signature } = await this.wallet.createSignature({
       hashToDirectlySign: r.sighash,
-      protocolID: VAULT_PROTOCOL,
-      keyID: vaultId,
+      protocolID: r.signWith?.protocolID ?? VAULT_PROTOCOL,
+      keyID: r.signWith?.keyID ?? vaultId,
       counterparty: 'anyone'
     }, this.originator)
     const at = new Date(now).toISOString()
     for (const entry of r.entries) this.store.recordSpend({ owner, agent, vaultId, at, ...entry }, now)
-    const res: CosignResponse = { signatureHex: Utils.toHex(toChecksigSignature(signature)), guardPub: r.vault.keys.guardPub }
+    const res: CosignResponse = { signatureHex: Utils.toHex(toChecksigSignature(signature)), guardPub: r.signWith?.pub ?? r.vault.keys.guardPub }
     return this.decide({
       decision: 'allow',
       kind: r.pledge !== undefined ? 'pay/pledge' : r.hotSats > 0 ? 'pay/hot' : kind,
@@ -310,7 +322,8 @@ export class Guard {
       paidSats: r.paidSats,
       feeSats: r.feeSats,
       ...(r.pledge !== undefined ? { poolId: r.pledge.poolId, committedSats: r.pledge.coinSats } : kind === 'settle' ? { poolId: r.entries[0].poolId } : {}),
-      ...(r.hotSats > 0 ? { hotSats: r.hotSats } : {})
+      ...(r.hotSats > 0 ? { hotSats: r.hotSats } : {}),
+      ...(r.inflowSats !== undefined ? { inflowSats: r.inflowSats } : {})
     }, 200, res as unknown as Record<string, unknown>)
   }
 
@@ -332,9 +345,9 @@ export class Guard {
     const approved = d.decision === 'allow'
     this.emit(approved ? 'cosign_approved' : 'cosign_denied', {
       agent: d.agent, vaultId: d.vaultId, kind: d.kind, poolId: d.poolId, sats: d.outflowSats,
-      ...(approved ? { paidSats: d.paidSats, feeSats: d.feeSats, committedSats: d.committedSats, hotSats: d.hotSats } : { reason: d.reason })
+      ...(approved ? { paidSats: d.paidSats, feeSats: d.feeSats, committedSats: d.committedSats, hotSats: d.hotSats, inflowSats: d.inflowSats } : { reason: d.reason })
     }, { poolId: d.poolId, agent: d.agent })
-    const extra = `${d.poolId !== undefined ? ` pool=${short(d.poolId)}` : ''}${d.committedSats !== undefined ? ` committed=${d.committedSats}` : ''}${d.hotSats !== undefined ? ` hot=${d.hotSats}` : ''}`
+    const extra = `${d.poolId !== undefined ? ` pool=${short(d.poolId)}` : ''}${d.committedSats !== undefined ? ` committed=${d.committedSats}` : ''}${d.hotSats !== undefined ? ` hot=${d.hotSats}` : ''}${d.inflowSats !== undefined ? ` inflow=${d.inflowSats}` : ''}`
     const amounts = d.decision === 'allow' ? ` outflow=${d.outflowSats} paid=${d.paidSats} fee=${d.feeSats}${extra}` : ` reason="${d.reason}"`
     this.log(`[guard] ${d.decision.toUpperCase()} ${d.kind} agent=${short(d.agent)} vault=${short(d.vaultId)}${amounts}`)
     return ok !== undefined ? { status, body: ok } : fail(status, d.reason ?? 'denied')

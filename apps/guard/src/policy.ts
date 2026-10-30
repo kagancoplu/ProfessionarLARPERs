@@ -10,7 +10,7 @@
  * Settlements ('settle') go through settle.ts. Each check is tagged with its
  * row in D-P1 §7.2 (G1…G12) / D-P2 §7 (P1…P6, H1…H3) and the FINAL-IDEA §8 threat it closes.
  */
-import { Transaction, Utils } from '@agentcoop/core/sdk'
+import { Transaction, Utils, type WalletProtocol } from '@agentcoop/core/sdk'
 import { creditsCost } from '@agentcoop/core'
 import {
   hotWalletScript,
@@ -113,6 +113,10 @@ export interface CosignAllowed {
   pledge?: { poolId: string, coinSats: number, feeSats: number, credits: string }
   /** What the guard records once it has signed. */
   entries: LedgerDraft[]
+  /** 'rail': sats the claim brings into the vault. */
+  inflowSats?: number
+  /** The guard's key for this signature when it is not the vault key ('rail': [1,'agentcoop rail'], keyID = swapId). */
+  signWith?: { protocolID: WalletProtocol, keyID: string, pub: string }
 }
 
 export interface CosignDenied {
