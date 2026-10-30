@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentcoop.local/schemas/product.schema.json",
+  "title": "AgentCoop provider product",
+  "description": "One product of the provider API (apps/provider-api/products/<id>.json). Validated at load time by parseProduct (src/products.ts); a runner (src/runners.ts) serves its jobs.",
+  "type": "object",
+  "required": ["id", "label", "unit", "retailSatsPerCredit", "tokenId", "simulate"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "Product id, also the file name" },
+    "label": { "type": "string", "minLength": 1, "description": "Shown in the catalog and pool labels" },
+    "unit": { "type": "string", "minLength": 1, "description": "What one credit is, e.g. GPU-hour, GB" },
+    "runner": { "enum": ["gpu", "proxy"], "default": "gpu", "description": "Which runner serves the jobs" },
+    "retailSatsPerCredit": { "type": "integer", "minimum": 1, "description": "Retail (HTTP 402) price of one credit" },
+    "minutesPerCredit": { "type": "integer", "minimum": 1, "description": "GPU products: GPU minutes per credit (gpu-h100: 60)" },
+    "unitsPerCredit": { "type": "integer", "minimum": 1, "description": "Any product: metered units per credit (data-proxy: 1024 MB); overrides minutesPerCredit" },
+    "demoPricing": { "type": "boolean", "description": "Prices are illustrative (FINAL-IDEA §9)" },
+    "tokenId": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}_\\d+$", "description": "BSV-21 credit token id; null until provider-cli mint" },
+    "simulate": {
+      "type": "object",
+      "properties": {
+        "minutesPerSecond": { "type": "number", "exclusiveMinimum": 0, "description": "GPU: simulated minutes per real second" },
+        "unitsPerSecond": { "type": "number", "exclusiveMinimum": 0, "description": "Any runner: simulated units per real second" },
+        "gpus": { "type": "integer", "minimum": 1, "description": "GPU: jobs at once" },
+        "slots": { "type": "integer", "minimum": 1, "description": "Any runner: jobs at once (default 8)" }
+      },
+      "anyOf": [{ "required": ["minutesPerSecond"] }, { "required": ["unitsPerSecond"] }]
+    }
+  },
+  "additionalProperties": false
+}

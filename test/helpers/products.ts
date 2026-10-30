@@ -7,7 +7,7 @@ import { PRODUCTS_DIR } from '../../apps/provider-api/src/products'
 export function tempProductsDir (minutesPerSecond = 3000): string {
   const dir = mkdtempSync(join(tmpdir(), 'agentcoop-products-'))
   cpSync(PRODUCTS_DIR, dir, { recursive: true })
-  for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
+  for (const f of readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.schema.json'))) {
     const p = JSON.parse(readFileSync(join(dir, f), 'utf8'))
     p.simulate.minutesPerSecond = minutesPerSecond
     writeFileSync(join(dir, f), JSON.stringify(p, null, 2))

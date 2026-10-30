@@ -85,7 +85,7 @@ export function parseProduct (value: unknown, source = 'product'): Product {
 }
 
 export function loadProducts (dir = PRODUCTS_DIR): Product[] {
-  const files = readdirSync(dir).filter(f => f.endsWith('.json')).sort()
+  const files = readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.schema.json')).sort()
   const products = files.map(f => parseProduct(JSON.parse(readFileSync(join(dir, f), 'utf8')), f))
   const ids = new Set<string>()
   for (const p of products) {

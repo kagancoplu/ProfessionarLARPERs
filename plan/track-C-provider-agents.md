@@ -130,6 +130,8 @@
 - 4.3 Testlerin temizliği; `products/*.json` şeması.
 - 4.4 D'ye txid'ler (T1, T2, T6, T7, T8 ve ajanlı T5/T10).
 
+**Uygulama notları (31.10, Faz 4 sonu):** README bölümleri kök `README.md`'de ("Provider and agents (Track C)" + bileşen satırları). `npm run demo` = `demo:k1` (mockchain'de tüm akış: altyapı B'nin overlay + koordinatörü, provider, operatör, 3 ajan, havuz, settlement, kredi kullanımı, market); gerçek servislerle çalıştırma `npm run agents` + rehber (`plan/MAINNET-RUNBOOK.md`). Ürün şeması `products/product.schema.json`. 4.4 mainnet koşusunu bekliyor.
+
 ### ✋ Checkpoint (Faz 4 sonu)
 1. Plan değişikliği? STATUS.
 2. STATUS Track C: "Tamamlandı".

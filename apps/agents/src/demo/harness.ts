@@ -97,7 +97,7 @@ const randomPort = (): number => 20000 + Math.floor(Math.random() * 20000)
 function tempProducts (minutesPerSecond: number): string {
   const dir = mkdtempSync(join(tmpdir(), 'agentcoop-demo-products-'))
   cpSync(PRODUCTS_DIR, dir, { recursive: true })
-  for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
+  for (const f of readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.schema.json'))) {
     const p = JSON.parse(readFileSync(join(dir, f), 'utf8'))
     if (p.simulate.minutesPerSecond !== undefined) p.simulate.minutesPerSecond = minutesPerSecond
     writeFileSync(join(dir, f), JSON.stringify(p, null, 2))

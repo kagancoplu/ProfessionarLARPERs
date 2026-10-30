@@ -20,6 +20,7 @@
     "provider-cli": "tsx --import @agentcoop/core/register-sdk apps/provider-cli/src/cli.ts",
     "agent": "tsx --import @agentcoop/core/register-sdk apps/agents/src/run.ts",
     "agents": "tsx --import @agentcoop/core/register-sdk apps/agents/src/run.ts",
+    "demo": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/k1.ts",
     "demo:k1": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/k1.ts",
     "demo:failed-pool": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/failed-pool.ts",
     "web": "npm -w apps/web run dev",

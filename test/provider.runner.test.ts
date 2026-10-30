@@ -1,6 +1,8 @@
 /** Track C Faz 0: products are configuration; the job simulator is deterministic and queues per GPU. */
 import { describe, expect, it } from 'vitest'
-import { loadProducts, parseProduct, retailSatsFor, type Product } from '../apps/provider-api/src/products'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { loadProducts, parseProduct, PRODUCTS_DIR, retailSatsFor, type Product } from '../apps/provider-api/src/products'
 import { JobRunner, simulateLog } from '../apps/provider-api/src/runner'
 
 const product = (gpus: number): Product => ({
@@ -19,6 +21,20 @@ describe('products', () => {
     const p = product(1)
     expect([1, 4, 30, 60, 90, 480].map(m => retailSatsFor(p, m))).toEqual([1, 4, 25, 50, 75, 400])
     expect(retailSatsFor({ retailSatsPerCredit: 50 }, 30)).toBe(1500) // minutesPerCredit defaults to 1
+  })
+
+  it('every product file matches products/product.schema.json (fields, required, runner)', () => {
+    const schema = JSON.parse(readFileSync(join(PRODUCTS_DIR, 'product.schema.json'), 'utf8'))
+    const files = readdirSync(PRODUCTS_DIR).filter(f => f.endsWith('.json') && !f.endsWith('.schema.json'))
+    expect(files.sort()).toEqual(['data-proxy.json', 'gpu-h100.json'])
+    for (const f of files) {
+      const p = JSON.parse(readFileSync(join(PRODUCTS_DIR, f), 'utf8'))
+      for (const k of schema.required) expect(p, `${f}: ${k}`).toHaveProperty(k)
+      for (const k of Object.keys(p)) expect(Object.keys(schema.properties), `${f}: unknown field ${k}`).toContain(k)
+      for (const k of Object.keys(p.simulate)) expect(Object.keys(schema.properties.simulate.properties)).toContain(k)
+      expect(schema.properties.runner.enum).toContain(p.runner ?? 'gpu')
+      expect(() => parseProduct(p, f)).not.toThrow()
+    }
   })
 
   it('rejects an invalid product file', () => {

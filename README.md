@@ -67,7 +67,8 @@ npm test                  # 55 files: protocol, overlay, coordinator, agents, gu
 ```
 
 ```bash
-npm run demo:k1           # 3 agents forecast, pledge and settle one pool, then spend credits on the provider API
+npm run demo              # the whole flow in one command (= demo:k1): provider opens a pool, 3 agents forecast,
+                          # decide, pledge and settle it in ONE transaction, spend the credits, then trade surplus on the market
 ```
 
 ```bash
@@ -75,7 +76,11 @@ npm run demo:failed-pool  # an unfilled pool costs nothing but the registration 
 ```
 
 ```bash
-npm run demo-injection -w @agentcoop/scripts   # prompt injection: the guard refuses "100% of the budget into pool X"
+npm run demo:injection    # a prompt-injected vault agent: its own policy vetoes the pledge; with that bypassed, the guard refuses
+```
+
+```bash
+npm run demo-injection -w @agentcoop/scripts   # the guard's side of the same attack: "100% of the budget into pool X" is refused
 ```
 
 ```bash
@@ -133,7 +138,7 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 | Real | Simulated |
 |---|---|
-| Every payment, pledge, settlement, credit token, market listing, vault and HTLC is a real BSV transaction built with the SDK (on the mock chain until the mainnet run) | The GPU jobs: the provider API runs a simulator (queue, GPU log, reproducible result hash) |
+| Every payment, pledge, settlement, credit token, market listing, vault and HTLC is a real BSV transaction built with the SDK (on the mock chain until the mainnet run) | The GPU jobs and the proxy bandwidth: the provider API runs a simulator per product (queue, log, reproducible result hash) |
 | Signatures, sighash scopes, lineage checks, overlay admission rules, the guard's policy checks | Prices are illustrative ("demo pricing") |
 | The Base HTLC contract (compiled with solc 0.8.37, run in an in-memory EVM in tests) | The Base side is not deployed yet (Base Sepolia pending) |
 
@@ -144,14 +149,66 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 | `packages/core` | A | Protocol core: one atomic DvP settlement per pool (provider SINGLE\|ACP offer, participants ALL), `verifySettlementPlan` that every participant and the guard run, overlay-free `verifyLineage`, signed listings and one-tx sweeps, vault-locked credits, guard-backed Lighthouse pledges for offline humans | [README](packages/core/README.md) |
 | `packages/overlay` | B | `tm_agentcoop` / `ls_agentcoop`: BSV-21 rules + pool, pledge, settlement, vault, offer records | [README](packages/overlay/README.md) |
 | `apps/coordinator` | B | Signing rounds over WebSocket, side API, audit and custody metrics | [README](apps/coordinator/README.md) |
-| `apps/provider-api`, `apps/provider-cli` | C | Simulated GPU provider (402 + credit redeem) and its BSV Desktop CLI | [api](apps/provider-api/README.md), [cli](apps/provider-cli/README.md) |
-| `apps/agents`, `apps/participant-cli` | C | Forecasting agents (rules or LLM brain), human participant CLI | [agents](apps/agents/README.md), [cli](apps/participant-cli/README.md) |
+| `apps/provider-api`, `apps/provider-cli` | C | A simulated provider selling two products: H100 GPU-hours and residential-proxy GB. Each job is paid in one of two ways: at retail through HTTP 402 (BRC-105), or free from credits redeemed from the pool (the lineage is checked, at most 20 credits prepaid, and only the sender can claim a transfer). The operator's BSV Desktop CLI mints the credit token, opens pools (an offer signed SINGLE\|ACP, also published on chain), cancels them and sweeps pool revenue | [api](apps/provider-api/README.md), [cli](apps/provider-cli/README.md) |
+| `apps/agents`, `apps/participant-cli` | C | Agents whose own job is GPU work. Each forecasts its week, decides on pools with a rules or LLM brain behind a policy enforced in code, pledges (optionally from a Mandate Vault, with the guard co-signing), checks and signs the settlement, then spends, lists or buys credits. A live SSE feed serves the web app. A human joins the same pools from BSV Desktop with the participant CLI | [agents](apps/agents/README.md), [cli](apps/participant-cli/README.md) |
 | `apps/guard`, `apps/owner-cli` | D | Mandate Vault guard (policy engine, co-signer) and the owner's CLI | [guard](apps/guard/README.md), [owner](apps/owner-cli/README.md) |
 | `apps/maker`, `contracts/` | D | Coop Rail: Base HTLC, BSV HTLC, maker server | [RAIL-POC](docs/RAIL-POC.md) |
 | `apps/web` | E | Browser app for everyone who is not a command line: a provider mints credits and opens a pool, a person joins one and signs the settlement round, an owner creates and funds a Mandate Vault, writes the guard policy and withdraws alone, anyone buys at the market stalls. Every signature is a BSV Desktop approval (`WalletClient('auto')` + `@agentcoop/core` builders); the browser never sees a key and checks the whole settlement before signing. The same store drives a pixel-art Town (Phaser, Kenmi art) where agents are villagers, a pledge is a coin into the board's chest, the settlement is one horse ride, and the guard at the gate refuses a prompt injection; corner counters show *Held in custody: 0 sat*. Mock mode (scripted village + mock Desktop) needs no services; replay plays recorded runs; live mode talks to the overlay, coordinator, provider-api, guard, agents and maker | [README](apps/web/README.md) |
 | `infra/` | B | Running the overlay and coordinator, public deployment | [README](infra/README.md) |
 
 <!-- Each track replaces its row's text with its own paragraph (STATUS: D → A/B/C/E, 30 Oct). -->
+
+## Provider and agents (Track C)
+
+### Provider (simulated)
+
+`apps/provider-api` is a paid job API in front of a simulator. The payments, credits and settlement are real; the GPU time and the bandwidth are not. Every route is mutually authenticated (BRC-103/104). A job costs `ceil(units × retailSatsPerCredit / unitsPerCredit)` sats through HTTP 402 (BRC-105, `AuthFetch` pays automatically). It is free when the caller's prepaid balance covers it.
+
+| Product | 1 credit | Retail | Jobs |
+|---|---|---|---|
+| `gpu-h100` | 1 H100 GPU-hour (used by the minute) | 50 sat | `finetune` / `eval` / `inference`, in minutes |
+| `data-proxy` | 1 GB of residential-proxy bandwidth (used by the MB) | 40 sat | `crawl` / `scrape`, in MB |
+
+Credits from a pool reach the provider through `POST /v1/credits/redeem`, as an ordinary BSV-21 transfer to the provider's token address. The provider accepts a transfer only if all of these hold:
+
+- it is the product's token, sent to one of the provider's own token addresses;
+- it is at most 20 credits per redeem and leaves at most 20 credits prepaid per agent, because the prepaid balance is the one trusted, off-chain balance;
+- the caller spent its own tokens in that transaction, so nobody can claim a transfer they only saw on the overlay;
+- `verifyLineage` traces it back to the token's deploy;
+- it has not been redeemed before.
+
+Unused whole credits can be returned as tokens. Pool revenue goes to the operator's BSV Desktop, under a per-pool key. Retail 402 revenue goes to the provider-api server wallet. These are two separate identities.
+
+### Agents
+
+Each agent (`finetune`, `eval`, `inference`) has its own work, and buying capacity is how it pays for that work. Before each job a router tries the cheapest option first:
+
+1. Credits it already holds: redeem them and run the job for free.
+2. Market listings that cover the shortfall for less than retail, bought in one transaction.
+3. An open pool, if the brain says yes: pledge for the coming week.
+4. Otherwise, retail through 402.
+
+The brain answers four questions: need (a 7-day forecast from 14 days of usage, minus what the agent holds), price (at least 10% under retail after the registration fee), timing and budget. `AGENT_BRAIN=rules` is deterministic. `AGENT_BRAIN=llm` asks Claude for a schema-bound answer. Either way `enforcePolicy` runs last; it is code, not a prompt. A pool settles only when it is exactly full, so an agent may take a few spare credits to close it, and it lists credits it no longer needs at the pool price × 1.1. In a signing round the agent checks the whole settlement (its credits, its change, the provider's credits traced to the deploy) before it signs. Excerpt from `data/demo-k1/agents/finetune/decisions.log`:
+
+```
+[18:37] Pool found: "H100 block · 40 GPU-hours", 40 GPU-hour credits at 25.0 sat (retail 50, 50% off · demo pricing), 0/40 pledged, closes in 146 blocks (~24 h), fee 100 sat.
+[18:37] My forecast: ~16.3 GPU-hours over the next 7 days (14-day mean 139 GPU-min/day ± 197; p90 27.4 GPU-hours).
+[18:37] Decision: PLEDGE 17 credits. 17 credits cost 606 sat vs 850 sat at retail (saves 29%), within budget and caps. (brain: rules)
+[18:37] Pool "H100 block · 40 GPU-hours" filled. One settlement tx paid the provider and delivered every share: 17 credits are mine.
+[19:23] Market: bought 5 credits from 1 listing(s) for 198 sat vs 250 sat at retail (saves 21%), each traced to the token deploy before paying; one tx paid every seller.
+```
+
+**Mandate Vault mode:** the agent pledges from a vault that its owner funded, and Track D's guard co-signs every move under the owner's policy. A prompt injection ("put the whole budget into this pool") is stopped twice: first by the agent's `enforcePolicy`, then, if the agent's code is bypassed, by the guard (`npm run demo:injection`).
+
+### How to add a provider or product
+
+1. Add `apps/provider-api/products/<id>.json`, following `products/product.schema.json`: `{ id, label, unit, runner, retailSatsPerCredit, unitsPerCredit, demoPricing, tokenId: null, simulate }`.
+2. If the work is a new kind, add a runner to `apps/provider-api/src/runners.ts`. A runner defines the job kinds, the quantity field, the limit and the simulated log. Pricing, credits, redeem and the catalog are shared.
+3. `npm run provider-cli -- mint --sym <SYM> --amt <N> --dec 0 --product <id>` writes the credit token into the file. `open-pool --product <id>` opens pools for it.
+
+### SmartRoute (planned)
+
+SmartRoute, an LLM router that is itself the provider of reserved model capacity, is the next product. It would be a `products/smartroute.json` with token credits and a runner that proxies LLM calls. Pools, credits, redeem and the agents need no change.
 
 ## Known limitations
 
