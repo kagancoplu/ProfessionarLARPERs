@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { usePools } from '../../api/queries'
 import { blocksToHuman } from '../../api/arcade'
 import { store, useShallowStore, useStore } from '../../store'
@@ -20,6 +21,8 @@ export function PoolsPage () {
   const [sort, setSort] = useState<PoolSort>('newest')
   const pools = sortPools(filterPools(all, filter), sort)
   const live = mode === 'live'
+  const navigate = useNavigate()
+  const connected = useStore(s => s.me.status === 'connected')
   return (
     <div className="mx-auto max-w-[1280px] p-6">
       <Signboard title="Pools" actions={<DemoPricingTag />} data-testid="pools-page">
@@ -34,7 +37,7 @@ export function PoolsPage () {
         {pools.length === 0 && !(live && (q.isLoading || q.isError)) && <EmptyState title={filter === 'all' ? 'No pools yet.' : `No ${filter} pools.`} body={t('states.noPools')} />}
         {pools.length > 0 && (
           <table className="w-full border-collapse text-[14px] leading-5" data-testid="pools-table">
-            <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-3 py-2">Pool</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Fill</th><th className="px-3 py-2 text-right">sat / credit</th><th className="px-3 py-2">Deadline</th><th className="px-3 py-2">Settlement</th></tr></thead>
+            <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-3 py-2">Pool</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Fill</th><th className="px-3 py-2 text-right">sat / credit</th><th className="px-3 py-2">Deadline</th><th className="px-3 py-2">Settlement</th><th /></tr></thead>
             <tbody>{pools.map(p => {
               const left = blocksLeft(p)
               return (
@@ -50,6 +53,7 @@ export function PoolsPage () {
                   <td className="px-3 text-right counter text-[18px]">{satsPerCredit(p).toFixed(0)} <span className="text-ink-muted text-[14px] font-body">({Math.round(discount(p) * 100)} % off {p.terms.retailSatsPerCredit})</span></td>
                   <td className="px-3">{p.status === 'settled' ? '—' : left === undefined ? `block ${p.terms.deadlineHeight}` : left > 0 ? blocksToHuman(left) : 'passed'}</td>
                   <td className="px-3" onClick={e => e.stopPropagation()}>{p.settledTxid !== undefined ? <TxLink txid={p.settledTxid} chars={4} /> : <span className="text-ink-muted">—</span>}</td>
+                  <td className="px-3" onClick={e => e.stopPropagation()}>{p.status === 'open' && <PixelButton size="sm" variant="secondary" onClick={() => { void navigate('/me') }} title={connected ? 'Join from your wallet page' : 'Connect BSV Desktop, then join'}>Join</PixelButton>}</td>
                 </tr>
               )
             })}</tbody>

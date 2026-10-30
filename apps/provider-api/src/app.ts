@@ -122,8 +122,11 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     res.json({
       provider: { name: 'AgentCoop simulated GPU provider', server },
       products: products.map(p => ({
-        id: p.id, label: p.label, unit: p.unit, retailSatsPerCredit: p.retailSatsPerCredit, minutesPerCredit: minutesPerCredit(p), tokenId: p.tokenId
+        id: p.id, label: p.label, unit: p.unit, retailSatsPerCredit: p.retailSatsPerCredit, minutesPerCredit: minutesPerCredit(p), tokenId: p.tokenId, demoPricing: p.demoPricing === true
       })),
+      pricingNote: products.some(p => p.demoPricing === true)
+        ? 'demo pricing: retail and pool prices are illustrative; a pool discount shows the mechanism, not a proven saving (FINAL-IDEA §9)'
+        : undefined,
       jobKinds: JOB_KINDS,
       maxJobMinutes: MAX_JOB_MINUTES,
       credits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_REDEEM_CREDITS, redeemTo: server },

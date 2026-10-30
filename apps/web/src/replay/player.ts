@@ -27,10 +27,14 @@ export class ReplayPlayer {
   speed: number
   private timer: ReturnType<typeof setTimeout> | undefined
   private readonly maxGapMs: number
+  /** resolves once events are loaded (load or loadEvents) */
+  ready: Promise<void>
+  private markReady: () => void = () => {}
 
   constructor (private readonly opts: ReplayPlayerOptions) {
     this.speed = opts.speed ?? 1
     this.maxGapMs = opts.maxGapMs ?? 4_000
+    this.ready = new Promise<void>(resolve => { this.markReady = resolve })
   }
 
   async load (url: string): Promise<number> {
@@ -40,10 +44,11 @@ export class ReplayPlayer {
     this.events = parseJsonl(await res.text())
     this.position = 0
     this.setStatus('paused')
+    this.markReady()
     return this.events.length
   }
 
-  loadEvents (events: AnyCoopEvent[]): void { this.events = events; this.position = 0; this.setStatus('paused') }
+  loadEvents (events: AnyCoopEvent[]): void { this.events = events; this.position = 0; this.setStatus('paused'); this.markReady() }
 
   play (): void { if (this.status === 'playing' || this.events.length === 0) return; this.setStatus('playing'); this.tick() }
   pause (): void { if (this.timer !== undefined) clearTimeout(this.timer); this.timer = undefined; if (this.status === 'playing') this.setStatus('paused') }

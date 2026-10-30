@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { NavLink } from 'react-router'
 import { useRuntime } from '../app-context'
 import { t } from '../i18n/t'
 import { useStore } from '../store'
@@ -17,7 +18,7 @@ export function WalletChip () {
   if (me.status === 'connected' && me.identityKey !== undefined) {
     return (
       <div className="flex items-center gap-2" data-testid="wallet-chip">
-        <IdentityChip identity={me.identityKey} role="me" name="you" />
+        <NavLink to="/me" className="no-underline" title="My pledges and credits"><IdentityChip identity={me.identityKey} role="me" name="you" compact /></NavLink>
         <Tag tone={me.network === 'mainnet' ? 'ok' : 'warn'}>{me.network}</Tag>
         <PixelButton variant="ghost" size="sm" onClick={() => wallet.disconnect()}>{t('wallet.disconnect')}</PixelButton>
       </div>

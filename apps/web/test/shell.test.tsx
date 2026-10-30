@@ -4,6 +4,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import { AppRuntimeContext } from '../src/app-context'
 import { createBus } from '../src/events/bus'
+import { createMockFlows } from '../src/wallet/flows/mock'
+import { createMockWorld } from '../src/mock/state'
 import { MOCK_IDS } from '../src/mock/data'
 import { createMockWallet } from '../src/mock/wallet'
 import { store } from '../src/store'
@@ -14,7 +16,7 @@ function mount () {
   const bus = createBus(store)
   const wallet = new WalletController({ store, bus, factory: () => createMockWallet({ identityKey: MOCK_IDS.me, delayMs: 0, autoApprove: true }), expectedNetwork: 'main' })
   const router = createMemoryRouter([{ path: '/', element: <TopBar /> }])
-  render(<AppRuntimeContext.Provider value={{ bus, wallet }}><RouterProvider router={router} /></AppRuntimeContext.Provider>)
+  render(<AppRuntimeContext.Provider value={{ bus, wallet, flows: createMockFlows({ world: createMockWorld(), bus, store, getWallet: () => undefined }) }}><RouterProvider router={router} /></AppRuntimeContext.Provider>)
   return { bus, wallet }
 }
 
@@ -27,7 +29,7 @@ describe('TopBar', () => {
     const connect = screen.getByRole('button', { name: 'Connect BSV Desktop' })
     await userEvent.click(connect)
     await waitFor(() => expect(screen.getByText('mainnet')).toBeInTheDocument())
-    expect(screen.getByTestId('wallet-chip')).toHaveTextContent(MOCK_IDS.me.slice(0, 5))
+    expect(screen.getByTestId('wallet-chip')).toHaveTextContent('you')
     expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument()
   })
 })

@@ -48,7 +48,7 @@ describe('provider-api: catalog and paid GPU jobs (BRC-105)', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.provider.server).toBe(provider.identityKey)
-    expect(body.products).toEqual([{ id: 'gpu-h100', label: 'H100 GPU-hour', unit: 'GPU-hour', retailSatsPerCredit: 50, minutesPerCredit: 60, tokenId: null }])
+    expect(body.products).toEqual([{ id: 'gpu-h100', label: 'H100 GPU-hour', unit: 'GPU-hour', retailSatsPerCredit: 50, minutesPerCredit: 60, tokenId: null, demoPricing: false }])
     expect(body.jobKinds).toEqual(['finetune', 'eval', 'inference'])
     expect(body.pools).toEqual([])
   })

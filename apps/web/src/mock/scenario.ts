@@ -68,13 +68,15 @@ export class MockScenario {
     step(1_500, 'finetune thinks', () => {
       pub(1_500, makeEvent('agents', 'agent_thought', { text: 'Retail is 50 sat/h. The board offers 25 sat/h for 1 000 GPU-hours. I need ~300 h this week.' }, { agent: A.finetune }))
     })
-    const pledge = (at: number, who: string, credits: string, signer: 'p2pkh' | 'vault'): void => {
-      step(at, `${who.slice(0, 8)} pledges ${credits}`, () => {
+    const pledge = (at: number, who: string, wanted: string | (() => string), signer: 'p2pkh' | 'vault'): void => {
+      step(at, `${who.slice(0, 8)} pledges ${typeof wanted === 'string' ? wanted : 'the rest'}`, () => {
+        const credits = typeof wanted === 'string' ? wanted : wanted()
         const p = makeMockPledge(poolA, who, credits, world.height, signer)
         const list = world.pledges.get(poolA.poolId) ?? []
         list.push(p)
         world.pledges.set(poolA.poolId, list)
-        poolA = { ...poolA, pledgedCredits: String(BigInt(poolA.pledgedCredits) + BigInt(credits)), pledgeCount: poolA.pledgeCount + 1 }
+        const current = world.pools.get(poolA.poolId) ?? poolA // the human may have pledged meanwhile (mock flows)
+        poolA = { ...current, pledgedCredits: String(BigInt(current.pledgedCredits) + BigInt(credits)), pledgeCount: current.pledgeCount + 1 }
         world.pools.set(poolA.poolId, poolA)
         pub(at, makeEvent('agents', 'agent_decision', { action: 'pledge', poolId: poolA.poolId, credits, sats: p.coinSats, reason: `${credits} credits at 25 sat/h beats retail; fee 300 sat is 1 % of the cost` }, { agent: who, poolId: poolA.poolId }))
         if (signer === 'vault') {
@@ -94,12 +96,37 @@ export class MockScenario {
     pledge(2_500, A.finetune, '300', 'vault')
     step(4_000, 'eval thinks', () => { pub(4_000, makeEvent('agents', 'agent_thought', { text: '14-day history says 400 eval hours next week. Pool price 25 sat/h, retail 50. Joining.' }, { agent: A.eval })) })
     pledge(5_000, A.eval, '400', 'p2pkh')
-    step(6_500, 'inference thinks', () => { pub(6_500, makeEvent('agents', 'agent_thought', { text: 'Only 300 credits left on the board. Taking them all, the fee is worth it.' }, { agent: A.inference })) })
-    pledge(7_500, A.inference, '300', 'p2pkh')
+    step(6_500, 'inference thinks', () => { const left = Number(poolA.terms.credits) - Number((world.pools.get(poolA.poolId) ?? poolA).pledgedCredits); pub(6_500, makeEvent('agents', 'agent_thought', { text: `Only ${left} credits left on the board. Taking them all, the fee is worth it.` }, { agent: A.inference })) })
+    // inference takes whatever is left on the board (so Σ credits = N even when the human joined)
+    pledge(7_500, A.inference, () => String(Math.max(Number(poolA.terms.minCredits), Number(poolA.terms.credits) - Number((world.pools.get(poolA.poolId) ?? poolA).pledgedCredits))), 'p2pkh')
     step(9_000, 'lock-in', () => {
-      poolA = { ...poolA, status: 'locking', coordinator: { round: 1, signed: 0, total: 3, blacklist: [] } }
+      const human = world.me.pledges.get(poolA.poolId)
+      // mock coordinator: the last agent (inference) re-sizes its pledge so the plan sums to exactly N even when the human joined late
+      const list = world.pledges.get(poolA.poolId) ?? []
+      const inf = list.find(p => p.participant === A.inference && !p.spent)
+      if (inf !== undefined) {
+        const others = list.filter(p => p !== inf && !p.spent).reduce((a, p) => a + Number(p.credits), 0)
+        const want = Math.max(Number(poolA.terms.minCredits), Number(poolA.terms.credits) - others)
+        if (want !== Number(inf.credits)) {
+          inf.credits = String(want)
+          inf.coinSats = Math.ceil(want * Number(poolA.terms.priceSats) / Number(poolA.terms.credits)) + 1
+          const total = String(others + want)
+          world.pools.set(poolA.poolId, { ...(world.pools.get(poolA.poolId) ?? poolA), pledgedCredits: total })
+          pub(8_990, makeEvent('overlay', 'pledge_added', { pledge: inf, pledgedCredits: total }, { poolId: poolA.poolId, txid: inf.txid, agent: A.inference }))
+        }
+      }
+      const current = world.pools.get(poolA.poolId) ?? poolA
+      const total = 3 + (human !== undefined ? 1 : 0)
+      poolA = { ...current, status: 'locking', coordinator: { round: 1, signed: 0, total, blacklist: [] } }
       world.pools.set(poolA.poolId, poolA)
       pub(9_000, makeEvent('coordinator', 'pool_update', { poolId: poolA.poolId, pledgedCredits: poolA.pledgedCredits, status: 'locking' }, { poolId: poolA.poolId }))
+      if (human !== undefined) {
+        // the coordinator asks the human (connected with a proven hello) to sign input #4
+        const participants = [...(world.pledges.get(poolA.poolId) ?? [])].filter(p => !p.spent).map(p => ({ outpoint: p.outpoint, participant: p.participant, credits: p.credits, signer: p.signer, changeSats: String(Math.max(0, p.coinSats - Math.ceil(Number(p.credits) * 25) - 40)) }))
+        const idx = participants.findIndex(p => p.outpoint === human.outpoint)
+        pub(9_050, makeEvent('coordinator', 'sign_request', { poolId: poolA.poolId, round: 1, plan: { poolId: poolA.poolId, round: 1, participants, pledgeListHash: 'mock_' + poolA.poolId.slice(5, 21), templateBEEF: [] }, yourInputIndex: idx + 1 }, { poolId: poolA.poolId }))
+        world.me.waitingSince = Date.now()
+      }
     })
     step(11_000, 'everyone verifies and signs', () => {
       for (const who of [A.finetune, A.eval, A.inference]) {
@@ -108,12 +135,22 @@ export class MockScenario {
       pub(11_200, makeEvent('guard', 'cosign_approved', { agent: A.finetune, vaultId: MOCK_VAULT_ID, kind: 'settle', poolId: poolA.poolId, sats: 7_501, feeSats: 50 }, { agent: A.finetune, poolId: poolA.poolId }))
     })
     step(12_500, 'settlement', () => {
+      const human = world.me.pledges.get(poolA.poolId)
+      if (human !== undefined && !human.signed && Date.now() - (world.me.waitingSince ?? 0) < 60_000) {
+        // give the human the coordinator's 60 s round: postpone this beat
+        this.postpone(1_000)
+        return
+      }
       const txid = mockTxid('settle')
       poolA = { ...poolA, status: 'settled', settledTxid: txid, coordinator: { round: 1, signed: 3, total: 3, blacklist: [], lastRound: { round: 1, outcome: 'settled', missing: [], txid } } }
       world.pools.set(poolA.poolId, poolA)
-      for (const p of world.pledges.get(poolA.poolId) ?? []) { p.spent = true; p.spendingTxid = txid }
+      const signedHuman = human !== undefined && human.signed
+      const included = (world.pledges.get(poolA.poolId) ?? []).filter(p => !p.spent && (p.participant !== MOCK_IDS.me || signedHuman))
+      for (const p of included) { p.spent = true; p.spendingTxid = txid }
+      poolA = { ...poolA, pledgeCount: included.length }
+      world.pools.set(poolA.poolId, poolA)
       pub(12_500, makeEvent('coordinator', 'settled', { poolId: poolA.poolId, txid }, { poolId: poolA.poolId, txid }))
-      pub(12_510, makeEvent('overlay', 'pool_settled', { poolId: poolA.poolId, txid, participants: 3, feeSats: 149 }, { poolId: poolA.poolId, txid }))
+      pub(12_510, makeEvent('overlay', 'pool_settled', { poolId: poolA.poolId, txid, participants: included.length, feeSats: 149 }, { poolId: poolA.poolId, txid }))
     })
     step(14_000, 'eval redeems a credit', () => {
       const txid = mockTxid('redeem')
@@ -203,6 +240,13 @@ export class MockScenario {
 
   stop (): void { this.pause(); this.status = 'idle' }
   setSpeed (speed: number): void { this.speed = Math.max(0.1, speed) }
+
+  /** Called from inside a step: run the same step again after `ms` (real time), keeping the order. */
+  postpone (ms: number): void {
+    const current = this.steps[this.index]
+    if (current === undefined) return
+    this.steps.splice(this.index + 1, 0, { ...current, at: current.at + ms * this.speed })
+  }
 
   private schedule (): void {
     if (this.status !== 'running') return

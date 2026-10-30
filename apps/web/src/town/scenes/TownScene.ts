@@ -93,8 +93,9 @@ export class TownScene extends Phaser.Scene {
     const existing = this.villagers.get(identity)
     if (existing !== undefined) return existing
     const prof: Profile = profile === 'finetune' || profile === 'eval' || profile === 'inference' ? profile : 'visitor'
-    const house = this.houses.find(h => h.owner === undefined)
-    const spot = house !== undefined ? house.doorstep : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
+    const house = prof === 'visitor' ? undefined : this.houses.find(h => h.owner === undefined)
+    const visitorSpawn = POINTS['visitor-spawn']
+    const spot = house !== undefined ? house.doorstep : prof === 'visitor' && visitorSpawn !== undefined ? { x: visitorSpawn.x, y: visitorSpawn.y } : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
     house?.setOwner(identity, name)
     const v = new Villager(this, identity, prof, name, spot.x, spot.y)
     v.slotIndex = this.villagers.size

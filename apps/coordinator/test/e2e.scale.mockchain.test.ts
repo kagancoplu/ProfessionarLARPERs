@@ -32,7 +32,7 @@ import { coreProtocol } from '../src/protocol'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
 import { startAgentBot, type AgentBot } from './helpers/agentBot'
-import { fetchTxFrom, kitOn, openCoopPool, waitUntil } from './helpers/coopPool'
+import { fetchTxFrom, kitOn, openCoopPool, retrySocket, waitUntil } from './helpers/coopPool'
 
 const CASES = (process.env.SCALE_CASES ?? '50,100,50v10').split(',').map(c => {
   const [n, v] = c.split('v').map(Number)
@@ -72,10 +72,11 @@ async function vaultAgent (w: Wallet, owner: Wallet, provider: Wallet, terms: Po
   await putPolicy(new AuthFetch(owner), g.url, w.identityKey, { allowProviders: [provider.identityKey], maxPerPoolSats: 5_000, weeklyCapSats: 20_000, maxFeeSats: 500, hotWalletDailySats: 0 })
   const f = await fundVault(owner, vault, 10_000)
   await adoptVaultOutput(w, vault.record.vaultId, f.tx, f.vout)
-  await kitOn(overlay.url, owner).overlay.submit(f.tx)
+  await retrySocket(async () => await kitOn(overlay.url, owner).overlay.submit(f.tx))
   const kit = kitOn(overlay.url, w)
   const [utxo] = await listVaultUtxos(w, vault.record.vaultId)
-  const p = await pledgeFromVault(w, { vaultId: vault.record.vaultId, utxo, terms, credits: String(CREDITS_EACH), tokenIndex: await kit.nextIndex(w.identityKey), cosign: g.cosign, poolBEEF: await poolBEEF(terms.poolId) })
+  const tokenIndex = await retrySocket(async () => await kit.nextIndex(w.identityKey))
+  const p = await pledgeFromVault(w, { vaultId: vault.record.vaultId, utxo, terms, credits: String(CREDITS_EACH), tokenIndex, cosign: g.cosign, poolBEEF: await retrySocket(async () => await poolBEEF(terms.poolId)) })
   const bot = await startAgentBot(coop.url, w, w.identityKey, p, fetchTxFrom(chain), {
     signer: (plan, offer) => new VaultSigner(w, { vaultId: vault.record.vaultId, cosign: g.cosign, plan, context: { kind: 'settle', poolId: terms.poolId, expectedCredits: p.record.credits, tokenId: offer.terms.tokenId } })
   })
@@ -132,12 +133,12 @@ describe('scale: one settlement, many participants', () => {
       for (const w of wallets.slice(vaults)) {
         const kit = kitOn(overlay.url, w)
         const me = await kit.identityKey()
-        const p = await buildPledge(w, terms, String(CREDITS_EACH), 'p2pkh', undefined, { tokenIndex: await kit.nextIndex(me) })
+        const p = await buildPledge(w, terms, String(CREDITS_EACH), 'p2pkh', undefined, { tokenIndex: await retrySocket(async () => await kit.nextIndex(me)) })
         bots.push(await startAgentBot(coop.url, w, me, p, fetchTxFrom(chain)))
         beefs.push(p.beef)
       }
       const submitter = kitOn(overlay.url, provider).overlay
-      for (const b of beefs) await submitter.submit(b)
+      for (const b of beefs) await retrySocket(async () => await submitter.submit(b)) // the overlay takes a resubmitted tx
       const tFull = Date.now()
 
       const settled = await waitUntil(() => logs.find(l => l.event === 'settled' && l.poolId === terms.poolId), 240_000, `${n}-participant settlement`)

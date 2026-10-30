@@ -3,9 +3,9 @@
  * §3.8 overlay). Declared here (not imported from the other tracks' apps) so apps/web only
  * depends on @agentcoop/core; keep them in sync with the MASTER tables.
  */
-import type { Listing, PoolTerms, SettlementPlan } from '@agentcoop/core'
+import type { Listing, Offer, PoolTerms, SettlementPlan } from '@agentcoop/core'
 
-export type { Listing, PoolTerms, SettlementPlan }
+export type { Listing, Offer, PoolTerms, SettlementPlan }
 
 export type ChainPoolStatus = 'open' | 'settled' | 'cancelled'
 export type ApiPoolStatus = ChainPoolStatus | 'failed' | 'locking'

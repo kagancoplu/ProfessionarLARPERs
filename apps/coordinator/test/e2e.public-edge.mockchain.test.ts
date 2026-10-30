@@ -21,6 +21,7 @@ import { coreProtocol } from '../src/protocol'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
 import { startAgentBot } from './helpers/agentBot'
+import { waitUntil } from './helpers/coopPool'
 
 let chain: MockChain
 let overlay: RunningOverlay
@@ -159,10 +160,16 @@ describe('impersonation attack (closed by B-P5a)', () => {
       await startAgentBot(coop.url, agent1, victimId, p1, fetchTx, { delayMs: 1_500 }), // the attacker gets a window
       await startAgentBot(coop.url, agent2, await kit2.identityKey(), p2, fetchTx)
     ]
-    const spam = setInterval(() => {
-      attacker.ws.send(JSON.stringify({ type: 'sign_reject', poolId: terms.poolId, round: 1, reason: 'griefing' }))
-    }, 100)
     for (const p of [p1, p2]) await kit1.overlay.submit(p.beef)
+    // The attacker rejects for the victim while round 1 is open (the victim answers after 1.5 s), staying under
+    // this test's WS limit of 10 messages per 10 s: spamming from before the round got the attacker's connection
+    // closed (1008) when the pledges took long to submit, and then no error came back at all.
+    await waitUntil(() => logs.find(l => l.event === 'round_start' && l.poolId === terms.poolId), 30_000, 'round 1')
+    let sent = 0
+    const spam = setInterval(() => {
+      if (++sent > 5) return
+      attacker.ws.send(JSON.stringify({ type: 'sign_reject', poolId: terms.poolId, round: 1, reason: 'griefing' }))
+    }, 200)
 
     const settled = await new Promise<any>((resolve, reject) => {
       const end = Date.now() + 30_000

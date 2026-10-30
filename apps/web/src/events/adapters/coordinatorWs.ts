@@ -12,6 +12,8 @@ export interface CoordinatorFeedOptions {
   onStatus?: (ok: boolean, detail?: string) => void
   /** identity to announce (undefined = watcher) */
   identity?: () => string | undefined
+  /** sign the coordinator's challenge nonce (B-P5a); without it the session only watches */
+  prove?: (nonce: string) => Promise<string>
   WebSocketImpl?: typeof WebSocket
   maxBackoffMs?: number
 }
@@ -34,6 +36,15 @@ export function startCoordinatorFeed (opts: CoordinatorFeedOptions): Coordinator
   let timer: ReturnType<typeof setTimeout> | undefined
   let connected = false
   let lastHello: { identity: string, poolIds: string[] } | undefined
+  let nonce: string | undefined
+
+  const sayHello = async (identity: string, poolIds: string[]): Promise<void> => {
+    let sig: string | undefined
+    if (nonce !== undefined && opts.prove !== undefined) {
+      try { sig = await opts.prove(nonce) } catch (err) { console.warn('[coordinator] hello proof failed; watching only', err) }
+    }
+    send({ type: 'hello', identity, poolIds, ...(sig !== undefined ? { sig } : {}) })
+  }
 
   const send = (msg: object): boolean => {
     if (ws === undefined || ws.readyState !== 1) return false
@@ -47,14 +58,20 @@ export function startCoordinatorFeed (opts: CoordinatorFeedOptions): Coordinator
     ws.onopen = () => {
       connected = true
       backoff = 1_000
+      nonce = undefined
       opts.onStatus?.(true)
-      const identity = lastHello?.identity ?? opts.identity?.()
-      if (identity !== undefined) send({ type: 'hello', identity, poolIds: lastHello?.poolIds ?? [] })
     }
     ws.onmessage = ev => {
       let msg: { type?: string, [k: string]: unknown }
       try { msg = JSON.parse(String(ev.data)) } catch { return }
       const type = msg.type
+      if (type === 'challenge' && typeof msg.nonce === 'string') {
+        // B-P5a: the server opens with a nonce; a connected wallet proves its identity, a watcher says hello without sig
+        nonce = msg.nonce
+        const identity = lastHello?.identity ?? opts.identity?.()
+        if (identity !== undefined) void sayHello(identity, lastHello?.poolIds ?? [])
+        return
+      }
       if (typeof type !== 'string' || !KNOWN.has(type as WsType)) return
       const { type: _t, ...data } = msg
       const poolId = typeof data.poolId === 'string' ? data.poolId : undefined
@@ -74,7 +91,7 @@ export function startCoordinatorFeed (opts: CoordinatorFeedOptions): Coordinator
 
   return {
     close () { closed = true; if (timer !== undefined) clearTimeout(timer); ws?.close() },
-    hello (identity, poolIds = []) { lastHello = { identity, poolIds }; send({ type: 'hello', identity, poolIds }) },
+    hello (identity, poolIds = []) { lastHello = { identity, poolIds }; void sayHello(identity, poolIds) },
     send,
     get connected () { return connected }
   }

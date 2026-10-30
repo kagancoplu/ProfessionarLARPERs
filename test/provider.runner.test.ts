@@ -12,7 +12,7 @@ const job = { owner: '02'.padEnd(66, '1'), product: 'gpu-h100', payment: { metho
 describe('products', () => {
   it('loads products/gpu-h100.json', () => {
     const [p] = loadProducts()
-    expect(p).toMatchObject({ id: 'gpu-h100', unit: 'GPU-hour', retailSatsPerCredit: 50, minutesPerCredit: 60, simulate: { minutesPerSecond: 60 } })
+    expect(p).toMatchObject({ id: 'gpu-h100', unit: 'GPU-hour', retailSatsPerCredit: 50, minutesPerCredit: 60, demoPricing: true, simulate: { minutesPerSecond: 60 } })
   })
 
   it('bills retail per minute at the per-credit price, rounding up to whole sats', () => {

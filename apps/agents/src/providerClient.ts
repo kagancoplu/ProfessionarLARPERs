@@ -5,13 +5,15 @@
  */
 import { AuthFetch, type WalletInterface } from '@agentcoop/core/sdk'
 
-export interface CatalogProduct { id: string, label: string, unit: string, retailSatsPerCredit: number, minutesPerCredit?: number, tokenId: string | null }
+export interface CatalogProduct { id: string, label: string, unit: string, retailSatsPerCredit: number, minutesPerCredit?: number, tokenId: string | null, demoPricing?: boolean }
 export interface Catalog {
   provider: { name: string, server: string }
   products: CatalogProduct[]
   jobKinds: string[]
   maxJobMinutes: number
   credits: { maxRedeem: number, maxPending: number, redeemTo: string }
+  /** Set when prices are illustrative (FINAL-IDEA §9). */
+  pricingNote?: string
   pools: unknown[]
   poolsSource: string
 }

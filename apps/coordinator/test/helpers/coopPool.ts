@@ -50,3 +50,23 @@ export async function waitUntil<T> (fn: () => T | undefined | Promise<T | undefi
     await new Promise(resolve => setTimeout(resolve, 50))
   }
 }
+
+/**
+ * Retry a call that failed on a socket error (`fetch failed`, ECONNRESET). With 100 agents in one test
+ * process the event loop blocks for seconds, and a keep-alive socket the server closed meanwhile gets
+ * reused (Track D saw it in TokenKit.nextIndex's overlay lookup). Only for idempotent calls.
+ */
+export async function retrySocket<T> (fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const code = String((e as any)?.cause?.code ?? '')
+      const message = String((e as Error)?.message ?? '')
+      // TokenKit's submit keeps the tx in its outbox on a socket error and says so; submitting again flushes it
+      const socket = message === 'fetch failed' || /not yet in the overlay/.test(message) || ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE'].includes(code)
+      if (!socket || i >= attempts) throw e
+      await new Promise(resolve => setTimeout(resolve, 100 * i))
+    }
+  }
+}
