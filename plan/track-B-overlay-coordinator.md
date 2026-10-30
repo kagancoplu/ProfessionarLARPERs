@@ -42,7 +42,7 @@
 **Bağımlılık:** A.P0 (`types.ts`, `parseOpReturn`). A.P1 builder'ları paralel geliştiriliyor; test verisi için kendi sahte tx'lerini kur.
 
 **Görevler**
-- 1.1 `AgentCoopTopicManager`: kit'in token kurallarını **aynen** çalıştırır (kredi çıktıları için) **ve** OP_RETURN `agentcoop` zarfı taşıyan tx'leri tanır: `pool` → out0 kredi UTXO'su + terms; `pledge` → out0 pledge coin, out1 fee, out2 kayıt; `settle` → settlement; `list` → liste; `vault` → vault çıktısı (D'nin formatı, şimdilik ham kaydet). Admit edilen çıktılar: kredi çıktıları (kit kuralı), pledge coin'ler, vault çıktıları. OP_RETURN çıktıları admit edilmez ama parse edilip lookup'a yazılır.
+- 1.1 `AgentCoopTopicManager`: kit'in token kurallarını **aynen** çalıştırır (kredi çıktıları için) **ve** OP_RETURN `agentcoop` zarfı taşıyan tx'leri tanır: `pool` → out0 kredi UTXO'su + terms; `pledge` → out0 pledge coin, out1 fee, out2 kayıt; `settle` → settlement; `list` → liste; `vault` → vault çıktısı (D'nin formatı, şimdilik ham kaydet). Admit edilen çıktılar: kredi çıktıları (kit kuralı), pledge coin'ler, vault çıktıları. OP_RETURN çıktıları admit edilmez ama parse edilip lookup'a yazılır. **`coinsToRetain`'e kit kuralının token girdilerine ek olarak pledge coin ve vault çıktısı harcayan girdiler de konur** (B.P0 bulgusu: engine `coinsToRetain`'de olmayan önceki topic çıktılarını siliyor; tutulmazsa settlement/iptal geçmişi ve Faz 6.3 denetimi kaybolur).
 - 1.2 `AgentCoopLookupService` (knex/SQLite): tablolar `pools(poolId, terms json, status, createdHeight)`, `pledges(outpoint, poolId, participant, credits, signer, height, spent, spendingTxid)`, `settlements(poolId, txid, pledgeListHash)`, `offers(poolId, offer json)`, `listings(outpoint, …, spent)`, `vaults(outpoint, owner, agent, guard, spent)`. Spent işaretleme: engine'in `outputSpent` çağrısı (kit lookup'ındaki desen).
 - 1.3 Lookup sorguları MASTER §3.8. `pool` sorgusu ilerlemeyi hesaplar: `pledgedCredits = Σ harcanmamış pledge.credits`, `status`.
 - 1.4 **Yan API** `apps/coordinator` içinde Express (port 8090): `POST/GET /offers`, `GET /pools`, `/pools/:id`, `/pools/:id/pledges` (overlay lookup'ı sarar + `Offer`'ı doğrular: A'nın `verifyOffer`; hazır değilse yalnızca imza formatı). Aynı süreçte `WS /ws` iskeleti: `hello`, `pool_update` yayını (overlay'e her yeni admit'te — basit yol: 5 sn'de bir lookup poll).
@@ -110,10 +110,69 @@
 
 ---
 
-## Faz 4 — Kapanış → S4
+> **Genişletme fazları (5 ve 6).** Faz 0–3 en az hali tarif ediyor. İki eksik var: jüri ve dış ajanlar ürünü deneyemiyor (her şey yerelde) ve ne izinsizlik ne de ölçek gösteriliyor. Faz 5 ve 6 bunları kapatıyor. **Kural: S3 tamamlanmadan başlamaz.** Sıra 5 → 6 → 4: Faz 4 (kapanış) her zaman en son yapılır. Süre kalmazsa Faz 6, Faz 5'ten önce kesilir; Faz 5'in 5.1–5.3'ü tek başına bile değerli.
+
+## Faz 5 — Herkese açık yayın (overlay + koordinatör + yan API) → S3 sonrası
+
+**Amaç:** Jüri, diğer takımlar ve dış ajanlar AgentCoop'u kendi makinelerinden deneyebilsin: `https://overlay.<alan>` ve `https://coop.<alan>` üzerinden havuzları görsün, lookup yapsın, WS'e bağlansın ve kendi ajanıyla pledge verip imza turuna katılsın. Jüri kriterlerinde "adoption" (%35) ve "clear demo" doğrudan buna bağlı; yerelde çalışan bir demo bunu gösteremez.
+
+**Bağımlılık:** S3. D'nin hesap ve alan adı kurulumu (`plan/SETUP-ACCOUNTS.md` §3: VPS, DNS, sertifika). Bu dosya repoda henüz yok; yoksa 5.1'i kendin yap ve STATUS Blokajlar'a "SETUP-ACCOUNTS §3 yok" yaz. C'nin ajanlarının `OVERLAY_URL` / `COOP_API_URL`'yi env'den okuması (MASTER §3.9).
 
 **Görevler**
-- 4.1 `apps/coordinator/README.md` ve `packages/overlay/README.md`: sorgular, WS protokolü, sıralama kuralı, "koordinatör para tutmaz, herkes çalıştırabilir" notu, nasıl kendi koordinatörünü çalıştırırsın.
+- 5.1 **Sunucu:** tek bir küçük VPS (2 vCPU, 4 GB, Ubuntu; Node 22 + pm2 veya docker compose). `packages/overlay` ve `apps/coordinator` Faz 3.4'teki `npm run infra` ile kalkar. `data/` ayrı bir dizinde (`/var/lib/agentcoop`), günlük `sqlite3 .backup` (cron) + `overlay.key` / koordinatör anahtarı yalnızca sunucuda (`.env`, 600 izin).
+- 5.2 **HTTPS + alan adı:** Caddy reverse proxy (otomatik Let's Encrypt). `overlay.<alan>` → :8080, `coop.<alan>` → :8090 (WS dahil, `/ws` upgrade). HTTP → HTTPS yönlendirme. Alan adı yoksa geçici çözüm: `<ip>.sslip.io` alt alanları (DNS gerektirmez, Let's Encrypt ile çalışır).
+- 5.3 **CORS ve kenar politikası:** overlay `configureEdgePolicy` / yan API `cors()`: GET/lookup herkese açık; `POST /offers`, `POST /listings` herkese açık ama doğrulamalı (imza + harcanmamışlık). BRC-105/402 başlıkları gerekmez (o C'nin sağlayıcısında). Gövde sınırı (ör. 1 MB; settlement BEEF'leri için overlay `/submit` 10 MB).
+- 5.4 **Kötüye kullanım sınırları:** IP başına hız sınırı (`express-rate-limit`; lookup 60/dk, POST 10/dk); WS: bağlantı başına mesaj sınırı, `hello`'da **kimlik kanıtı** (koordinatörün gönderdiği nonce'u katılımcının identity anahtarıyla imzalaması; `sign_request` yalnızca kanıtlanmış kimliğe gider). Overlay `/submit` zaten SPV + kurallarla korunuyor; boyut sınırı yeter.
+- 5.5 **İzleme:** `GET /healthz` (overlay: DB erişimi + son admit zamanı; koordinatör: açık havuz sayısı, bağlı WS istemcisi, Arcade erişimi). UptimeRobot (veya benzeri ücretsiz) 1 dk aralıkla iki URL'yi izler; düşerse ekip Telegram'ına bildirim. Yapılandırılmış log (JSON satırları) → `journalctl`/pm2 log; her koordinatör kararı tek satır (Faz 2.5).
+- 5.6 **Dış katılım kılavuzu:** `apps/coordinator/README.md`'ye "Kendi ajanınla katıl" bölümü: herkese açık URL'ler, lookup örnekleri (curl), WS protokolü (MASTER §3.5), C'nin ajan SDK'sıyla 10 satırlık örnek. Kılavuzu takım dışı bir makinede (ör. bir takım üyesinin telefon hotspot'u + temiz klon) baştan sona dene.
+- 5.7 **Mainnet kanıtı:** yerel olmayan bir makinedeki bir ajan, herkese açık koordinatör üzerinden bir havuza katılıyor ve settlement'a giriyor; txid STATUS'ta.
+
+**Kabul:** iki HTTPS URL dışarıdan erişilebilir ve 5.5 izlemesi yeşil; CORS tarayıcıdan (başka origin) lookup ile doğrulandı; takım dışı bir makineden kılavuzla bir pledge + settlement yapıldı (txid STATUS'ta); sunucu yeniden başlatılınca veri kaybı yok (5.1 yedekten geri yükleme bir kez denendi).
+
+**Çıktılar:** `infra/` (Caddyfile, `docker-compose.yml` veya `ecosystem.config.cjs`, `backup.sh`, `.env.example` eki), `apps/coordinator/src/auth.ts` (hello kimlik kanıtı), `apps/coordinator/README.md` "Kendi ajanınla katıl", STATUS'ta herkese açık URL'ler.
+
+### ✋ Checkpoint (Faz 5 sonu)
+1. **Plan hâlâ iyi mi?** WS kimlik kanıtı MASTER §3.5 `hello` mesajını değiştirdiyse (`hello { identity, poolIds[], nonceSig }`) önce MASTER §3, sonra STATUS "Arayüz değişiklikleri"; C'ye haber ver. VPS bulunamadıysa STATUS Blokajlar.
+2. **Bu faz bitti** → STATUS Track B; herkese açık URL'ler "Diğer track'lerin benden beklediği" satırına (C ajanları, D README ve video).
+3. **Diğer track'ler ne yaptı?** C'nin ajanları herkese açık URL'lerle çalışıyor mu? D README'ye URL'leri aldı mı?
+4. **Sonraki fazın bağımlılıkları:** Faz 6 için C'nin ajan sürüsü (çok sayıda wallet-toolbox ajanı) ve fonlama (D).
+5. Arayüz değişikliği varsa MASTER §3 + STATUS.
+
+---
+
+## Faz 6 — İzinsizliğin ve ölçeğin kanıtı: ikinci koordinatör, metrikler, denetim, 50+ katılımcı → S3 sonrası
+
+**Amaç:** Üç iddiayı zincir üstünde kanıtlamak: (1) koordinatör **izinsiz** bir rol, aynı teklifi bağımsız başka bir koordinatör de kapatabiliyor; (2) koordinatör seçimi **denetlenebilir**, herkes deterministik sıralamayı yeniden hesaplayıp OP_RETURN'deki hash'le karşılaştırabiliyor; (3) mekanizma **ölçekleniyor**, 50+ katılımcı tek settlement işleminde. Bu, "teknik uygulama ve non-custodial tasarım" (%20) kriterinin ve FINAL-IDEA §8'deki "koordinatörün seçim yetkisi: tespit edilebilir" satırının somut kanıtı. Ayrıca FINAL-IDEA §11 demo kapanışındaki rakamların (katılımcı sayısı, işlem sayısı, settlement başına ücret, **emanetteki sat = 0**) kaynağı.
+
+**Bağımlılık:** S3, Faz 5 (ikinci koordinatör herkese açık overlay'i okur). A'nın `planSettlement`'ının deterministik olması (A.P2.8 testi). C'nin ajan sürüsü: 50+ wallet-toolbox ajanı ve otomatik pledge (C ile birlikte; C'nin track dosyasında yoksa C'ye STATUS üzerinden iste). D'den fonlama: 50 ajan × (pledge + kayıt bedeli + ücret payı); sats settlement'ta sağlayıcıya, yani takıma geri döner.
+
+**Görevler**
+- 6.1 **Teklifin zincir üstünde yayınlanması (önerilen arayüz eki):** Bugün `Offer` (sağlayıcının SINGLE|ACP imzası) yalnızca koordinatör 1'in `POST /offers`'ında duruyor; bu, ikinci koordinatörü birinciye bağımlı kılar. Teklif imzası, havuz tx'inin kendi çıktısını harcadığı için aynı tx'e konamaz; bu yüzden ayrı ve küçük bir `OP_RETURN agentcoop offer <json>` tx'i (veya provider-cli'ın `open-pool` adımının ikinci tx'i) ile zincire yazılır, overlay `offers` tablosuna indeksler, `{ op:'offer', poolId }` lookup'ı eklenir. **Önce MASTER §3.2 op listesine `offer` ve §3.8'e lookup eklenir**, A ve C'ye STATUS'ta duyurulur. A/C kabul etmezse geçici yol: koordinatör 2, teklifi koordinatör 1'in `GET /offers/:poolId`'inden çeker (README'de dürüstçe yazılır).
+- 6.2 **İkinci bağımsız koordinatör:** aynı `apps/coordinator` kodu, farklı kimlik anahtarı (`WALLET_COORDINATOR_2_KEY`), farklı port/alt alan (`coop2.<alan>`), aynı herkese açık overlay. Senaryo: koordinatör 1 kapatılır (veya bir havuzu kasıtlı olarak "sansürler"); koordinatör 2 teklifi zincirden/overlay'den bulur, aynı deterministik planı kurar, ajanlar (C, `COOP_API_URL` değişikliğiyle) koordinatör 2'nin turuna katılır, settlement yayınlanır. Mainnet'te bir kez; txid ve "hangi koordinatör kapattı" STATUS'ta.
+- 6.3 **Denetim endpoint'i (önerilen ek):** `GET /pools/:poolId/audit` → o havuzun zincirdeki pledge'leri (overlay'den), MASTER §3.2 kuralıyla yeniden hesaplanmış sıralama ve `pledgeListHash`, settlement tx'inin OP_RETURN'ündeki hash ve `match: true|false`; atlanan (kara listeye alınan) outpoint'ler ve nedenleri (`round_failed` kayıtları). Herhangi bir koordinatörün kapattığı herhangi bir havuz için çalışır, yani koordinatör 2 koordinatör 1'i denetleyebilir. Komut satırı eşi: `npx tsx apps/coordinator/scripts/audit.ts <poolId>`.
+- 6.4 **Metrik endpoint'i:** `GET /metrics` (JSON; ayrıca Prometheus metni `?format=prom`): `settlements` (sayı), `participants` (toplam ve havuz başına ortalama, en büyük settlement), `avgFeeSats` ve `avgFeeSatsPerParticipant`, `avgSettlementBytes`, `pledges` (açık/iptal/settle), `failedPools`, `rounds` (ortalama tur sayısı), ve **`custodiedSats = 0`** ile nasıl hesaplandığı: her settlement tx'inde hiçbir girdinin koordinatör anahtarlarından gelmediği ve hiçbir çıktının koordinatör anahtarlarına kilitlenmediği tek tek kontrol edilir; koordinatör cüzdanının bakiyesi zaman serisi olarak yalnızca kimlik/yayın ücretleriyle azalır. Değerler overlay'deki zincir kayıtlarından hesaplanır (koordinatörün kendi beyanından değil).
+- 6.5 **Ölçek testi (C ile):** önce mockchain: `test/e2e.scale.mockchain.test.ts` 50 ve 100 katılımcı (ajan başına ayrı wallet-toolbox cüzdanı; tur zaman aşımı, WS eşzamanlılığı, BEEF boyutu, overlay `/submit` süresi ölçülür). Sonra mainnet: **50+ katılımcılı bir settlement** (T5). Doğrulama testi 8'e göre 50 katılımcı ≈ 17–18 kB ≈ 1.800 sat ücret; Arcade politikası (maks. tx 100 MB, maks. script ≥ 500 kB) sınır değil. Ölçülenler STATUS'a: imza turunun süresi, tx boyutu, ücret, overlay kabul süresi.
+- 6.6 Gerekirse koordinatör optimizasyonu: `sign_request`'leri paralel gönder, `templateBEEF`'i tek seferde serileştir (katılımcı başına kopyalama yok), imza doğrulamasını girdi başına artımlı yap.
+
+**Kabul:** iki koordinatör aynı overlay üzerinde çalışıyor ve koordinatör 2 mainnet'te bir havuzu kapattı (txid STATUS'ta); `/pools/:id/audit` bu settlement için `match: true` döndürüyor ve sahte bir hash'le `false` döndürdüğü test edildi; `/metrics` herkese açık URL'de `custodiedSats: 0` ile birlikte; mainnet'te ≥ 50 katılımcılı settlement txid'si STATUS'ta, mockchain'de 100 katılımcılı test yeşil.
+
+**Çıktılar:** `apps/coordinator/src/{audit,metrics}.ts`, `apps/coordinator/scripts/audit.ts`, `packages/overlay` `offer` indeksi (6.1 kabul edildiyse), `test/e2e.scale.mockchain.test.ts`, `infra/` ikinci koordinatör servisi, STATUS'ta ölçek sonuçları ve README için rakamlar (D'ye).
+
+### ✋ Checkpoint (Faz 6 sonu)
+1. **Plan hâlâ iyi mi?** 6.1 reddedildiyse README'deki izinsizlik iddiasını "teklif herkese açık API'de" olarak yumuşat; ölçek testinde bir darboğaz (WS, BEEF boyutu, overlay süresi) bulunduysa STATUS'a sınırı yaz.
+2. **Bu faz bitti** → STATUS Track B; metrik URL'si ve ölçek rakamları "Diğer track'lerin benden beklediği" satırına (D: README, value note, video kapanışı).
+3. **Diğer track'ler ne yaptı?** C'nin ajan sürüsü ve D'nin fonlaması yeterli miydi? D README'ye rakamları aldı mı?
+4. **Sonraki fazın bağımlılıkları:** Faz 4 (kapanış): yok.
+5. Arayüz değişikliği varsa (6.1 `offer` op'u, 6.3/6.4 endpoint'leri) MASTER §3.2/§3.5/§3.8 + STATUS.
+
+---
+
+## Faz 4 — Kapanış → S4
+
+> Faz 5 ve 6'dan sonra (yapıldılarsa) yapılır.
+
+**Görevler**
+- 4.1 `apps/coordinator/README.md` ve `packages/overlay/README.md`: sorgular, WS protokolü, sıralama kuralı, "koordinatör para tutmaz, herkes çalıştırabilir" notu, nasıl kendi koordinatörünü çalıştırırsın; Faz 5/6 yapıldıysa herkese açık URL'ler, `/metrics`, `/audit` ve ikinci koordinatör settlement'ı.
 - 4.2 Test süreleri ve flaky temizliği.
 - 4.3 D'ye teslim: README "Overlay & Coordinator" bölümü; mainnet'te koordinatörün kurduğu settlement txid'leri.
 
