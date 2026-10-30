@@ -143,6 +143,8 @@
   .town-label-gold { border-image-source: url(/ui/label-gold.png) !important; color: #3f2832; }
   .town-label-danger { border-image-source: url(/ui/label-danger.png) !important; color: #f9e6cf; }
   .town-label-grass { border-image-source: url(/ui/label-grass.png) !important; color: #1e3a1a; }
+  /* presenter mode (?presenter=1): everything a step larger for a projector */
+  :root[data-presenter="1"] main { zoom: 1.15; }
   .town-label-wood { border-image-source: url(/ui/label-wood.png) !important; color: #f9e6cf; }
   @keyframes steps-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }

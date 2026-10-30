@@ -9,9 +9,14 @@ export function isTypingTarget (el: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
 }
 
-export function handleShortcut (e: KeyboardEvent, store: AppStoreApi, navigate: (to: string) => void): boolean {
+/** replay stage skips (presenter mode, track-E 5.1): 1 pool opens, 2 lock-in, 3 settlement, 4 guard refusal, 5 market */
+export const STAGES: Record<string, string> = { '1': 'pool_opened', '2': 'sign_request', '3': 'pool_settled', '4': 'cosign_denied', '5': 'listing_added' }
+
+export function handleShortcut (e: KeyboardEvent, store: AppStoreApi, navigate: (to: string) => void, replay?: { skipTo: (type: never) => void }): boolean {
   if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return false
   const key = e.key.toLowerCase()
+  const stage = STAGES[key]
+  if (stage !== undefined && replay !== undefined) { replay.skipTo(stage as never); return true }
   const to = SHORTCUTS[key]
   if (to !== undefined) { navigate(to); return true }
   if (key === 'm') { const s = store.getState(); s.updateSettings({ sound: !s.settings.sound }); return true }

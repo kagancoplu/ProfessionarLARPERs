@@ -6,6 +6,7 @@ import { PixelButton, Scroll, Signboard, Toasts } from '../ui'
 import { t } from '../i18n/t'
 import { TopBar } from './TopBar'
 import { handleShortcut } from './shortcuts'
+import { useRuntime } from '../app-context'
 import { ReplayBar } from '../replay/ReplayBar'
 import { SignCenter } from '../wallet/SignCenter'
 
@@ -42,11 +43,14 @@ function MockApprovalDialog () {
 export function AppShell () {
   const narrow = useStore(s => s.ui.narrowScreen)
   const navigate = useNavigate()
+  const presenter = useStore(s => s.settings.presenter)
+  const { replay } = useRuntime()
+  useEffect(() => { document.documentElement.dataset.presenter = presenter ? '1' : '0' }, [presenter])
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => { if (handleShortcut(e, store, to => { void navigate(to) })) e.preventDefault() }
+    const onKey = (e: KeyboardEvent): void => { if (handleShortcut(e, store, to => { void navigate(to) }, replay)) e.preventDefault() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate])
+  }, [navigate, replay])
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
     const apply = (): void => store.getState().setNarrowScreen(mq.matches)

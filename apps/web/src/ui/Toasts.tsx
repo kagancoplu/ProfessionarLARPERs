@@ -8,6 +8,8 @@ const TONE = { info: 'border-wood', success: 'border-grass-dark', error: 'border
 /** Bottom-right stack of mini signboards; 5 s each, pause on hover. */
 export function Toasts () {
   const toasts = useStore(selectToasts)
+  const presenter = useStore(s => s.settings.presenter)
+  if (presenter) return null
   return (
     <div className="fixed right-4 bottom-4 z-50 flex w-[360px] max-w-[calc(100vw-32px)] flex-col gap-2" aria-live="polite">
       {toasts.map(t => <ToastItem key={t.id} id={t.id} text={t.text} tone={t.kind} />)}

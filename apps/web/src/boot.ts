@@ -33,6 +33,8 @@ import type { CoordinatorFeed } from './events/adapters/coordinatorWs'
 
 export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   store.getState().setMode(env.mode, env.replayName)
+  // presenter mode (track-E 5.1): ?presenter=1 → bigger, quieter, stage-skip keys in replay
+  if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('presenter') === '1') store.getState().updateSettings({ presenter: true })
   const bus = createBus(store)
   const stops: Array<() => void> = []
   bus.subscribe(e => { invalidateFor(queryClient, e) })

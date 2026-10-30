@@ -1,5 +1,6 @@
 /** First visit: a three-step tour as a banner (never a modal, so nothing blocks the jury or the tests). Dismissed state in localStorage. */
 import { useState } from 'react'
+import { useStore } from '../store'
 import { PixelButton, Signboard, Tag } from '../ui'
 
 const KEY = 'agentcoop.tour'
@@ -11,7 +12,8 @@ const STEPS = [
 
 export function TourBanner () {
   const [step, setStep] = useState<number>(() => { try { return localStorage.getItem(KEY) === 'done' ? -1 : 0 } catch { return 0 } })
-  if (step < 0) return null
+  const presenter = useStore(s => s.settings.presenter)
+  if (step < 0 || presenter) return null
   const done = (): void => { setStep(-1); try { localStorage.setItem(KEY, 'done') } catch { /* private mode */ } }
   const s = STEPS[step]!
   return (

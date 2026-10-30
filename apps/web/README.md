@@ -4,6 +4,40 @@ Role consoles (provider, agent owner, human participant, observer/jury) and the 
 Every signature happens in the user's **BSV Desktop** (`WalletClient('auto')`); the browser never sees a key.
 Design rules: [`DESIGN.md`](./DESIGN.md). Plan: `plan/track-E-frontend.md`, phases in `plan/phases/E-P*.md`.
 
+## Open the town
+
+- **Public URL:** _not published yet_ (Cloudflare Pages, see Deploy below). Until then: `npm run web:mock` → http://localhost:5173.
+- **Mock mode** needs nothing: a scripted village (pools, pledges, one settlement, a GPU job, a prompt injection the guard refuses, a failed pool, a market sweep, a Coop Rail crossing) loops every ~35 s, and a mock BSV Desktop approves on screen. `?replay=mock-demo` plays a recording.
+- **Live mode** (`npm run web`): the overlay, coordinator, provider-api, guard, agents and maker through the dev proxy; connect the real BSV Desktop from the top bar. Nothing in the browser holds a key: pledges, signatures, redeems, vault funding and withdrawals are all `createAction` / `createSignature` approvals in Desktop.
+- **Presenter mode:** `?presenter=1` (larger, no toasts; in replay `1`–`5` jump between stages).
+
+![The Town by day](../../docs/screenshots/web/01-town-day.png)
+
+| | |
+|---|---|
+| ![overview](../../docs/screenshots/web/02-town-overview.png) | ![night](../../docs/screenshots/web/03-town-night.png) |
+| ![participant](../../docs/screenshots/web/05-participant.png) | ![owner](../../docs/screenshots/web/07-owner.png) |
+| ![agents](../../docs/screenshots/web/08-agents-injection.png) | ![market](../../docs/screenshots/web/09-market.png) |
+
+More: `docs/screenshots/web/` (pools, provider, explorer, metrics + harbor). Regenerate with `BASE=http://localhost:5178 node tools/screenshots.mjs` while `npm run web:mock` runs.
+
+## What the Town shows
+
+Agents are villagers; a pool is the notice board with a chest that fills; a pledge is a coin into the chest while the villager's purse only glows (the sats stay in their wallet); the settlement is one horse ride that drops a credit chest at every participant's house; the guard at the gate nods on an approved co-sign and raises "!" on a refusal; a stranger whispering is a prompt injection; vault chests sit in front of the agents' houses; the market stalls show listings; the harbor is Coop Rail (experimental). Every object opens a drawer with the transaction and a WhatsOnChain link. Corner counters: **Held in custody: 0 sat** (by construction), settlements, participants, village savings (`demo pricing`).
+
+## Known limitations
+
+- Desktop browsers only (≥ 1024 px); English; single player (no avatar, no multiplayer).
+- Mainnet acceptance not done yet: the live flows (pledge, sign, redeem, 402, mint, open pool, vault fund/withdraw, list/sweep) are written against the real wallet and `@agentcoop/core`, exercised end to end only with the mock Desktop. `AuthFetch` from the browser to the provider-api and the guard needs their CORS in production (the dev proxy covers local).
+- GPU jobs are simulated (`simulated GPU jobs`); pool discounts are `demo pricing`; Coop Rail is `experimental` (quotes only; no swap API yet).
+- The agents' thought bubbles come from the mock scenario or a replay (the agents' event stream from Track C is not live).
+- No real mainnet replay yet: record one from `/_debug` during a live run.
+- No `/design-review` browser loop was run; the DESIGN.md checklist was applied by hand with screenshots.
+
+## Assets and licences
+
+Town and UI art: **Kenmi — Cute Fantasy RPG (Premium)**, processed atlases only (the raw pack is not in the repo: `assets/packs/`, gitignored; rebuild with `npm -w apps/web run packs`). A few icons and all UI frames are drawn in the same style by `tools/ui.mjs`. Fonts: Pixelify Sans, IBM Plex Sans, VT323 (OFL). Sound is synthesised (no files). Full table: [`assets/LICENSES.md`](./assets/LICENSES.md). No BSVA logo is used in the app.
+
 ## Run
 
 ```bash
