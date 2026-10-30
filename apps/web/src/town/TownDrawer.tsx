@@ -52,6 +52,7 @@ function VaultCard ({ vaultId }: { vaultId: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2"><span className="mono">{shortHex(v.vaultId, 6)}</span><Tag tone={v.verified ? 'ok' : 'neutral'}>{v.verified ? 'verified' : 'registered'}</Tag>{v.paused === true && <Tag tone="warn">paused</Tag>}</div>
       <Counter value={v.balanceSats} size="m" unit="sat" tone="gold" />
+      {(v.credits ?? []).map(c => <p key={c.tokenId} className="text-[14px] leading-5"><Counter value={c.amt} size="s" unit={c.sym ?? 'credits'} /> locked to the vault script: agent + guard to redeem or list, the owner alone to take out</p>)}
       <p className="text-[14px] leading-5">Agent {agent?.name ?? ''} <IdentityChip identity={v.agent} role="agent" compact /> · owner <IdentityChip identity={v.owner} role="owner" compact /> · guard <IdentityChip identity={v.guard} role="guard" compact /></p>
       <p className="text-[14px] leading-5 text-ink-muted">The owner alone can empty it; the agent spends only with the guard's co-signature inside the policy. Nobody else, ever.</p>
       <div>

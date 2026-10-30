@@ -26,7 +26,7 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
     const id = activePool(s)
     const pool = id !== undefined ? s.pools.byId[id] : undefined
     town.board.setPool(pool, pool?.height)
-    for (const v of Object.values(s.vaults.byId)) town.chestFor(v.vaultId, v.agent).setBalance(v.balanceSats)
+    for (const v of Object.values(s.vaults.byId)) town.chestFor(v.vaultId, v.agent).setBalance(v.balanceSats, v.credits?.reduce((a, c) => a + BigInt(c.amt), 0n).toString())
     const listings = Object.values(s.listings.byOutpoint)
     for (const st of town.stalls) if (st.outpoint !== undefined && s.listings.byOutpoint[st.outpoint] === undefined) st.clear()
     for (const l of listings) { const st = town.stallFor(l.outpoint); if (st !== undefined && st.outpoint !== l.outpoint) st.show(l.outpoint, l.credits, l.askSats) }

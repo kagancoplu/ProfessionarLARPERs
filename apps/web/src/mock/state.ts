@@ -12,6 +12,8 @@ export interface MockWorld {
   decisions: GuardDecision[]
   agents: AgentInfo[]
   catalog: Catalog
+  /** credits locked to the finetune agent's vault (A-P5 creditLock) */
+  vaultCredits: bigint
   /** the human at the keyboard (mock Desktop): what the flows did */
   me: {
     pledges: Map<string, { outpoint: string, credits: number, signed: boolean }>
@@ -46,6 +48,7 @@ export function createMockWorld (height = 920_000): MockWorld {
     }]]),
     decisions: [],
     agents: MOCK_AGENTS.map(a => ({ ...a })),
+    vaultCredits: 0n,
     me: { pledges: new Map(), credits: 0n, prepaidMinutes: 0, jobs: new Map(), pools: new Set(), revenue: [], revenueSynced: [], listings: new Set() },
     catalog: {
       provider: { name: 'AgentCoop simulated GPU provider (mock)', server: MOCK_IDS.providerServer },

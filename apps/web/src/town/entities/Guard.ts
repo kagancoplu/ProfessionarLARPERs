@@ -78,7 +78,11 @@ export class VaultChest extends Phaser.GameObjects.Container {
     this.setDepth(y)
     scene.add.existing(this)
   }
-  setBalance (sats: number): void { this.label.setHTML(`vault · ${sats.toLocaleString('en-GB').replace(/,/g, ' ')} sat`); this.chest.setFrame(sats > 0 ? 'chest_gold_0' : 'chest_gold_5') }
+  setBalance (sats: number, credits?: string): void {
+    const fmt = (n: number | string): string => Number(n).toLocaleString('en-GB').replace(/,/g, ' ')
+    this.label.setHTML(`vault · ${fmt(sats)} sat${credits !== undefined && credits !== '0' ? ` · ${fmt(credits)} cr` : ''}`)
+    this.chest.setFrame(sats > 0 || (credits !== undefined && credits !== '0') ? 'chest_gold_0' : 'chest_gold_5')
+  }
   /** the owner withdrew: the chest opens and the gold leaves */
   open (): void {
     this.chest.setFrame('chest_gold_5')

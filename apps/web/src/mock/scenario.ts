@@ -152,6 +152,9 @@ export class MockScenario {
       world.pools.set(poolA.poolId, poolA)
       pub(12_500, makeEvent('coordinator', 'settled', { poolId: poolA.poolId, txid }, { poolId: poolA.poolId, txid }))
       pub(12_510, makeEvent('overlay', 'pool_settled', { poolId: poolA.poolId, txid, participants: included.length, feeSats: 149 }, { poolId: poolA.poolId, txid }))
+      // A-P5 creditLock: the vault agent's credits are locked to its vault script, not to the agent's own key
+      const vaultCredits = included.filter(p => p.participant === A.finetune).reduce((a, p) => a + BigInt(p.credits), 0n)
+      if (vaultCredits > 0n) { world.vaultCredits += vaultCredits; pub(12_520, makeEvent('overlay', 'vault_credits', { vaultId: MOCK_VAULT_ID, credits: [{ tokenId: MOCK_TOKEN_ID, sym: 'GPUH', amt: world.vaultCredits.toString(), utxos: 1 }] }, { txid, agent: A.finetune })) }
     })
     step(14_000, 'eval redeems a credit', () => {
       const txid = mockTxid('redeem')

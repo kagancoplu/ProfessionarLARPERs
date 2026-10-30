@@ -1,7 +1,7 @@
 /** Store shape (track-E §3.1). One source of truth read by the consoles and the Town. */
 import type { DataMode, ServiceName } from '../env'
 import type { ApiPool, GuardDecision, GuardPolicy, Listing, PledgeView, VaultView } from '../api/types'
-import type { AgentAction, AnyCoopEvent, EventSource } from '../events/types'
+import type { AgentAction, AnyCoopEvent, EventSource, VaultCreditView } from '../events/types'
 
 export type WalletStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
@@ -38,6 +38,8 @@ export interface AgentEntry {
 }
 
 export interface VaultEntry extends VaultView {
+  /** BSV-21 credits locked to this vault's script, per token */
+  credits?: VaultCreditView[]
   policy?: GuardPolicy
   policyUpdatedAt?: string
   decisions: GuardDecision[]

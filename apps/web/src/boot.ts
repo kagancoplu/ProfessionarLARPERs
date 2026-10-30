@@ -97,7 +97,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
   stops.push(startEnvelopeSse('maker', makerApi.eventsUrl, bus, status('maker')).close)
   // listings, the agents' roster and vaults have no stream of their own
-  stops.push(startLivePolling(bus, store, { listings: () => coopApi.listings(), agents: () => agentsApi.list(), vaults: () => overlayApi.vaults() }))
+  stops.push(startLivePolling(bus, store, { listings: () => coopApi.listings(), agents: () => agentsApi.list(), vaults: () => overlayApi.vaults(), vaultCredits: h => overlayApi.vaultCredits(h) }))
   // a wallet connection announces itself to the coordinator so sign_requests arrive
   stops.push(store.subscribe((s, prev) => {
     if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) liveFeed.hello(s.me.identityKey, mine.getState().pledges.filter(p => p.status === 'pending' || p.status === 'signed').map(p => p.poolId))

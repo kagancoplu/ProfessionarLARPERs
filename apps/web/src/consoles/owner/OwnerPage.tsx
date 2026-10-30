@@ -76,9 +76,10 @@ function VaultCard ({ vault }: { vault: MyVault }) {
         <div className="flex flex-wrap items-center gap-6">
           <div><p className="label text-ink-muted">Balance (chain)</p><span data-testid="vault-balance"><Counter value={entry?.balanceSats ?? 0} size="m" unit="sat" tone="gold" /></span></div>
           <div><p className="label text-ink-muted">Spent by the agent (approved)</p><Counter value={spent} size="s" unit="sat" /></div>
+          <div data-testid="vault-credits"><p className="label text-ink-muted">Credits locked in the vault</p>{(entry?.credits ?? []).length === 0 ? <span className="text-[14px] text-ink-muted">none yet</span> : entry!.credits!.map(c => <Counter key={c.tokenId} value={c.amt} size="s" unit={c.sym ?? 'credits'} />)}</div>
           <div><p className="label text-ink-muted">Agent · guard</p><div className="flex gap-2"><IdentityChip identity={vault.agent} role="agent" compact /><IdentityChip identity={vault.guard} role="guard" compact /></div></div>
         </div>
-        <p className="text-[14px] leading-5 text-ink-muted">Script: <code>OP_IF &lt;you&gt; OP_CHECKSIG OP_ELSE 2 &lt;agent&gt; &lt;guard&gt; 2 OP_CHECKMULTISIG OP_ENDIF</code> ({vault.lockingScriptHex.length / 2} bytes). The agent needs the guard to spend; you never need anyone.</p>
+        <p className="text-[14px] leading-5 text-ink-muted">Script: <code>OP_IF &lt;you&gt; OP_CHECKSIG OP_ELSE 2 &lt;agent&gt; &lt;guard&gt; 2 OP_CHECKMULTISIG OP_ENDIF</code> ({vault.lockingScriptHex.length / 2} bytes). The agent needs the guard to spend; you never need anyone. Credits the agent wins in a pool land on the same script: it can redeem them only at an allowed provider (or list them), always with the guard; you can take them out alone.</p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1"><span className="label">Fund (sat)</span><input type="number" min={1} value={amount} onChange={e => setAmount(e.target.value)} className={`${input} w-36 counter text-[20px]`} data-testid="fund-amount" /></label>
           <PixelButton loading={busy === 'fund'} onClick={() => { void run('fund', async () => (await flows.fundVault(vault.vaultId, Number(amount))).txid) }} data-testid="fund-vault">Fund in BSV Desktop (1 approval, T9)</PixelButton>

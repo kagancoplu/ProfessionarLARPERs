@@ -17,6 +17,7 @@ export type OverlayQuery =
   | { op: 'listings', tokenId?: string }
   | { op: 'vaults', owner?: string, includeUnverified?: boolean }
   | { op: 'vault', vaultId: string }
+  | { op: 'vaultCredits', vaultHash: string, tokenId?: string, includeSpent?: boolean }
   | { op: 'identity', identityKey: string }
   | { op: 'outpoint', outpoint: string }
 
@@ -40,6 +41,8 @@ export function createOverlayApi (base: string) {
     pledges: async (poolId: string, opts: { includeSpent?: boolean, includeInvalid?: boolean } = {}) => (await lookup<PledgeView>({ op: 'pledges', poolId, ...opts })).map(o => o.ctx),
     settlement: async (poolId: string) => (await lookup<SettlementView>({ op: 'settlement', poolId })).map(o => o.ctx)[0],
     vaults: async (owner?: string) => (await lookup<VaultView>({ op: 'vaults', ...(owner !== undefined ? { owner } : {}) })).map(o => o.ctx),
+    /** credit outputs locked to a vault script (A-P5): vaultHash = sha256(vault script) hex */
+    vaultCredits: async (vaultHash: string) => (await lookup<{ tokenId: string, amt: string, sym?: string, spent: boolean }>({ op: 'vaultCredits', vaultHash })).map(o => o.ctx),
     /** liveness: overlay-express lists its topic managers */
     healthz: async (o?: RequestOptions) => {
       const res = await (o?.fetchImpl ?? fetch)(`${base}/listTopicManagers`, { signal: AbortSignal.timeout(o?.timeoutMs ?? 4_000) })

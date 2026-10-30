@@ -171,3 +171,12 @@ describe('mock scenario (Coop Rail beat)', () => {
     expect(store.getState().vaults.byId[MOCK_VAULT_ID]?.balanceSats).toBe(before + 985)
   })
 })
+
+describe('mock scenario (vault-locked credits)', () => {
+  it('the vault agent\'s credits land in its vault after the settlement', () => {
+    const steps = scenario.buildCycle(0, Date.parse('2026-10-30T18:00:00Z'))
+    for (const s of steps) { if (s.label === 'eval redeems a credit') break; s.run() }
+    const v = store.getState().vaults.byId[MOCK_VAULT_ID]
+    expect(v?.credits?.[0]?.amt).toBe('300')
+  })
+})

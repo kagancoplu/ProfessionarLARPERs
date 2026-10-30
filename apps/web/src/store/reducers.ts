@@ -185,6 +185,11 @@ export function applyEventToData (data: StoreData, e: AnyCoopEvent): StoreData {
       const entry = prev ?? { vaultId: e.data.vaultId, owner: e.data.owner, agent: e.data.agent, guard: '', scriptHex: '', verified: false, balanceSats: 0, utxos: [], decisions: [] }
       return { ...d, vaults: { byId: { ...d.vaults.byId, [e.data.vaultId]: entry } } }
     }
+    case 'vault_credits': {
+      const prev = d.vaults.byId[e.data.vaultId]
+      if (prev === undefined) return d
+      return { ...d, vaults: { byId: { ...d.vaults.byId, [e.data.vaultId]: { ...prev, credits: e.data.credits } } } }
+    }
     case 'vault_paused':
     case 'vault_resumed': {
       const paused = e.type === 'vault_paused'

@@ -44,6 +44,7 @@ export function AgentsPage () {
                     <div className="flex flex-col gap-1" data-testid="agent-vault">
                       <p className="label text-ink-muted">Vault</p>
                       <Counter value={vault.balanceSats} size="s" unit="sat" tone="gold" />
+                      {(vault.credits ?? []).map(c => <span key={c.tokenId} className="text-[14px] leading-5">+ <Counter value={c.amt} size="s" unit={`${c.sym ?? 'credits'} locked in the vault`} /></span>)}
                       <p className="text-[14px] leading-5 text-ink-muted">guard decisions: {vault.decisions.filter(d => d.outcome === 'approved').length} approved · <span className={vault.decisions.some(d => d.outcome === 'denied') ? 'text-danger-dark' : ''}>{vault.decisions.filter(d => d.outcome === 'denied').length} refused</span></p>
                       {lastDenial !== undefined && <p className="text-[14px] leading-5 text-danger-dark">Last refusal: {lastDenial.reason}</p>}
                     </div>

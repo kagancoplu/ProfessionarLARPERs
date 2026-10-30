@@ -37,3 +37,23 @@ describe('live polling (listings, agents, vaults)', () => {
     expect(store.getState().vaults.byId.v1?.decisions).toEqual([])
   })
 })
+
+describe('vault-locked credits', () => {
+  it('hashes the vault script like core, sums credits per token, publishes vault_credits only on change', async () => {
+    const { vaultScriptHash: coreHash } = await import('@agentcoop/core')
+    const { pollVaultCredits, summariseCredits, vaultScriptHash } = await import('../src/events/livePoll')
+    const script = '63' + '21' + '02'.padEnd(66, 'a') + 'ac67' + '5221' + '03'.padEnd(66, 'b') + '21' + '02'.padEnd(66, 'c') + '52ae68'
+    expect(await vaultScriptHash(script)).toBe(coreHash(script))
+    expect(summariseCredits([{ tokenId: 't_0', amt: '200' }, { tokenId: 't_0', amt: '100' }, { tokenId: 't_0', amt: '50', spent: true }])).toEqual([{ tokenId: 't_0', amt: '300', utxos: 2 }])
+    const store = createAppStore('live', undefined, { ...DEFAULT_SETTINGS })
+    const bus = createBus(store)
+    store.getState().hydrateVaults([{ vaultId: 'v1', owner: '03o', agent: '02a', guard: '02g', scriptHex: script, verified: true, balanceSats: 0, utxos: [] }])
+    const seen: string[] = []
+    bus.subscribe(e => seen.push(e.type))
+    const lookup = async (): Promise<Array<{ tokenId: string, amt: string }>> => [{ tokenId: 't_0', amt: '300' }]
+    await pollVaultCredits(bus, store, lookup)
+    await pollVaultCredits(bus, store, lookup)
+    expect(seen.filter(t => t === 'vault_credits')).toHaveLength(1)
+    expect(store.getState().vaults.byId.v1?.credits?.[0]?.amt).toBe('300')
+  })
+})

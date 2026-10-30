@@ -22,6 +22,7 @@ export interface CoopEvent<T extends string = string, D = unknown> {
   agent?: string
 }
 
+export interface VaultCreditView { tokenId: string, sym?: string, amt: string, utxos: number }
 export type AgentAction = 'pledge' | 'skip' | 'redeem' | 'retail' | 'list' | 'buy' | 'sign' | 'reject'
 
 export interface CoopEventMap {
@@ -59,6 +60,8 @@ export interface CoopEventMap {
   cosign_denied: { agent: string, vaultId?: string, kind: string, poolId?: string, sats?: number, reason: string }
   policy_updated: { agent: string, owner?: string }
   vault_registered: { vaultId: string, owner: string, agent: string }
+  /** credits locked to a vault script (A-P5 creditLock): only agent + guard can move them, the owner can always take them out */
+  vault_credits: { vaultId: string, credits: VaultCreditView[] }
   vault_paused: { agent: string }
   vault_resumed: { agent: string }
   // provider (optional, C)
