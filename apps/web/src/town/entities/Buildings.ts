@@ -102,30 +102,48 @@ export class Bell extends Phaser.GameObjects.Sprite {
 }
 
 /** A market stall: empty, or showing a listing (crate + price label). */
+/**
+ * A market stall in two layers so a person can stand *in* it: the back (awning, posts) is drawn behind the
+ * keeper or seller, the counter's front and the goods on it in front. Shows produce (scenery) or a listing.
+ */
 export class Stall extends Phaser.GameObjects.Container {
   readonly img: Phaser.GameObjects.Image
+  readonly counterFront: Phaser.GameObjects.Container
   readonly crate: Phaser.GameObjects.Image
+  readonly produce: Phaser.GameObjects.Image[]
   private label: Phaser.GameObjects.DOMElement
   outpoint?: string
+  /** a person behind the counter stands here (depth between the two layers) */
+  get standY (): number { return this.y - 6 }
   constructor (scene: Phaser.Scene, x: number, y: number, frame: string, readonly slot: number) {
     super(scene, x, y)
     this.img = scene.add.image(0, 0, 'town', frame).setOrigin(0.5, 1)
-    this.crate = scene.add.image(0, -6, 'town', 'chest_0').setOrigin(0.5, 1).setVisible(false)
-    this.label = makeLabel(scene, 0, -52, '', { size: 6, tone: 'gold' })
+    this.label = makeLabel(scene, 0, -60, '', { size: 6, tone: 'gold' })
     this.label.setVisible(false)
-    this.add([this.img, this.crate, this.label])
+    this.add([this.img, this.label])
     this.setSize(48, 48)
     this.setInteractive(new Phaser.Geom.Rectangle(-24, -48, 48, 48), Phaser.Geom.Rectangle.Contains)
-    this.setDepth(y)
+    this.setDepth(y - 12)
     scene.add.existing(this)
+    // front layer: the counter (bottom 17 px of the same frame, cropped) and what lies on it
+    const front = scene.add.image(0, 0, 'town', frame).setOrigin(0.5, 1)
+    front.setCrop(0, front.height - 17, front.width, 17)
+    this.crate = scene.add.image(0, -8, 'town', 'chest_0').setOrigin(0.5, 1).setVisible(false)
+    const goods = ['pumpkin_0', 'carrot_0', 'tomato_0', 'wheat_0']
+    this.produce = [-10, 0, 10].map((dx, i) => scene.add.image(dx, -10, 'town', goods[(slot + i) % goods.length]!).setOrigin(0.5, 1).setScale(0.75))
+    this.counterFront = scene.add.container(x, y, [front, ...this.produce, this.crate]).setDepth(y)
   }
   get front (): { x: number, y: number } { return { x: this.x, y: this.y + 10 } }
   show (outpoint: string, credits: string, askSats: string): void {
     this.outpoint = outpoint
     this.crate.setVisible(true)
-    this.label.setHTML(`${credits} credits · ${Number(askSats).toLocaleString('en-GB').replace(/,/g, ' ')} sat`).setVisible(true)
+    for (const p of this.produce) p.setVisible(false)
+    // two short lines: neighbouring stalls are only four tiles apart
+    this.label.setHTML(`${credits} cr<br>${Number(askSats).toLocaleString('en-GB').replace(/,/g, ' ')} sat`).setVisible(true)
   }
-  clear (): void { this.outpoint = undefined; this.crate.setVisible(false); this.label.setVisible(false) }
+  clear (): void { this.outpoint = undefined; this.crate.setVisible(false); this.label.setVisible(false); for (const p of this.produce) p.setVisible(true) }
+  /** where a customer stands */
+  get counter (): { x: number, y: number } { return { x: this.x, y: this.y + 10 } }
 }
 
 /** A short parchment banner in the world (settlement summary). */

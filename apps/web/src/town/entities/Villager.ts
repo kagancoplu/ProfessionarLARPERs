@@ -1,12 +1,14 @@
 import Phaser from 'phaser'
 import { makeLabel } from './dom'
+import { findPath } from '../map/path'
 import { ICONS } from '../../ui/icons.generated'
 
 export type Profile = 'finetune' | 'eval' | 'inference' | 'visitor'
 export type Facing = 'down' | 'side' | 'up'
 const SPEED = 56 // px/s in world units
 /** chars.json (tools/packs/chars.mjs): 8 premade NPCs + 12 modular villagers; 'you' is villager_00 */
-export const CHARS = ['bob', 'katy', 'mike', 'chloe', 'jack', 'buba', 'fin', 'bruno', 'villager_01', 'villager_02', 'villager_03', 'villager_04', 'villager_05', 'villager_06', 'villager_07', 'villager_08', 'villager_09', 'villager_10', 'villager_11']
+/** handed out to agents in arrival order (bruno is the guard; chloe, buba, fin and jack keep the stalls) */
+export const CHARS = ['bob', 'katy', 'mike', 'villager_01', 'villager_02', 'villager_03', 'villager_04', 'villager_05', 'villager_06', 'villager_07', 'villager_08', 'villager_09', 'villager_10', 'villager_11']
 export const ANIMS = ['idle_down', 'idle_side', 'idle_up', 'walk_down', 'walk_side', 'walk_up'] as const
 
 export function ensureCharAnims (scene: Phaser.Scene, char: string): void {
@@ -38,6 +40,10 @@ export class Villager extends Phaser.GameObjects.Container {
   busy = false
   /** controlled by the keyboard (avatar mode): no wandering, no story walks */
   player = false
+  /** scenery (stall keepers): not an agent, never opens an agent drawer */
+  decor = false
+  /** where an idle walk may go besides home (set by the scene: square, market, board) */
+  wanderSpots: Array<{ x: number, y: number, say?: () => string | undefined }> = []
   slotIndex = 0
   purseReserved = false
 
@@ -63,20 +69,30 @@ export class Villager extends Phaser.GameObjects.Container {
     if (Math.abs(dx) >= Math.abs(dy)) { this.facing = 'side'; this.sprite.setFlipX(dx < 0) } else this.facing = dy < 0 ? 'up' : 'down'
   }
 
-  /** Walk to (x, y); a new walkTo cancels the previous one (interruptible). Resolves on arrival or cancel. */
-  walkTo (x: number, y: number): Promise<void> {
+  /** Walk to (x, y) around houses and water (A* on the collision map, roads preferred); a new walkTo cancels
+   *  the previous one (interruptible). Resolves on arrival or cancel. */
+  walkTo (x: number, y: number, opts: { exact?: boolean } = {}): Promise<void> {
     if (this.player) return Promise.resolve()
     this.cancelWalk()
-    const dist = Phaser.Math.Distance.Between(this.x, this.y, x, y)
-    this.face(x - this.x, y - this.y)
-    this.sprite.play(`${this.char}_walk_${this.facing}`, true)
+    const legs = findPath({ x: this.x, y: this.y }, { x, y })
+    // `exact`: step the last bit onto a blocked spot on purpose (behind a stall's counter)
+    const last = legs[legs.length - 1]
+    if (opts.exact === true && (last === undefined || last.x !== x || last.y !== y)) legs.push({ x, y })
     return new Promise<void>(resolve => {
       this.walkResolve = resolve
-      this.walkTween = this.scene.tweens.add({
-        targets: this, x, y, duration: Math.max(120, (dist / SPEED) * 1000) / ((this.scene.registry.get('speed') as number) ?? 1),
-        onUpdate: () => { this.setDepth(this.y) },
-        onComplete: () => { this.stopWalk(); resolve() }
-      })
+      const next = (i: number): void => {
+        const leg = legs[i]
+        if (leg === undefined) { this.stopWalk(); resolve(); return }
+        const dist = Phaser.Math.Distance.Between(this.x, this.y, leg.x, leg.y)
+        this.face(leg.x - this.x, leg.y - this.y)
+        this.sprite.play(`${this.char}_walk_${this.facing}`, true)
+        this.walkTween = this.scene.tweens.add({
+          targets: this, x: leg.x, y: leg.y, duration: Math.max(60, (dist / SPEED) * 1000) / ((this.scene.registry.get('speed') as number) ?? 1),
+          onUpdate: () => { this.setDepth(this.y) },
+          onComplete: () => { next(i + 1) }
+        })
+      }
+      next(0)
     })
   }
 
@@ -92,7 +108,14 @@ export class Villager extends Phaser.GameObjects.Container {
       callback: () => {
         if (this.busy || this.player || this.walkTween !== undefined) return
         if (Phaser.Math.Between(0, 2) === 0) { this.facing = (['down', 'side', 'up'] as const)[Phaser.Math.Between(0, 2)]!; this.sprite.setFlipX(Math.random() < 0.5); this.idle(); return }
-        void this.walkTo(this.home.x + Phaser.Math.Between(-28, 28), this.home.y + Phaser.Math.Between(-8, 14))
+        // half the time around home, otherwise somewhere in the village (the square, a stall, the board)
+        const spot = Math.random() < 0.5 || this.wanderSpots.length === 0 ? undefined : this.wanderSpots[Phaser.Math.Between(0, this.wanderSpots.length - 1)]!
+        if (spot === undefined) { void this.walkTo(this.home.x + Phaser.Math.Between(-28, 28), this.home.y + Phaser.Math.Between(-8, 14)); return }
+        void this.walkTo(spot.x + Phaser.Math.Between(-6, 6), spot.y + Phaser.Math.Between(-2, 4)).then(() => {
+          const line = spot.say?.()
+          if (line !== undefined && !this.busy) this.say(line, 'parchment', 2600)
+          this.facing = 'up'; this.idle()
+        })
       }
     })
   }
@@ -104,6 +127,9 @@ export class Villager extends Phaser.GameObjects.Container {
     const key = `${this.char}_walk_${this.facing}`
     if (this.sprite.anims.currentAnim?.key !== key) this.sprite.play(key, true)
   }
+
+  /** hide the name tag (a keeper steps back while an agent sells at its stall) */
+  showName (on: boolean): void { this.nameLabel.setVisible(on) }
 
   say (text: string, tone: 'parchment' | 'danger' | 'gold' | 'grass' = 'parchment', ms = 4000): void {
     this.bubble?.destroy()

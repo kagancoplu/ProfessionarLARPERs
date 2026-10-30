@@ -32,6 +32,7 @@ export class TownScene extends Phaser.Scene {
   readonly houses: House[] = []
   readonly stalls: Stall[] = []
   readonly chests = new Map<string, VaultChest>()
+  readonly keepers: Villager[] = []
   harbor!: Building
   boat!: Phaser.GameObjects.Image
   guard!: Guard
@@ -91,6 +92,15 @@ export class TownScene extends Phaser.Scene {
     this.coop = new Building(this, COOP.x, COOP.y, COOP.frame, 'Coop hall · vaults & guard', door(COOP))
     for (const h of HOUSES) this.houses.push(new House(this, h.x, h.y, h.frame, (h.slot ?? 1) - 1))
     for (const st of STALLS) this.stalls.push(new Stall(this, st.x, st.y, st.frame, (st.slot ?? 1) - 1))
+    // stall keepers: scenery (Kenmi NPCs), not agents; credits are sold by the agents who list them
+    const KEEPERS: Array<[string, string]> = [['chloe', 'Chloe'], ['buba', 'Buba'], ['fin', 'Fin'], ['jack', 'Jack']]
+    this.stalls.forEach((st, i) => {
+      const [char, name] = KEEPERS[i % KEEPERS.length]!
+      const k = new Villager(this, `keeper:${i}`, 'visitor', name, st.x - 10, st.standY, char)
+      k.decor = true; k.busy = true
+      k.on('pointerup', () => k.say(st.outpoint !== undefined ? 'Credits from an agent: buy them on the Market page.' : 'Only vegetables here. Agents list credits; I keep the stall.', 'parchment', 3200))
+      this.keepers.push(k)
+    })
     const gate = POINTS.gate!
     this.guard = new Guard(this, gate.x + 58, gate.y + 8)
     const harbor = PLACES.find(p => p.kind === 'fisherman')!
@@ -185,7 +195,7 @@ export class TownScene extends Phaser.Scene {
     const v = this.villagers.get(agentIdentity)
     if (v === undefined) return
     const gate = POINTS.gate!
-    const stranger = new Stranger(this, gate.x - 24, gate.y + 12)
+    const stranger = new Stranger(this, gate.x + 4, gate.y + 8)
     await stranger.whisper({ x: v.x, y: v.y }, text, speed)
     v.say('…the instruction says to pledge everything', 'parchment', 2500)
     this.pendingStranger = stranger
@@ -210,6 +220,22 @@ export class TownScene extends Phaser.Scene {
     this.tweens.add({ targets: coin, x: to.x, y: to.y - 10, duration: 1100, ease: 'Quad.InOut', onComplete: () => { coin.destroy(); chest?.setBalance(Number(this.deps.store.getState().vaults.byId[vaultId ?? '']?.balanceSats ?? 0)) } })
   }
 
+  /** idle destinations: the square, each stall's counter (with a line about its listing), the notice board */
+  wanderSpots (): Villager['wanderSpots'] {
+    const c = this.squareCentre
+    const spots: Villager['wanderSpots'] = [{ x: c.x - 30, y: c.y + 10 }, { x: c.x + 30, y: c.y + 10 }]
+    for (const st of this.stalls) {
+      spots.push({ ...st.counter, say: () => {
+        const l = st.outpoint !== undefined ? this.deps.store.getState().listings.byOutpoint[st.outpoint] : undefined
+        if (l === undefined) return Math.random() < 0.3 ? 'Only vegetables today.' : undefined
+        const per = Number(l.askSats) / Number(l.credits)
+        return `${l.credits} credits at ${per.toFixed(0)} sat each? Retail is 50…`
+      } })
+    }
+    spots.push({ ...this.board.approach, say: () => (this.board.poolId !== undefined ? 'How full is the pool?' : undefined) })
+    return spots
+  }
+
   pendingStranger?: Stranger
   /** After the guard's refusal the stranger runs away. */
   strangerFlees (): void { const s = this.pendingStranger; this.pendingStranger = undefined; if (s !== undefined) { const gate = POINTS.gate!; void s.flee(gate.x - 40, gate.y + 12) } }
@@ -228,6 +254,7 @@ export class TownScene extends Phaser.Scene {
     house?.setOwner(identity, name)
     const char = prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!
     const v = new Villager(this, identity, prof, name, spot.x, spot.y, char)
+    v.wanderSpots = this.wanderSpots()
     v.slotIndex = this.villagers.size
     v.on('pointerup', () => this.deps.store.getState().openDrawer('agent', identity))
     this.villagers.set(identity, v)

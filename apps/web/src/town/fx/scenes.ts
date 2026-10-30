@@ -72,14 +72,21 @@ export function settlementFx (town: TownScene, txid: string, participants: numbe
 }
 
 /** A sweep: the buyer walks to the stall, the crate goes with them, the stall empties. */
-export function sweepFx (town: TownScene, stall: Stall, buyer: Villager | undefined, credits: string) {
+export function sweepFx (town: TownScene, stall: Stall, buyer: Villager | undefined, credits: string, seller?: Villager) {
   return async (ctx: FxContext): Promise<void> => {
-    if (buyer !== undefined && !ctx.reducedMotion) { buyer.busy = true; await buyer.walkTo(stall.front.x, stall.front.y) }
+    if (buyer !== undefined && !ctx.reducedMotion) { buyer.busy = true; await buyer.walkTo(stall.counter.x, stall.counter.y) }
     const crate = town.add.image(stall.x, stall.y - 6, 'town', 'chest_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
     stall.clear()
     const to = buyer ?? { x: stall.x, y: stall.y - 40 }
     await new Promise<void>(resolve => town.tweens.add({ targets: crate, x: to.x, y: to.y - 20, alpha: buyer !== undefined ? 1 : 0, duration: 500 / ctx.speed, onComplete: () => { crate.destroy(); resolve() } }))
+    // the payment goes the other way: a coin from the buyer to the seller (one transaction: credits ⇄ sats)
+    if (buyer !== undefined && seller !== undefined) {
+      const coin = town.add.sprite(buyer.x, buyer.y - 18, 'icons', ICONS.coin).setOrigin(0.5, 1).setDepth(DEPTH.banner)
+      await new Promise<void>(resolve => town.tweens.add({ targets: coin, x: seller.x, y: seller.y - 18, duration: 600 / ctx.speed, ease: 'Quad.InOut', onComplete: () => { coin.destroy(); resolve() } }))
+    }
     buyer?.say(`Bought ${credits} credits at the stall`, 'gold', 3000)
+    if (seller !== undefined && !seller.player) { seller.say('Sold!', 'gold', 2000); seller.busy = false; void seller.goHome() }
+    town.keepers[town.stalls.indexOf(stall)]?.showName(true)
     if (buyer !== undefined) { buyer.busy = false; void buyer.goHome() }
   }
 }

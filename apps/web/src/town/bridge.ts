@@ -97,21 +97,23 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
         if (seller !== undefined && stall !== undefined && !seller.player) {
           stall.show(e.data.listing.outpoint, e.data.listing.credits, e.data.listing.askSats)
           seller.busy = true
-          void seller.walkTo(stall.x + 4, stall.y - 3).then(() => { seller.say(`${e.data.listing.credits} credits for ${e.data.listing.askSats} sat!`, 'gold', 3000) })
+          town.keepers[town.stalls.indexOf(stall)]?.showName(false)
+          void seller.walkTo(stall.x + 10, stall.standY, { exact: true }).then(() => { seller.say(`${e.data.listing.credits} credits for ${e.data.listing.askSats} sat!`, 'gold', 3000) })
         }
         break
       }
       case 'listing_cancelled': {
         const seller = town.villagers.get(e.data.listing.seller)
         if (seller !== undefined && !seller.player) { seller.busy = false; void seller.goHome() }
+        const st = town.stalls.find(s => s.outpoint === e.data.listing.outpoint)
+        if (st !== undefined) town.keepers[town.stalls.indexOf(st)]?.showName(true)
         break
       }
       case 'listing_filled': {
         const seller = town.villagers.get(e.data.listing.seller)
-        if (seller !== undefined && !seller.player) { seller.say('Sold!', 'gold', 2000); seller.busy = false; void seller.goHome() }
         const buyer = e.data.buyer !== undefined ? town.villagers.get(e.data.buyer) : undefined
         const stall = town.stalls.find(s => s.outpoint === e.data.listing.outpoint)
-        if (stall !== undefined) town.fx.enqueue('sweep', sweepFx(town, stall, buyer, e.data.listing.credits))
+        if (stall !== undefined) town.fx.enqueue('sweep', sweepFx(town, stall, buyer, e.data.listing.credits, seller))
         break
       }
       case 'credits_redeemed': {

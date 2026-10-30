@@ -59,8 +59,10 @@ export class Stranger extends Villager {
 
   async flee (toX: number, toY: number): Promise<void> {
     this.say('…', 'parchment', 800)
-    await this.walkTo(toX, toY)
-    this.destroy()
+    // never linger: off the map (exact, past the gate) or gone after 6 s, whichever comes first
+    const gone = new Promise<void>(resolve => this.scene.time.delayedCall(6_000, resolve))
+    await Promise.race([this.walkTo(toX, toY, { exact: true }), gone])
+    this.scene.tweens.add({ targets: this, alpha: 0, duration: 300, onComplete: () => this.destroy() })
   }
 }
 

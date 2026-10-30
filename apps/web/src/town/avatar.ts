@@ -47,7 +47,8 @@ export class AvatarController {
     for (const h of t.houses) if (h.owner !== undefined) out.push({ label: `${s.agents.byIdentity[h.owner]?.name ?? 'villager'}'s house`, x: h.door.x, y: h.door.y, open: () => s.openDrawer('agent', h.owner!) })
     for (const c of t.chests.values()) out.push({ label: 'Vault chest', x: c.x, y: c.y + 6, open: () => s.openDrawer('vault', c.vaultId) })
     for (const st of t.stalls) if (st.outpoint !== undefined) out.push({ label: 'Market stall', x: st.front.x, y: st.front.y, open: () => s.openDrawer('listing', st.outpoint!) })
-    for (const v of t.villagers.values()) if (v !== this.villager && v.identity !== 'guard') out.push({ label: v.label, x: v.x, y: v.y, open: () => s.openDrawer('agent', v.identity) })
+    for (const k of t.keepers) out.push({ label: `${k.label} (stall)`, x: k.x, y: k.y + 8, open: () => { k.emit('pointerup') } })
+    for (const v of t.villagers.values()) if (v !== this.villager && v.identity !== 'guard' && !v.decor) out.push({ label: v.label, x: v.x, y: v.y, open: () => s.openDrawer('agent', v.identity) })
     return out
   }
 
