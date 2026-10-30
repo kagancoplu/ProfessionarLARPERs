@@ -8,11 +8,12 @@ test('mock mode: feed flows, kit and debug render, mock Desktop connects', async
   // the scenario publishes within seconds
   await expect(page.getByTestId('live-feed').locator('li').first()).toBeVisible({ timeout: 10_000 })
   await expect(page.getByTestId('corner-counters')).toContainText('Held in custody')
+  // the Town (Phaser) comes up with its canvas
+  await expect(page.getByTestId('town').locator('canvas')).toBeVisible({ timeout: 20_000 })
 
   await page.goto('/_kit')
   await expect(page.getByTestId('kit')).toBeVisible()
   await expect(page.getByRole('heading', { name: /Nobody held anyone/ })).toBeVisible()
-  await expect(page.getByTestId('atlas-status')).toContainText('frames from the atlas', { timeout: 20_000 })
 
   await page.goto('/_debug')
   await expect(page.getByTestId('debug')).toBeVisible()

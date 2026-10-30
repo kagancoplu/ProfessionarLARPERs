@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "pixel-art": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@davidkim9/pixel-art-mcp@latest"
+      ],
+      "env": {}
+    }
+  }
+}

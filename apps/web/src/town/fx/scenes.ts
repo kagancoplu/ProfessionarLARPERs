@@ -8,6 +8,7 @@ import type { TownScene } from '../scenes/TownScene'
 import type { Villager } from '../entities/Villager'
 import { banner } from '../entities/Buildings'
 import { shortHex } from '../../api/woc'
+import { DEPTH } from '../game'
 
 export function pledgeFx (town: TownScene, v: Villager, credits: string, coinSats: number) {
   return async (ctx: FxContext): Promise<void> => {
@@ -17,7 +18,7 @@ export function pledgeFx (town: TownScene, v: Villager, credits: string, coinSat
       if (!ctx.reducedMotion) await v.walkTo(to.x + (v.slotIndex % 2 === 0 ? -10 : 10), to.y + 4)
       if (ctx.cancelled()) return
       // the coin arcs into the sack, but the purse only glows: the sats stay in the wallet
-      const coin = town.add.sprite(v.x, v.y - 14, 'atlas', 'coin_0').setOrigin(0.5, 1)
+      const coin = town.add.sprite(v.x, v.y - 14, 'town', 'icon_res_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
       await new Promise<void>(resolve => town.tweens.add({ targets: coin, x: town.board.x + 14, y: town.board.y - 6, duration: 500 / ctx.speed, ease: 'Quad.Out', onComplete: () => { coin.destroy(); resolve() } }))
       town.board.flyCredits(`+${credits} credits`)
       v.setPurse('reserved')
@@ -32,7 +33,7 @@ export function pledgeFx (town: TownScene, v: Villager, credits: string, coinSat
 export function lockInFx (town: TownScene) {
   return async (ctx: FxContext): Promise<void> => {
     await town.settle()
-    town.board.hourglass.setVisible(true).play('hourglass_turn', true)
+    town.board.hourglass.setVisible(true).play('anim_lantern', true)
     const centre = town.squareCentre
     const vs = [...town.villagers.values()].filter(v => v.purseReserved)
     await Promise.all(vs.map((v, i) => { v.busy = true; return ctx.reducedMotion ? Promise.resolve() : v.walkTo(centre.x - 24 + i * 16, centre.y + 20) }))
@@ -54,7 +55,7 @@ export function settlementFx (town: TownScene, txid: string, participants: numbe
       await ctx.wait(400)
       const house = town.houseOf(v.identity)
       if (house !== undefined) void house.dropChest()
-      const coin = town.add.sprite(v.x, v.y - 16, 'atlas', 'coin_1').setOrigin(0.5, 1)
+      const coin = town.add.sprite(v.x, v.y - 16, 'town', 'icon_res_0').setOrigin(0.5, 1).setDepth(DEPTH.banner)
       town.tweens.add({ targets: coin, x: town.workshop.door.x, y: town.workshop.door.y - 10, duration: 900 / ctx.speed, ease: 'Quad.In', onComplete: () => coin.destroy() })
       v.setPurse('idle')
       v.busy = false
