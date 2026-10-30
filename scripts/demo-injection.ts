@@ -2,7 +2,7 @@
  * D-P2.3 — the demo moment of FINAL-IDEA §4.9 / §11: a prompt-injected agent tries
  * to put the whole budget into a pool; the guard refuses and nothing moves.
  *
- *   npm run demo-injection -w @agentcoop/scripts     (Node 24: tsx + register-sdk + scripts/lib/register-cjs.mjs)
+ *   npm run demo-injection -w @agentcoop/scripts     (tsx + register-sdk, which also wraps knex; Node 22.22 or 24)
  *
  * Offline, on wallet-toolbox's mock chain (every script verified) with Track B's
  * overlay in-process: no keys, no sats, ~15 s. The agent is a deliberately

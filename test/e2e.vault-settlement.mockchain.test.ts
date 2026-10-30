@@ -36,6 +36,7 @@ import { ManualHeight } from '../apps/coordinator/src/chain'
 import { coreProtocol } from '../apps/coordinator/src/protocol'
 import { noSpentChecker } from '../apps/coordinator/src/spent'
 import { startCoordinator, type RunningCoordinator } from '../apps/coordinator/src/server'
+import { signHello } from '../apps/coordinator/src/auth'
 import { Guard } from '../apps/guard/src/guard'
 import { createGuardApp } from '../apps/guard/src/server'
 import { createVault, fundVault, putPolicy, registerVault, withdrawVault, type GuardPolicyInput, type VaultInfo } from '../apps/owner-cli/src/vault-ops'
@@ -88,7 +89,8 @@ async function agentBot (w: Wallet, pledges: Map<string, Signing>): Promise<{ ws
   const messages: any[] = []
   const plans = new Map<string, SettlementPlan>()
   const rejects: string[] = []
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
+  // listen before 'open': the coordinator's challenge is the first frame (B.P5a)
+  const opened = new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
   const reject = (msg: any, reason: string): void => {
     rejects.push(reason)
     ws.send(JSON.stringify({ type: 'sign_reject', poolId: msg.poolId, round: msg.round, reason }))
@@ -96,6 +98,11 @@ async function agentBot (w: Wallet, pledges: Map<string, Signing>): Promise<{ ws
   ws.on('message', d => {
     const msg = JSON.parse(d.toString())
     messages.push(msg)
+    if (msg.type === 'challenge') {
+      // proven hello (B.P5a): sign_request only reaches sessions that signed the coordinator's nonce
+      void signHello(w, new URL(coop.url).host, msg.nonce).then(sig => { ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [], sig })) })
+      return
+    }
     if (msg.type !== 'sign_request') return
     void (async () => {
       const s = pledges.get(msg.poolId)
@@ -122,7 +129,11 @@ async function agentBot (w: Wallet, pledges: Map<string, Signing>): Promise<{ ws
       }
     })()
   })
-  ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [] }))
+  await opened
+  for (const end = Date.now() + 10_000; !messages.some(m => m.type === 'hello_ack' && m.proven === true);) {
+    if (Date.now() > end) throw new Error(`agent bot: no proven hello_ack; got ${JSON.stringify(messages.map(m => m.type))}`)
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
   return { ws, messages, plans, rejects }
 }
 
