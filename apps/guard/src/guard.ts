@@ -39,6 +39,32 @@ export interface GuardOptions {
   arcadeUrl?: string
 }
 
+/** MASTER §3.10 event envelope (src 'guard'). Identity keys are public; amounts included, nothing secret. */
+export interface GuardEvent {
+  id: string
+  ts: string
+  src: 'guard'
+  type: 'cosign_approved' | 'cosign_denied' | 'policy_updated' | 'vault_registered'
+  data: Record<string, unknown>
+  poolId?: string
+  agent?: string
+}
+
+/** GET /decisions row (MASTER §3.7). */
+export interface DecisionView {
+  id: number
+  ts: string
+  agent?: string
+  vaultId?: string
+  kind: string
+  poolId?: string
+  sats?: number
+  outcome: 'approved' | 'denied'
+  reason?: string
+}
+
+const EVENT_BUFFER = 500
+
 interface Prepared {
   kind: string
   req?: CosignRequest
@@ -53,6 +79,10 @@ const fail = (status: number, reason: string): GuardResult => ({ status, body: {
 
 export class Guard {
   private queue: Promise<unknown> = Promise.resolve()
+  /** The last events for GET /events (SSE, Last-Event-ID). */
+  readonly events: GuardEvent[] = []
+  private readonly listeners = new Set<(e: GuardEvent) => void>()
+  private eventSeq = 0
   /** verifyLineage results for the guard's lifetime: a pool checked at pledge time is instant in the settlement round (D-P2 §4.6). */
   readonly lineageCache: LineageCache = new Map()
   private readonly fetchTx: TxFetcher
@@ -77,6 +107,50 @@ export class Guard {
 
   private get lineage (): LineageOptions { return { fetchTx: this.fetchTx, cache: this.lineageCache } }
 
+  /** Subscribe to the event stream; returns the unsubscribe function. */
+  subscribe (fn: (e: GuardEvent) => void): () => void {
+    this.listeners.add(fn)
+    return () => { this.listeners.delete(fn) }
+  }
+
+  private emit (type: GuardEvent['type'], data: Record<string, unknown>, extra: { poolId?: string, agent?: string } = {}): void {
+    const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined))
+    const e: GuardEvent = { id: `guard:${++this.eventSeq}`, ts: new Date(this.now()).toISOString(), src: 'guard', type, data: clean, ...(extra.poolId !== undefined ? { poolId: extra.poolId } : {}), ...(extra.agent !== undefined ? { agent: extra.agent } : {}) }
+    this.events.push(e)
+    if (this.events.length > EVENT_BUFFER) this.events.shift()
+    for (const fn of this.listeners) { try { fn(e) } catch { /* a dead subscriber must not stop the guard */ } }
+  }
+
+  /** GET /policies/:agentIdentity — the owner's policy for this agent, or (for the agent) the latest one stored for it. */
+  getPolicyFor (authIdentity: string | undefined, agent: string): GuardResult {
+    if (authIdentity === undefined) return fail(401, 'authentication required')
+    if (!IDENTITY_RE.test(agent)) return fail(400, 'agent must be an identity key')
+    const found = this.store.policiesOf(agent).find(p => authIdentity === agent || p.owner === authIdentity)
+    if (found === undefined) return fail(404, 'no policy for this agent')
+    return { status: 200, body: found as unknown as Record<string, unknown> }
+  }
+
+  /** GET /decisions?agent=&limit= — newest first, for the agent itself or an owner with a vault for it. */
+  listDecisions (authIdentity: string | undefined, agent: string | undefined, limit: number): GuardResult {
+    if (authIdentity === undefined) return fail(401, 'authentication required')
+    const who = agent ?? authIdentity
+    if (!IDENTITY_RE.test(who)) return fail(400, 'agent must be an identity key')
+    if (who !== authIdentity && this.store.vaultsOf(authIdentity, who).length === 0) return fail(403, 'only the agent or an owner of one of its vaults')
+    const n = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 500) : 50
+    const rows: DecisionView[] = this.store.decisions.filter(d => d.agent === who).slice(-n).reverse().map(d => ({
+      id: d.id ?? 0,
+      ts: d.at,
+      agent: d.agent,
+      ...(d.vaultId !== undefined ? { vaultId: d.vaultId } : {}),
+      kind: d.kind,
+      ...(d.poolId !== undefined ? { poolId: d.poolId } : {}),
+      ...(d.outflowSats !== undefined ? { sats: d.outflowSats } : {}),
+      outcome: d.decision === 'allow' ? 'approved' : 'denied',
+      ...(d.reason !== undefined ? { reason: d.reason } : {})
+    }))
+    return { status: 200, body: { agent: who, decisions: rows } }
+  }
+
   /** PUT /vaults/:vaultId — the owner (authenticated identity) registers a vault naming this guard. */
   registerVault (authIdentity: string | undefined, vaultId: string, body: unknown): GuardResult {
     if (authIdentity === undefined) return fail(401, 'authentication required')
@@ -94,6 +168,7 @@ export class Guard {
     } else {
       this.store.putVault({ record, lockingScriptHex, keys, registeredAt: new Date(this.now()).toISOString() })
       this.log(`[guard] REGISTER vault=${short(vaultId)} owner=${short(record.owner)} agent=${short(record.agent)}`)
+      this.emit('vault_registered', { vaultId, owner: record.owner, agent: record.agent }, { agent: record.agent })
     }
     return { status: 200, body: { vaultId, lockingScriptHex, guardPub: keys.guardPub } }
   }
@@ -106,6 +181,7 @@ export class Guard {
     if (policy === null) return fail(400, 'invalid policy: allowProviders (identity keys) and maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats (integer sats ≥ 0)')
     if (this.store.vaultsOf(authIdentity, agent).length === 0) return fail(404, 'no vault of this owner for this agent')
     this.store.putPolicy(authIdentity, agent, policy, this.now())
+    this.emit('policy_updated', { agent, owner: authIdentity }, { agent })
     this.log(`[guard] POLICY owner=${short(authIdentity)} agent=${short(agent)} maxPerPool=${policy.maxPerPoolSats} weekly=${policy.weeklyCapSats} maxFee=${policy.maxFeeSats} allow=${policy.allowProviders.map(short).join(',')}`)
     return { status: 200, body: { owner: authIdentity, agent, policy } }
   }
@@ -253,6 +329,11 @@ export class Guard {
   private decide (d: Omit<Decision, 'at'>, status: number, ok?: Record<string, unknown>): GuardResult {
     const decision: Decision = { at: new Date(this.now()).toISOString(), ...d }
     this.store.logDecision(decision)
+    const approved = d.decision === 'allow'
+    this.emit(approved ? 'cosign_approved' : 'cosign_denied', {
+      agent: d.agent, vaultId: d.vaultId, kind: d.kind, poolId: d.poolId, sats: d.outflowSats,
+      ...(approved ? { paidSats: d.paidSats, feeSats: d.feeSats, committedSats: d.committedSats, hotSats: d.hotSats } : { reason: d.reason })
+    }, { poolId: d.poolId, agent: d.agent })
     const extra = `${d.poolId !== undefined ? ` pool=${short(d.poolId)}` : ''}${d.committedSats !== undefined ? ` committed=${d.committedSats}` : ''}${d.hotSats !== undefined ? ` hot=${d.hotSats}` : ''}`
     const amounts = d.decision === 'allow' ? ` outflow=${d.outflowSats} paid=${d.paidSats} fee=${d.feeSats}${extra}` : ` reason="${d.reason}"`
     this.log(`[guard] ${d.decision.toUpperCase()} ${d.kind} agent=${short(d.agent)} vault=${short(d.vaultId)}${amounts}`)

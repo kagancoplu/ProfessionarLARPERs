@@ -143,7 +143,7 @@ OP_FALSE OP_RETURN "agentcoop" "vault" {"v":"1","vaultId":"<32 hex>","owner":"<i
 
 ### 7.2 `/cosign` kontrolleri ve kapattıkları tehditler (FINAL-IDEA §8)
 
-Sırayla; ilk başarısız kontrol `403/400 { reason }` döner ve **hiçbir imza üretilmez**.
+Sırayla; ilk başarısız kontrol `403/400 { reason }` döner ve **hiçbir imza üretilmez**. *(D-P2 bu tabloyu `settle` S1–S7, pledge P1–P6 ve sıcak cüzdan H1–H3 ile genişletti: `plan/phases/D-P2.md` §7.)*
 
 | # | Kontrol | `reason` | Kapattığı tehdit |
 |---|---|---|---|

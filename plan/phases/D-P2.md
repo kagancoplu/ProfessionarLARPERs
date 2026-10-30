@@ -1,6 +1,6 @@
 # D-P2 — Guard'ın settlement yolu, pledge farkındalığı, sıcak cüzdan, injection senaryosu (ayrıntılı plan)
 
-> Track D · Faz 2 · hedef senkron **S3** · yazıldı: 2026-10-30 18:40 (kod öncesi), sonuçlar §11'de
+> Track D · Faz 2 · hedef senkron **S3** · yazıldı: 2026-10-30 18:40 (kod öncesi), sonuçlar §11'de (18:50)
 > Üst plan: `plan/track-D-vault-ops-rail.md` Faz 2 (2.1, 2.1b, 2.2, 2.3, 2.4, 2.5) · Arayüzler: `00-MASTER-PLAN.md §3.2, §3.3, §3.4 (verifySettlementPlan, planTransaction, verifyLineage), §3.7` · Fikir: `FINAL-IDEA.md §4.9, §8, §11` · Önceki faz: `plan/phases/D-P1.md` (G1–G13)
 
 ---
@@ -38,6 +38,7 @@ Vault'lu bir ajan koordinatörün imza turunda **guard ile birlikte** imzalasın
 | C.P3 `mode:'vault'` ajan | ✗ (C P1'de) | Injection demosu bağımsız (mockchain, kural tabanlı "itaatkâr ajan"); C'ye API duyurulur |
 | SDK çalışma zamanı köprüsü | ✅ **Node 24'te**: C'nin `packages/core/register-sdk.mjs` hook'u (MASTER §3.1). `npm run guard` Node 24.22 + hook ile kalktı (`/healthz` 200, boş `/cosign` 400, kimliksiz `PUT` 401); owner-cli ve `scripts/balances.ts` yükleniyor. ✗ **Node 22.22'de**: hook'un `load` zinciri CJS modüllerinde (`wallet-toolbox/out/src/index.js`, `express`) `source: undefined` döndürüyor → `ERR_INVALID_RETURN_PROPERTY_VALUE` (C'nin `npm run provider`'ı da) | D'nin `package.json` script'leri hook'u ekliyor; Node 24 kullan. Blokaj → C (hook sahibi), kök `engines` (A) `>=22` diyor |
 | Mainnet sats | ✗ | Mockchain; mainnet adımları hazır, koşulmuyor |
+| Track E istekleri (18:40, başka bir oturum `trackD`'ye yazdı; MASTER §3.7/§3.10) | D.P2'ye alındı | `GET /policies/:agent`, `GET /decisions`, `GET /events` (SSE, `CoopEvent`), CORS + `x-bsv-auth-*` expose. `vault-ops.ts` node importsuz kalmalı (zaten öyle) |
 
 ---
 
@@ -67,9 +68,11 @@ Vault'lu bir ajan koordinatörün imza turunda **guard ile birlikte** imzalasın
 | `apps/guard/src/guard.ts` | `kind` yönlendirme, ön hazırlık (havuz tx'i, soy önbelleği), `fetchTx`/`lineage` seçenekleri, çoklu ledger kaydı, `GET /vaults` cevabında `hotLast24hSats` | D |
 | `apps/guard/src/store.ts` | `LedgerEntry.kind/poolId/poolSats/hotSats`, `spentInWindow(…, exclude[])`, `poolSpent`, `hotSpent`, `findReservation`, rezervasyon çözümü | D |
 | `apps/guard/src/main.ts` | `ARCADE_URL`'den `fetchTx` | D |
+| `apps/guard/src/server.ts` | CORS (`GUARD_CORS_ORIGIN`, `x-bsv-auth-*` expose), `GET /policies/:agent`, `GET /decisions`, `GET /events` (SSE) — Track E | D |
+| `scripts/lib/register-cjs.mjs` (yeni) | demo için `knex` ESM sarmalayıcısı (A'nın mockchain yardımcısı tsx altında) | D |
 | `packages/core/src/signers/VaultSigner.ts` | `CosignContext.poolBEEF?`, `hotWallet?`; settle'da `txBEEF` gönderilmez; `spendFromVault` çıktı basket/etiket + ek context, yayın hatasında `relinquishOutput`; yeni: `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `hotWalletScript`, `ANYONE_IDENTITY_KEY` | D |
 | `apps/owner-cli/src/chain.ts` | `findVaultUtxos`: B'nin overlay'i (`{ op:'vaults', owner }`) ikinci kaynak (`OVERLAY_URL`) | D |
-| `apps/guard/test/settle.test.ts` (yeni) | settle/pledge/sıcak cüzdan saf testleri (mockchain'siz tx'ler) | D |
+| `apps/guard/test/pledge.test.ts` (yeni) | pledge (P1–P6), havuz tx'i okuma, ledger rezervasyonları (mockchain'siz tx'ler); settle'ın tamamı e2e'de | D |
 | `test/e2e.vault-settlement.mockchain.test.ts` (yeni; A.3.2 ile ortak) | §9.2 | D (+A) |
 | `test/vault.mockchain.test.ts` | sıcak cüzdan + relinquish senaryoları | D |
 | `scripts/demo-injection.ts` (yeni) | 2.3 | D |
@@ -161,7 +164,7 @@ Sıcak cüzdana geçen para artık guard'ın kontrolünde değil (tasarım gere�
 
 ## 9. Test senaryoları
 
-### 9.1 Birim (`apps/guard/test/settle.test.ts`; mockchain yok, elle kurulmuş tx'ler)
+### 9.1 Birim (`apps/guard/test/pledge.test.ts`; mockchain yok, elle kurulmuş tx'ler)
 1. Pledge: izinli havuz → izin, kayıtlar (A, reserve:A); allowlist dışı → `provider not allowed`; coin + bedel > `maxPerPoolSats` → red; haftalık rezervasyonla aşım → red; out0 vault dışı → `pledge layout`; başkası adına kayıt → red; havuz tx'i yanlış txid → red; soy başarısız → `LINEAGE_FAILED`.
 2. Sıcak cüzdan: doğru türetme → izin; başka alıcı → `hot wallet proof mismatch`; 24 sa tavan → red; `maxPerPoolSats` sıcak ödemeyi saymaz.
 3. Ledger: rezervasyon settlement'la çözülür (haftalık düşer), iptal 0'a çeker, ikinci çözüm en büyüğü tutar.
@@ -196,6 +199,12 @@ Sahip, sağlayıcı, saldırgan sağlayıcı, ajan, guard süreç içinde; ajana
 
 ---
 
-## 11. Checkpoint
+## 11. Checkpoint (2026-10-30 18:50)
 
-*(Faz sonunda doldurulur.)*
+| Soru | Cevap |
+|---|---|
+| **Plan hâlâ iyi mi?** | Evet. (1) **60 sn tur:** guard'ın tek ağ bağımlılığı `verifyLineage` (ve havuz tx'i `poolBEEF` yoksa); Arcade'den tx başına 250–950 ms, A'nın havuzlarında derinlik 1–3. Track dosyasının önerdiği **ön-doğrulama yapıldı**: pledge anında soy doğrulanıp önbelleğe alınıyor, settlement turu önbellekten (`test/e2e…` tur ≈ 3 sn, settle değerlendirmesi < 50 ms). Overlay'e hiç bağımlı değil. (2) Ledger'a **rezervasyon** eklendi (pledge coin pledge anında haftalık + havuz tavanına sayılır, settlement gerçek maliyetle değiştirir) → `maxPerPoolSats` anlamı "havuz başına, 7 gün" oldu (STATUS Plan değişiklikleri). (3) A.P3 yokken guard'ın pledge kuralı A.3.1 düzenine sabitlendi; `pledgeFromVault` referans akış. (4) **Çalışma zamanı:** A'nın köprüsü yerine C'nin hook'u kullanılıyor; Node 24'te çalışıyor, Node 22.22'de hook kırık (Blokajlar → C) |
+| **Bitti mi?** | Mockchain ✓: 2.1, 2.1b, 2.2, 2.3, 2.4, 2.5 + D-P1 artıkları + Track E guard uçları. Kök `npm test` → **29 dosya / 175 test yeşil**, `npm run typecheck` temiz (18:50, `main` @ 68131d5 + `origin/trackD` birleştirilmiş). `npm run demo-injection -w @agentcoop/scripts` Node 24'te ~13 sn. **Açık (mainnet, kabulün parçası):** vault'lu T5 + T10 ve bir 403 → sats + A.P3 (`buildPledge(…,'vault')` ya da `pledgeFromVault`) + C.P3 vault'lu ajan + Node 24 laptop |
+| **Diğer track'ler?** (18:45 fetch) | **A:** `htlcLockingScript` iskeleti **açık ve gövdeli** (`packages/core/src/scripts/htlc.ts`: claim = SHA256 + ajan/guard 2-of-2, refund = maker/ajan 2-of-2, nLockTime'lı ön-imzalı); `planSettlement` pencere düzeltmesi ve `cancelPledge → { txid, beef }` main'de; A.P3 başlamadı (`buildPledge('vault')` hâlâ `NOT_IMPLEMENTED`); `skeleton.ts`'te `openWallet(...).wallet` düzeltmesi yok. **B:** `{ op:'vaults', owner }` / `{ op:'vault' }` var ve D'nin kaydıyla uyumlu (owner-cli ikinci kaynak, e2e'de doğrulandı); B-INT + Faz 6 yerel kısmı main'de; koordinatör vault'lu pledge'i değişiklik gerektirmeden planlayıp settle etti. **C:** P1 mockchain; ajan profilinde `mode: 'p2pkh' \| 'vault'` alanı var ama vault yolu yok (C.P3). **E:** plan var (`plan/track-E-frontend.md`), kişi atanmadı; guard'dan istedikleri yapıldı |
+| **Sonraki faz (Faz 3 Rail PoC) bağımlılıkları** | A.P0 `InputSigner` ✓; `htlcLockingScript` ✓ (A yazdı, D sahibi). **Base Sepolia RPC** ✓ (`https://sepolia.base.org` bu konteynerden `eth_blockNumber` cevaplıyor). **Eksik:** Base Sepolia test ETH + USDC (SETUP-ACCOUNTS #9–11, insan; faucet), EVM anahtarları (`BASE_PRIVATE_KEY`, kasada), `maker` cüzdanı 30k sat (sats yok), Foundry (bu konteynerde yok; `solc` 0.8.38 npm'de var). Doğrulama testi 4 (nLockTime, ≤ 1.000 sat) ve 6 (v1 malleability) **mainnet sats ister**. Karar: Faz 3'ün sats'sız kısımları (HTLC kontratı + yerel testleri, BSV tarafı script/iade tx'i mockchain'de, `apps/maker` iskeleti) başlayabilir; Base Sepolia ve mainnet adımları sats + faucet gelince. Hiçbiri gelmezse zaman kutusu sonunda STATUS'a "Rail PoC yapılmadı" ve Faz 5 B yolu |
+| **Arayüz değişikliği?** | MASTER §3.1 (Node 24 notu), §3.3 (VaultSigner notu), §3.7 (`/cosign` D.P2 ekleri, `GET /vaults` `hotLast24hSats`, E'nin üç ucu ✅), §3.9 (`GUARD_CORS_ORIGIN`, `DATA_DIR`), §3.10 (guard kaynağı ✅). STATUS "Arayüz değişiklikleri" 18:40 D satırları |

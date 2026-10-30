@@ -253,4 +253,49 @@ describe('Mandate Vault (mock chain)', () => {
     expect(status.hotLast24hSats).toBe(1_500)
     expect((await listVaultUtxos(agent, vault.record.vaultId)).map(u => u.satoshis)).toEqual([3_500])
   })
+
+  it('10. Track E reads (MASTER §3.7/§3.10): CORS, GET /policies, GET /decisions, GET /events (SSE, Last-Event-ID)', async () => {
+    const pre = await fetch(`${url}/policies/${agent.identityKey}`, { method: 'OPTIONS' })
+    expect(pre.status).toBe(204)
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*')
+    expect(pre.headers.get('access-control-expose-headers')).toContain('x-bsv-auth-identity-key')
+
+    // the agent reads the policy its owner wrote; a stranger gets nothing
+    const pol = await (await new AuthFetch(agent).fetch(`${url}/policies/${agent.identityKey}`, { method: 'GET' })).json()
+    expect(pol).toMatchObject({ owner: owner.identityKey, agent: agent.identityKey, policy: { hotWalletDailySats: 2_000 } })
+    expect((await new AuthFetch(stranger).fetch(`${url}/policies/${agent.identityKey}`, { method: 'GET' })).status).toBe(404)
+
+    // decisions, newest first, for the owner of one of the agent's vaults
+    const res = await new AuthFetch(owner).fetch(`${url}/decisions?agent=${agent.identityKey}&limit=3`, { method: 'GET' })
+    const { decisions } = await res.json()
+    expect(decisions.map((d: any) => [d.outcome, d.reason ?? d.kind])).toEqual([
+      ['denied', 'hot wallet proof mismatch at vout 0'],
+      ['denied', 'hotWalletDailySats exceeded (1500 + 1000 > 2000)'],
+      ['approved', 'pay/hot']
+    ])
+    expect(decisions[0].id).toBeGreaterThan(decisions[1].id)
+    expect((await new AuthFetch(stranger).fetch(`${url}/decisions?agent=${agent.identityKey}`, { method: 'GET' })).status).toBe(403)
+
+    // the event stream: every decision as a CoopEvent; Last-Event-ID resumes after it
+    const read = async (lastId?: string): Promise<any[]> => {
+      const ac = new AbortController()
+      const r = await fetch(`${url}/events`, { signal: ac.signal, headers: lastId !== undefined ? { 'Last-Event-ID': lastId } : {} })
+      const reader = r.body!.getReader()
+      let text = ''
+      const deadline = Date.now() + 2_000
+      while (Date.now() < deadline) {
+        const chunk = await Promise.race([reader.read(), new Promise<{ done: true }>(resolve => setTimeout(() => resolve({ done: true }), 300))])
+        if (chunk.done === true || chunk.value === undefined) break
+        text += new TextDecoder().decode(chunk.value)
+      }
+      ac.abort()
+      return text.split('\n').filter(l => l.startsWith('data: ')).map(l => JSON.parse(l.slice(6)))
+    }
+    const all = await read()
+    expect(all.map(e => e.type)).toContain('vault_registered')
+    expect(all.map(e => e.type)).toContain('policy_updated')
+    const last = all.at(-1)
+    expect(last).toMatchObject({ src: 'guard', type: 'cosign_denied', agent: agent.identityKey, data: { reason: 'hot wallet proof mismatch at vout 0' } })
+    expect(await read(all.at(-2).id)).toEqual([last])
+  })
 })

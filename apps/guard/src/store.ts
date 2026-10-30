@@ -39,6 +39,8 @@ export const DAY_MS = 24 * 60 * 60 * 1000
 export const reserveKey = (vaultOutpoint: string): string => `reserve:${vaultOutpoint}`
 
 export interface Decision {
+  /** Sequence number in data/guard/decisions.jsonl (GET /decisions `id`). */
+  id?: number
   at: string
   decision: 'allow' | 'deny'
   kind: string
@@ -68,10 +70,18 @@ export class GuardStore {
   private state: GuardState = { v: 1, vaults: {}, policies: {}, ledger: [] }
   readonly decisions: Decision[] = []
 
+  private seq = 0
+
   constructor (private readonly dir?: string) {
     if (dir === undefined) return
     mkdirSync(dir, { recursive: true })
     if (existsSync(this.statePath)) this.state = JSON.parse(readFileSync(this.statePath, 'utf8')) as GuardState
+    const log = join(dir, 'decisions.jsonl')
+    if (existsSync(log)) {
+      const lines = readFileSync(log, 'utf8').split('\n').filter(l => l.trim() !== '')
+      this.seq = lines.length
+      lines.slice(-1000).forEach((l, i) => { this.decisions.push({ id: lines.length - Math.min(lines.length, 1000) + i + 1, ...JSON.parse(l) as Decision }) })
+    }
   }
 
   private get statePath (): string { return join(this.dir!, 'state.json') }
@@ -99,6 +109,14 @@ export class GuardStore {
   }
 
   getPolicy (owner: string, agent: string): GuardPolicy | undefined { return this.state.policies[policyKey(owner, agent)]?.policy }
+
+  /** Policies stored for `agent` (by any owner), most recently updated first. */
+  policiesOf (agent: string): Array<{ owner: string, agent: string, policy: GuardPolicy, updatedAt: string }> {
+    return Object.entries(this.state.policies)
+      .map(([k, v]) => ({ owner: k.split(':')[0], agent: k.split(':')[1], ...v }))
+      .filter(p => p.agent === agent)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  }
 
   putPolicy (owner: string, agent: string, policy: GuardPolicy, now: number): void {
     this.state.policies[policyKey(owner, agent)] = { policy, updatedAt: new Date(now).toISOString() }
@@ -167,9 +185,11 @@ export class GuardStore {
     this.save()
   }
 
-  logDecision (d: Decision): void {
-    this.decisions.push(d)
+  logDecision (d: Decision): Decision {
+    const entry = { id: ++this.seq, ...d }
+    this.decisions.push(entry)
     if (this.decisions.length > 1000) this.decisions.shift()
     if (this.dir !== undefined) appendFileSync(join(this.dir, 'decisions.jsonl'), `${JSON.stringify(d)}\n`)
+    return entry
   }
 }

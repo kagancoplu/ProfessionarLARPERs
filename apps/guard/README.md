@@ -31,8 +31,13 @@ npm run demo-injection -w @agentcoop/scripts # the injection demo, offline (mock
 | `PUT` | `/vaults/:vaultId` | BRC-103, identity = owner | Body = vault record `{ v:'1', vaultId, owner, agent, guard }`. The guard derives the script itself and returns `{ vaultId, lockingScriptHex, guardPub }`; the owner CLI refuses to fund unless it matches its own |
 | `PUT` | `/policies/:agentIdentity` | BRC-103, identity = owner | `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }`, stored for the (owner, agent) pair |
 | `GET` | `/vaults/:vaultId` | BRC-103, owner or agent | Record, script, policy, `spentLast7dSats`, `hotLast24hSats` |
+| `GET` | `/policies/:agentIdentity` | BRC-103, owner or agent | `{ owner, agent, policy, updatedAt }` (the agent gets the latest policy stored for it); 404 if none |
+| `GET` | `/decisions?agent=&limit=` | BRC-103, the agent or an owner of one of its vaults | `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason? }] }`, newest first (≤ 500) |
+| `GET` | `/events` | none | SSE, MASTER §3.10 `CoopEvent` (`src:'guard'`): `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`; last 500 kept, `Last-Event-ID` resumes, `: keepalive` every 15 s. Identity keys are public; no secrets |
 | `POST` | `/cosign` | none (the agent's signature is in the request) | see below → `{ signatureHex, guardPub }` or `403 / 400 { reason }` |
 | `GET` | `/healthz` | none | `{ ok, identityKey, network }` |
+
+CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the BRC-103 headers (`x-bsv-auth-*`) are exposed so a browser's `AuthFetch` (Track E's owner console) works.
 
 `/cosign` body: `{ txBEEF?, plan?, inputIndex, agent, agentSignatureHex, context }`. Signatures are in checksig format (DER ‖ `0x41`), hex.
 
