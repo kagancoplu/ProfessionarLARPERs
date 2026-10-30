@@ -7,7 +7,7 @@
 
 ## 1. Bu plan nasıl kullanılır
 
-- 4 paralel track var: **A Protokol**, **B Overlay + Koordinatör**, **C Sağlayıcı + Ajanlar**, **D Vault + Ops + Rail + Teslim**. Her track'in kendi dosyası var: `plan/track-*.md`.
+- 5 paralel track var: **A Protokol**, **B Overlay + Koordinatör**, **C Sağlayıcı + Ajanlar**, **D Vault + Ops + Rail + Teslim**, **E Frontend** (`apps/web`: konsollar + pixel-art "Kasaba" canlı görünümü; 30.10 eklendi). Her track'in kendi dosyası var: `plan/track-*.md`.
 - Her track dosyası **fazlara** bölünmüş. AI'a **bir seferde yalnızca bir faz** verilir, dosyanın tamamı tek prompt olarak verilmez.
 - Her faz başında AI şu üçünü okur: (1) bu dosyanın §3 Arayüzler ve §4 Kurallar bölümleri, (2) [`STATUS.md`](STATUS.md), (3) kendi track dosyasındaki ilgili faz.
 - Her faz sonunda AI **Checkpoint** ritüelini uygular (her fazın sonunda yazılı): plan hâlâ iyi mi, değişecek yer var mı → varsa planı güncelle; bu faz bitti → STATUS'u güncelle; diğer track'ler ne yaptı → STATUS'u oku; bağımlılık hazır mı → değilse stub ile devam et veya blokajı yaz.
@@ -58,6 +58,7 @@
 │  ├─ owner-cli/          [D] BSV Desktop ile: vault fonla / politika / geri çek
 │  └─ maker/              [D] Coop Rail PoC maker botu
 ├─ contracts/base-htlc/   [D] Solidity HTLC (PoC)
+│  └─ web/             [E] frontend: React konsollar + Phaser "Kasaba" (tarayıcı → BSV Desktop; servislerle REST/WS/SSE)
 ├─ scripts/               [D] keygen, fund, receive, balances, skeleton (A)
 ├─ data/                  (gitignore) cüzdan sqlite'ları, overlay db
 └─ test/                  uçtan uca mockchain senaryoları (herkes ekler)
@@ -231,6 +232,9 @@ cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · recla
 |---|---|---|
 | `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sahip imzasıyla, BRC-103 AuthFetch) |
 | `POST` | `/cosign` `{ plan \| txBEEF, inputIndex, agent, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId? } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex }` veya `403 { reason }` |
+| `GET` | `/policies/:agentIdentity` **(E için; D.P2)** | sahip veya ajan (BRC-103): yüklü politika + `updatedAt`, `owner`; yoksa 404 |
+| `GET` | `/decisions?agent=&limit=` **(E için; D.P2)** | sahip veya ajan (BRC-103): guard kararları yeni → eski `{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason?, txid? }` (`data/guard/decisions.jsonl`) |
+| `GET` | `/events` **(E için; D.P2)** | SSE, MASTER §3.10 zarfı: `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`, `vault_paused`/`vault_resumed` (Faz 5B). Kimliksiz okunabilir (yalnız kısaltılmış identity ve nedenler; tutarlar dahil, gizli yok); `Last-Event-ID` ile devam |
 
 ### 3.8 Overlay lookup (B) — `POST /lookup { service:'ls_agentcoop', query }`
 
@@ -268,7 +272,41 @@ APP_ORIGINATOR=agentcoop.local
 ANTHROPIC_API_KEY=   AGENT_BRAIN=llm|rules
 # Rail PoC
 BASE_RPC_URL=  BASE_PRIVATE_KEY=  BASE_USDC_ADDRESS=
+# ajan olay akışı (C; §3.10)
+AGENTS_URL=http://localhost:8093
+# frontend (E, apps/web; Vite build-time; yalnızca URL'ler, gizli yok)
+VITE_COOP_API_URL=  VITE_OVERLAY_URL=  VITE_PROVIDER_API_URL=  VITE_GUARD_URL=  VITE_AGENTS_URL=  VITE_ARCADE_URL=  VITE_NETWORK=main  VITE_DATA_MODE=live|mock|replay
 ```
+
+### 3.10 Frontend olay akışları ve tarayıcı kuralları (E; 30.10 eklendi)
+
+**Tarayıcı kuralı.** `apps/web` tarayıcıda çalışır, wallet-toolbox içermez; `@bsv/sdk`'nın **ESM** build'ini kullanır (tek kopya). `@agentcoop/core` **index**'i tarayıcı-güvenli kalmalı (`node:*` ve wallet-toolbox importu yalnızca `@agentcoop/core/node/*` altında). `packages/core/src/sdk.ts` CJS yolunu re-export ettiği için web, Vite `resolve.alias` ile `/@bsv\/sdk\/dist\/cjs\/mod\.js$/` → `@bsv/sdk` yönlendirmesi yapar (yetmezse A `exports`'a `"browser"` koşulu ekler). Tüm imzalar kullanıcının **BSV Desktop**'ında (`WalletClient('auto')`, originator = sayfa origin'i); özel anahtar hiçbir zaman tarayıcıda yok. Yerelde CORS'u Vite proxy atlar; yayında overlay/koordinatör (B Faz 5.3), provider-api (C) ve guard (D) CORS verir; provider-api ve guard ayrıca BRC-103/105 başlıklarını açığa çıkarır (`Access-Control-Expose-Headers: x-bsv-auth-*, x-bsv-payment-*`; guide §10.5).
+
+**Olay zarfı** (`CoopEvent`; her kaynağın adaptörü bunu üretir; replay dosyası bunun JSONL'i):
+
+```ts
+export interface CoopEvent<T extends string = string, D = unknown> {
+  id: string          // kaynak içinde artan ("coordinator:1042") veya ulid; SSE `id:` ile aynı
+  ts: string          // ISO-8601
+  src: 'coordinator' | 'overlay' | 'provider' | 'agents' | 'guard' | 'maker' | 'web'
+  type: T
+  data: D
+  txid?: string; poolId?: string; agent?: string   // identity key; filtreleme için
+}
+```
+
+SSE biçimi (her kaynak için aynı): `id: <id>\ndata: <CoopEvent json>\n\n`; 15 sn'de bir `: keepalive`; `Last-Event-ID` ile kaldığı yerden (kaynak en az son 500 olayı tutar). Mevcut kaynaklar zarfsız kalabilir (koordinatör WS mesajları, overlay `{ type, txid }`); web adaptörü zarflar. **Yeni** akışlar (agents, guard, provider, maker) doğrudan zarfı üretir.
+
+| Kaynak | Yol | Olay tipleri (`type`) → `data` | Durum |
+|---|---|---|---|
+| koordinatör (B) | WS `/ws` | `pool_update`, `sign_request`, `settled`, `round_failed`, `pool_failed`, `hello_ack`, `error` (§3.5) | var |
+| overlay (B) | SSE `/agentcoop/events` | `admitted { txid }`, `spent { txid }` (§3.8). Web bunlardan türetir: `pool_opened`, `pledge_added`, `pledge_cancelled`, `pool_settled`, `pool_cancelled`, `listing_added`, `listing_filled`, `listing_cancelled`, `vault_funded`, `vault_spent` | var |
+| ajanlar (C) | SSE `{AGENTS_URL}/events`, `GET {AGENTS_URL}/agents` | `agent_started { name, profile, identity }`, `agent_thought { text }`, `agent_decision { action: 'pledge'\|'skip'\|'redeem'\|'retail'\|'list'\|'buy'\|'sign'\|'reject', poolId?, credits?, sats?, reason }`, `agent_job { jobId, kind, minutes, status }`, `agent_payment { kind: '402'\|'pledge'\|'redeem'\|'sweep', txid, sats? }`, `agent_injected { text }` (demo-injection). `GET /agents` → `[{ name, profile, identity, mode: 'p2pkh'\|'vault', vaultId? }]` | **istek (E → C)**; yedek: `apps/web/tools/log-relay.mjs` `activity.log`'u SSE'ye çevirir |
+| guard (D) | SSE `{GUARD_URL}/events` | `cosign_approved { agent, vaultId, kind, poolId?, sats, txid? }`, `cosign_denied { agent, vaultId, kind, poolId?, sats?, reason }`, `policy_updated { agent }`, `vault_registered { vaultId, owner, agent }`, `vault_paused { agent }` | D.P2 |
+| sağlayıcı (C, opsiyonel) | SSE `/v1/events` | `job_queued`/`job_running`/`job_done { jobId, owner, kind, minutes, resultHash? }`, `credits_redeemed { agent, credits, txid }`, `payment_received { txid, sats, owner }` | düşük öncelik; yedek `GET /v1/jobs/:id` poll |
+| maker (D, Rail) | SSE `{MAKER_URL}/events`, `GET /quote?dir=&amount=` | `rail_quote`, `rail_locked_base { txHash }`, `rail_funded_bsv { txid }`, `rail_claimed { txid, txHash }`, `rail_refunded` | D.P3/P5 |
+
+**Replay dosyası:** `apps/web/public/replays/<ad>.jsonl`, satır = `CoopEvent`; `apps/web/tools/record.mjs` tüm kaynaklara abone olup yazar. Gerçek mainnet koşuları kaydedilir ve commit edilir (txid'ler gerçek).
 
 ---
 
@@ -291,9 +329,9 @@ BASE_RPC_URL=  BASE_PRIVATE_KEY=  BASE_USDC_ADDRESS=
 |---|---|---|
 | **S0** | Repo iskeleti ve `types.ts` var; arayüzler donmuş; cüzdanlar üretilmiş; sats talebi gönderilmiş; kit testleri yeşil; doğrulama testleri 1, 2, 3, 8 bitmiş | A.P0, B.P0, C.P0, D.P0 |
 | **S1 — Walking skeleton** | Yalnızca sunucu cüzdanlarıyla, 1 sağlayıcı + 2 ajan, **mainnet'te ilk DvP settlement** (`scripts/skeleton.ts`), overlay kabul etmiş, WhatsOnChain linki STATUS'ta | A.P1, B.P1 (offer kaydı + indeks), C.P1 (token/ürün), D.P0 (fon) |
-| **S2 — K1 entegre** | Desktop ile `provider-cli` mint + open-pool; ajanlar overlay'den havuz bulup pledge veriyor; koordinatör turu; settlement; redeem + 402 iş; dolmayan havuz; `verifyLineage` imza yolunda | A.P2, B.P2, C.P2, D.P1 |
-| **S3 — K2 entegre** | Vault'lu ajan settlement'a giriyor (guard ortak imza); injection reddi; market liste + sweep; insan pledge'i (participant-cli); Rail PoC sonucu kaydedilmiş | A.P3, B.P3, C.P3, D.P2, D.P3 |
-| **S4 — Freeze** | Testler yeşil; README; value note; threat model; tx linkleri; `npm run demo` tek komut | herkes P4 |
+| **S2 — K1 entegre** | Desktop ile `provider-cli` mint + open-pool; ajanlar overlay'den havuz bulup pledge veriyor; koordinatör turu; settlement; redeem + 402 iş; dolmayan havuz; `verifyLineage` imza yolunda; **web: havuz gezgini + Kasaba v1 canlı** | A.P2, B.P2, C.P2, D.P1, E.P1 |
+| **S3 — K2 entegre** | Vault'lu ajan settlement'a giriyor (guard ortak imza); injection reddi; market liste + sweep; insan pledge'i (participant-cli **ve tarayıcıdan**); Rail PoC sonucu kaydedilmiş; **web: katılımcı/sağlayıcı/sahip/market akışları Desktop ile** | A.P3, B.P3, C.P3, D.P2, D.P3, E.P2, E.P3 |
+| **S4 — Freeze** | Testler yeşil; README; value note; threat model; tx linkleri; `npm run demo` tek komut; **web herkese açık URL'de, gerçek replay'li** | herkes P4, E.P5 |
 
 Bağımlılık grafiği (ok = "ihtiyaç duyar"):
 
@@ -306,6 +344,10 @@ D.P0 cüzdan/fon ──▶ S1 ve sonrası mainnet
 D.P1 vault+guard ──▶ A.P3 (VaultSigner entegrasyon testi), C.P3 (vault'lu ajan)
 A.P2 verifyLineage ──▶ C.P2 redeem doğrulaması, D.P2 guard DvP
 A.P2 listing/sweep ──▶ B.P3 indeks, C.P3 ajan market davranışı
+B.P1–P3 (pools, WS, SSE, vaults, listings) ──▶ E.P1 (gezgin, Kasaba v1), E.P3 (market, vault görünümü)
+A.P1/P2 builders (tarayıcıda) + C.P1 provider-api (CORS) ──▶ E.P2 (katılımcı, sağlayıcı akışları)
+D.P1/P2 guard API + SSE ──▶ E.P3 (sahip konsolu, bekçi) · D.P3 Rail ──▶ E.P4 (liman) · B.P5 URL'ler ──▶ E.P4 (yayın)
+C ajan olay akışı (§3.10) ──▶ E.P1 balonlar (yedek: log-relay)
 ```
 
 Bağımlılık hazır değilse kural: **stub ile devam et** (arayüz bu dosyada), blokajı STATUS'a yaz.
@@ -353,9 +395,10 @@ Toplam ≈ **300k sat** marj dahil. Settlement ücreti birkaç yüz sat, 402 öd
 > 3. We index our own overlay topic (`tm_agentcoop`). Is that encouraged? Any public overlay hosting we can use?
 > 4. Participants sign a coordinator-built multi-party tx with `createSignature({ hashToDirectlySign })`. Any plan for BSV Desktop to show structured sign requests? (For our threat model note.)
 > 5. A short-lived, capped prepaid balance at the provider when credits are redeemed for API calls (≤ one session, returnable): acceptable within non-custodial judging?
+> 7. We love the pixel-art style of bsvmunich.com. Is its source or art open source, and would it be OK to build on its sprite-rendering approach or reuse any assets with attribution? (numbered 7 to match trackD's list; 6 is D's cross-chain question)
 > Our treasury address for sats: `<adres>`. Thanks!
 
-Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır.
+Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır, 7 hayır (yalnızca referans, track-E §6.4).
 
 ---
 
