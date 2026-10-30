@@ -57,6 +57,8 @@ export interface Decision {
   hotSats?: number
   /** 'rail': sats a claim brought into the vault. */
   inflowSats?: number
+  /** 'redeem' / 'list' (D-P2b): the credits moved. */
+  credits?: { tokenId: string, amount: string, delivered?: string, kept?: string, askSats?: number }
 }
 
 interface GuardState {

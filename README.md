@@ -4,7 +4,7 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
-> Status (30 Oct, evening): every flow below runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`: 55 files, 267 tests). **No mainnet transaction yet**: we are waiting for satoshis. The example transaction table fills in as the mainnet runs happen.
+> Status (30 Oct, 22:35 CET): the first end-to-end run is **on mainnet** (one pool, two agents, one settlement: see T1–T5 below). Every other flow runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`: 61 files, 312 tests); the rest of the example transaction table fills in as the mainnet runs happen.
 
 ## What it does
 
@@ -95,6 +95,7 @@ Not done yet (no satoshis). The steps, each first with ≤ 1,000 sat:
 3. `npm run infra`, `npm run provider`, `npm run guard -w @agentcoop/guard`.
 4. Provider: `npm run provider-cli -- mint …` and `open-pool` from BSV Desktop.
 5. Agents: `npm run agents`. Owner: `npm run owner -w @agentcoop/owner-cli -- create-vault | policy | fund | withdraw`.
+6. Coop Rail (Base Sepolia → BSV, ≤ 1 USDC / ≤ 1,000 sat): `npm run deploy -w @agentcoop/maker -- --yes`, then `npm run swap-demo -w @agentcoop/maker -- --vault <vaultId>` (dry run: checks keys, balances, guard and vault), then the same with `--yes`. See [docs/RAIL-POC.md](docs/RAIL-POC.md).
 
 Operations guide: [docs/OPS.md](docs/OPS.md). Public deployment of the overlay and coordinator: [infra/README.md](infra/README.md).
 
@@ -102,13 +103,13 @@ Operations guide: [docs/OPS.md](docs/OPS.md). Public deployment of the overlay a
 
 | # | Transaction | Signed by | What you see on chain | Mainnet txid | Mock-chain test |
 |---|---|---|---|---|---|
-| T1 | Credit token deploy | Provider (BSV Desktop) | BSV-21 deploy+mint (also on BananaBlocks) | pending | `test/skeleton.mockchain.test.ts` |
-| T2 | Pool announcement, credits reserved | Provider | N-credit UTXO + `OP_RETURN agentcoop pool` | pending | `test/skeleton.mockchain.test.ts` |
-| T3 | Pledge | Agent / person | Pledge coin, registration fee to the provider, `OP_RETURN agentcoop pledge` | pending | `test/skeleton.mockchain.test.ts` |
+| T1 | Credit token deploy | Provider (BSV Desktop) | BSV-21 deploy+mint (also on BananaBlocks) | [762e6b0837…](https://whatsonchain.com/tx/762e6b083728f9cd653b938e2947a92e50d0a92218351b1c64b0fe1e696e089f), [0ae50b8b69…](https://whatsonchain.com/tx/0ae50b8b69efd9d1b0dacc7cefaf8e4abaea9cd33f5e4e7c93af4d73d715437d) (BSV Desktop) | `test/skeleton.mockchain.test.ts` |
+| T2 | Pool announcement, credits reserved | Provider | N-credit UTXO + `OP_RETURN agentcoop pool` | [9118788a77…](https://whatsonchain.com/tx/9118788a77efb3854878d47c1edb199d03ecbf00ab8e3da32b0a907c8f18c77c), [53a240f5c4…](https://whatsonchain.com/tx/53a240f5c44123211c3befa737f7ce1cae356c15bd72256279e47f5e43d93ca6) (BSV Desktop; offer [e48140bf07…](https://whatsonchain.com/tx/e48140bf079c25af91eda8060d25dc046dd7c6e50f66de37f95ec2a98e5134b2)) | `test/skeleton.mockchain.test.ts` |
+| T3 | Pledge | Agent / person | Pledge coin, registration fee to the provider, `OP_RETURN agentcoop pledge` | [00f50d70bd…](https://whatsonchain.com/tx/00f50d70bd5aa27c5e5333c92462ba9997cb57037ef9101df2c9ec4a0f423aef), [00d78d5789…](https://whatsonchain.com/tx/00d78d5789320dfc120b2e5361bb7d709a0d2eacee1b37c0497f08d5c82cde7a) | `test/skeleton.mockchain.test.ts` |
 | T4 | Pledge cancel | Pledge owner | The coin spent back to its owner | pending | `test/skeleton.mockchain.test.ts` |
-| **T5** | **Settlement (DvP)** | Provider SINGLE\|ACP, everyone ALL | **N inputs; provider paid and every participant's credits in one tx; pledge-list hash** | pending | `apps/coordinator/test/e2e.integration.mockchain.test.ts` |
+| **T5** | **Settlement (DvP)** | Provider SINGLE\|ACP, everyone ALL | **N inputs; provider paid and every participant's credits in one tx; pledge-list hash** | [6d320c9af8…](https://whatsonchain.com/tx/6d320c9af886bd2514da2c4af0ed0c64477840e08564fb8b8e381270aa5b2763) | `apps/coordinator/test/e2e.integration.mockchain.test.ts` |
 | T6 | Credit redeem and return | Agent / provider | BSV-21 transfer to the provider, and back | pending | `test/provider.credits.mockchain.test.ts` |
-| T7 | Retail 402 payment | Agent (AuthFetch) | BRC-29 payment to the provider | pending | `test/provider.402.mockchain.test.ts` |
+| T7 | Retail 402 payment | Agent (AuthFetch) | BRC-29 payment to the provider | [5176e9eeb8…](https://whatsonchain.com/tx/5176e9eeb8604d83ba6154f10ddaf8e8dee66ad185338b0127f2fbf2efcf853f), [bee39537a1…](https://whatsonchain.com/tx/bee39537a16f75bb1ced8ea8dd8ad71e95610ef7f8c91d187267b3c271d94bb8) (agents, HTTP 402) | `test/provider.402.mockchain.test.ts` |
 | T5v | Settlement with vault-locked credits | Agent + guard 2-of-2 | A vault agent's credits land on its vault script, not a P2PKH | pending | `test/e2e.vault-credits.mockchain.test.ts` |
 | T5-L | Settlement with offline (Lighthouse) pledges | Human SINGLE\|ACP once, guard ALL | Exact lighthouse coins, no change; humans offline during the round | pending | `test/e2e.lighthouse.mockchain.test.ts` |
 | T8 | Market sweep | Sellers SINGLE\|ACP, buyer ALL | Several sellers paid, buyer gets credits | pending | `test/market.mockchain.test.ts` |
@@ -123,7 +124,7 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
-- **Closing:** an agent selling its credits to escape the guard. Credits can now settle onto the vault script and moving them needs agent + guard (`creditLock: 'vault'`, mock chain); the guard's `redeem`/`list` policy and the overlay's vault-aware rules are still to be wired.
+- **Closed, with one bounded path:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, and listings pay the vault at or above the owner's floor. A provider's credit return still sends tokens to the agent's own address (≤ 20 credits per redeem).
 - **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
@@ -154,9 +155,9 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 ## Known limitations
 
-- No mainnet transaction yet; validations 2–6 (BSV Desktop SINGLE\|ACP signing, vault script policy, nLockTime semantics, v1 malleability) are written and wait for satoshis.
+- On mainnet so far: the first end-to-end run (T1–T5) with server wallets for the provider and both agents. The BSV Desktop flows (provider, owner, human participant) and validations 2–6 (Desktop SINGLE\|ACP signing, vault script policy, nLockTime, v1 malleability) are the next runs.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
-- Vault-locked credits (threat T-10) work on the mock chain; the guard policy for spending them and the overlay flag are not wired yet. Coop Rail has no reverse direction.
+- A provider's credit return sends vault-redeemed credits to the agent's own address (bounded, threat T-10); Coop Rail has no reverse direction.
 - The coordinator's selection is auditable but cannot be forced.
 
 ## License

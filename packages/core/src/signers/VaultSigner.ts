@@ -17,14 +17,20 @@
  *   cancelVaultPledge          the pledge coin back into the vault
  *   internalizeVaultSettlement after a settlement: change into the vault basket, pledge coin dropped
  *   topUpHotWallet             vault → the agent's default basket, under hotWalletDailySats (D-P2.2)
+ *   adoptVaultCredits / listVaultCredits   vault-locked credits (A 5.3) in their own basket (D-P2b)
+ *
+ * Inputs may also be vault-locked credits (A 5.1: a BSV-21 inscription in front of the
+ * vault script): the keys come from `vaultKeysOfScript`. A credit listing signs with
+ * SINGLE|ANYONECANPAY|FORKID (`scope`, guard kind 'list').
  */
 import { Random, Transaction, Utils, type CreateActionOutput, type SignActionResult, type UnlockingScript, type WalletInterface } from '../sdk'
 import { AgentCoopError } from '../errors'
 import { buildOpReturn } from '../scripts/opreturn'
+import { decodeBsv21Owned, vaultKeysOfScript } from '../scripts/creditLock'
 import { pledgeAmount } from '../pool/pledge'
 import { validateTerms } from '../pool/terms'
 import { coopOutpoint, toWalletOutpoint } from '../util/outpoint'
-import { PLEDGE_BASKET, VAULT_BASKET, VAULT_PROTOCOL, type InputSigner, type PledgeRecord, type PoolTerms, type SettlementPlan } from '../types'
+import { PLEDGE_BASKET, VAULT_BASKET, VAULT_CREDITS_BASKET, VAULT_PROTOCOL, type InputSigner, type PledgeRecord, type PoolTerms, type SettlementPlan } from '../types'
 import {
   ANYONE_IDENTITY_KEY,
   VAULT_COSIGN_UNLOCK_LENGTH,
@@ -38,12 +44,18 @@ import {
   verifyVaultSignature,
   type VaultKeys
 } from '../scripts/vault'
-import { vaultKeysOfScript } from '../scripts/creditLock'
 
 // ── guard protocol (MASTER §3.7) ─────────────────────────────────────────────
 
-/** 'redeem' | 'list': spending vault-locked credits (A 5.4; the guard's policy for them is Track D's). */
+/** 'redeem' | 'list': spending vault-locked credits (A 5.4 builds, the guard's policy is D-P2b). */
 export type CosignKind = 'settle' | 'pay' | 'rail' | 'redeem' | 'list'
+
+/** D-P2b 'redeem': output `vout` sends credits to `provider`'s token address `receivePkh(provider, index)` (kit addresses). */
+export interface CreditPayeeProof {
+  vout: number
+  provider: string
+  index: number
+}
 
 /** Proof that output `vout` pays `provider`: its script is P2PKH(derive([1,'agentcoop provider'], keyID, provider, 'anyone')). */
 export interface PayeeProof {
@@ -73,6 +85,8 @@ export interface CosignContext {
   hotWallet?: HotWalletProof[]
   /** rail: the Coop Rail swap whose HTLC is claimed (keyID of the rail keys, D-P3). */
   swapId?: string
+  /** redeem: credit outputs to allowed providers (D-P2b). */
+  creditPayees?: CreditPayeeProof[]
 }
 
 export interface CosignRequest {
@@ -114,8 +128,25 @@ export function httpCosigner (guardUrl: string): Cosigner {
   }
 }
 
+/**
+ * The coordinator's call for a lighthouse input (Track A 5.5–5.7, guard D-P2c): `POST {guardUrl}/cosign`
+ * with `context.kind: 'lighthouse'`. The guard derives the offer from the plan itself and runs
+ * cosignLighthouse; returns the complete unlocking script (human + guard). Throws CosignRejected.
+ */
+export async function lighthouseCosign (guardUrl: string, req: { plan: SettlementPlan, inputIndex: number, pledge: unknown }): Promise<string> {
+  const res = await fetch(`${guardUrl.replace(/\/+$/, '')}/cosign`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ context: { kind: 'lighthouse' }, plan: req.plan, inputIndex: req.inputIndex, pledge: req.pledge })
+  })
+  const body = await res.json().catch(() => ({})) as { unlockingScriptHex?: string, reason?: string }
+  if (!res.ok || typeof body.unlockingScriptHex !== 'string') throw new CosignRejected(res.status, body.reason ?? `HTTP ${res.status}`)
+  return body.unlockingScriptHex
+}
+
 // ── signers ──────────────────────────────────────────────────────────────────
 
+/** The vault keys of an input: a plain vault output or vault-locked credits (A 5.1). */
 function vaultKeysOfInput (tx: Transaction, inputIndex: number): VaultKeys {
   const input = tx.inputs[inputIndex]
   const source = input?.sourceTransaction?.outputs[input.sourceOutputIndex]
@@ -126,14 +157,14 @@ function vaultKeysOfInput (tx: Transaction, inputIndex: number): VaultKeys {
   return keys
 }
 
-async function signVaultInput (wallet: WalletInterface, sighash: number[], vaultId: string, originator?: string): Promise<number[]> {
+async function signVaultInput (wallet: WalletInterface, sighash: number[], vaultId: string, originator?: string, scope?: number): Promise<number[]> {
   const { signature } = await wallet.createSignature({
     hashToDirectlySign: sighash,
     protocolID: VAULT_PROTOCOL,
     keyID: vaultId,
     counterparty: 'anyone'
   }, originator)
-  return toChecksigSignature(signature)
+  return toChecksigSignature(signature, scope)
 }
 
 async function myVaultPub (wallet: WalletInterface, vaultId: string, originator?: string): Promise<string> {
@@ -148,6 +179,8 @@ export interface VaultSignerOptions {
   context: CosignContext | ((tx: Transaction, inputIndex: number) => CosignContext)
   /** SettlementPlan for context.kind 'settle': sent instead of the transaction. */
   plan?: unknown
+  /** Sighash scope; default ALL|FORKID. A credit listing (kind 'list') uses VAULT_LIST_SIGHASH (0xC3). */
+  scope?: number
   originator?: string
 }
 
@@ -163,8 +196,9 @@ export class VaultSigner implements InputSigner {
     if (await myVaultPub(this.wallet, vaultId, originator) !== keys.agentPub) throw new Error(`input ${inputIndex} is not locked to this agent's key for vault ${vaultId}`)
     const { publicKey: agent } = await this.wallet.getPublicKey({ identityKey: true }, originator)
 
-    const sighash = vaultSighash(tx, inputIndex)
-    const sigAgent = await signVaultInput(this.wallet, sighash, vaultId, originator)
+    const { scope } = this.opts
+    const sighash = vaultSighash(tx, inputIndex, scope)
+    const sigAgent = await signVaultInput(this.wallet, sighash, vaultId, originator, scope)
     const context = typeof this.opts.context === 'function' ? this.opts.context(tx, inputIndex) : this.opts.context
     const { signatureHex } = await this.opts.cosign({
       // settle: the guard rebuilds the transaction from the plan itself
@@ -175,7 +209,7 @@ export class VaultSigner implements InputSigner {
       context
     })
     const sigGuard = Utils.toArray(signatureHex, 'hex')
-    if (!verifyVaultSignature(keys.guardPub, sighash, sigGuard)) throw new Error('guard returned a signature that does not verify')
+    if (!verifyVaultSignature(keys.guardPub, sighash, sigGuard, scope)) throw new Error('guard returned a signature that does not verify')
     return vaultCosignUnlock(sigAgent, sigGuard)
   }
 }
@@ -234,6 +268,59 @@ export async function listVaultUtxos (wallet: WalletInterface, vaultId: string, 
     out.push({ outpoint: o.outpoint, satoshis: o.satoshis, lockingScriptHex: script, beef })
   }
   return out.sort((a, b) => b.satoshis - a.satoshis)
+}
+
+// ── vault-locked credits (A 5.1–5.3; D-P2b) ──────────────────────────────────
+
+/** Vault-locked credits live apart from the vault's sats, so spendFromVault never picks one for a fee (one constant, types.ts). */
+export { VAULT_CREDITS_BASKET }
+
+export interface VaultCreditUtxo extends VaultUtxo {
+  tokenId: string
+  amount: bigint
+}
+
+/**
+ * Track vault-locked credits of `vaultId` in the agent's credits basket. Same tags and instructions
+ * as Track A's creditSpend.ts (`vault:<id>`, `id:<tokenId>`, `amt:<n>`; `{ vaultId, tokenId, amt }`),
+ * so either module lists what the other stored.
+ */
+export async function adoptVaultCredits (wallet: WalletInterface, vaultId: string, tx: number[], vout: number, originator?: string): Promise<VaultCreditUtxo> {
+  const t = Transaction.fromAtomicBEEF(tx)
+  const txid = t.id('hex')
+  const out = t.outputs[vout]
+  const d = out === undefined ? null : decodeBsv21Owned(out.lockingScript)
+  if (d === null || d.owner.kind !== 'vault' || d.op === 'burn') throw new Error(`output ${vout} of ${txid} is not vault-locked credits`)
+  if (vaultKeysOfScript(out.lockingScript)?.agentPub !== await myVaultPub(wallet, vaultId, originator)) throw new Error(`output ${vout} of ${txid} is locked to another vault`)
+  const tokenId = d.op === 'deploy+mint' ? coopOutpoint(txid, vout) : d.id!
+  await wallet.internalizeAction({
+    tx,
+    outputs: [{
+      outputIndex: vout,
+      protocol: 'basket insertion',
+      insertionRemittance: { basket: VAULT_CREDITS_BASKET, customInstructions: JSON.stringify({ vaultId, tokenId, amt: d.amount.toString() }), tags: [vaultTag(vaultId), `id:${tokenId}`, `amt:${d.amount}`] }
+    }],
+    description: 'Adopt AgentCoop vault credits'
+  }, originator)
+  return { outpoint: `${txid}.${vout}`, satoshis: out.satoshis ?? 0, lockingScriptHex: out.lockingScript.toHex(), beef: tx, tokenId, amount: d.amount }
+}
+
+/** Spendable vault-locked credits the agent's wallet tracks for `vaultId` (optionally one token), largest first. */
+export async function listVaultCredits (wallet: WalletInterface, vaultId: string, tokenId?: string, originator?: string): Promise<VaultCreditUtxo[]> {
+  const tags = [vaultTag(vaultId), ...(tokenId !== undefined ? [`id:${tokenId}`] : [])]
+  const { outputs, BEEF } = await wallet.listOutputs({ basket: VAULT_CREDITS_BASKET, tags, tagQueryMode: 'all', include: 'entire transactions', limit: 1000 }, originator)
+  if (BEEF === undefined) return []
+  const beef = Array.from(BEEF)
+  const out: VaultCreditUtxo[] = []
+  for (const o of outputs) {
+    if (!o.spendable) continue
+    const [txid, vout] = o.outpoint.split('.')
+    const script = Transaction.fromBEEF(beef, txid).outputs[Number(vout)].lockingScript
+    const d = decodeBsv21Owned(script)
+    if (d === null || d.owner.kind !== 'vault') continue
+    out.push({ outpoint: o.outpoint, satoshis: o.satoshis, lockingScriptHex: script.toHex(), beef, tokenId: d.op === 'deploy+mint' ? coopOutpoint(txid, Number(vout)) : d.id!, amount: d.amount })
+  }
+  return out.sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0))
 }
 
 /**

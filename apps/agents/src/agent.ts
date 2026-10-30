@@ -50,6 +50,9 @@ export function isoWeek (d = new Date()): string {
 const minutesPerCredit = (product: CatalogProduct): number => product.minutesPerCredit ?? 1
 const sat = (n: number): string => n.toLocaleString('en-US')
 
+/** WALLET_AGENT_1_KEY → 'agent-1' (scripts/lib/env.ts keyVar, reversed). */
+export const walletNameOf = (walletEnv: string): string => walletEnv.replace(/^WALLET_/, '').replace(/_KEY$/, '').toLowerCase().replace(/_/g, '-')
+
 export class Agent {
   readonly wallet: WalletInterface
   readonly profile: AgentProfile
@@ -106,10 +109,14 @@ export class Agent {
     return outputs.filter(o => o.spendable).reduce((s, o) => s + o.satoshis, 0)
   }
 
-  /** Opens the agent's server wallet (`data/wallets/agent-<name>.sqlite`) from the key in `profile.walletEnv`. */
+  /**
+   * Opens the agent's server wallet from the key in `profile.walletEnv`. The SQLite file is named after
+   * that key (WALLET_AGENT_1_KEY → `data/wallets/agent-1.sqlite`), the same file Track D's `scripts/fund.ts`
+   * and `infra/preflight.mjs` use; one key, one wallet database (else the agent does not see its funding).
+   */
   static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents, vaultId?: string } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
     const { wallet, close } = await openServerWallet({
-      name: `agent-${profile.name}`,
+      name: walletNameOf(profile.walletEnv),
       rootKeyHex: requireEnv(profile.walletEnv),
       dataDir: dataDir(),
       chain: network(),

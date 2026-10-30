@@ -5,7 +5,7 @@
   "retailSatsPerCredit": 50,
   "minutesPerCredit": 60,
   "demoPricing": true,
-  "tokenId": null,
+  "tokenId": "0ae50b8b69efd9d1b0dacc7cefaf8e4abaea9cd33f5e4e7c93af4d73d715437d_0",
   "simulate": {
     "minutesPerSecond": 60
   }

@@ -36,3 +36,9 @@ backups/
 
 # raw third-party art packs (apps/web): licenses forbid redistribution; only processed atlases are committed
 apps/web/assets/packs/
+
+# Runtime data written to the repo root when DATA_DIR was empty (fixed in 8ad4e6e).
+# /overlay/overlay.key is a private key: never commit these.
+/overlay/
+/agents/
+/provider-cli/

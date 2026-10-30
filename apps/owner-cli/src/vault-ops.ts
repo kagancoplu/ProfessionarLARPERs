@@ -43,6 +43,8 @@ export interface GuardPolicyInput {
   weeklyCapSats: number
   maxFeeSats: number
   hotWalletDailySats: number
+  /** D-P2b: lowest ask per credit when the agent lists vault-locked credits; absent = listing off. */
+  minAskSatsPerCredit?: number
 }
 
 const ownerInstructions = (vaultId: string): string =>
