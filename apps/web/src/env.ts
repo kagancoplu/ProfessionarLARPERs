@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * Runtime environment for apps/web (MASTER §3.9 VITE_* variables, §3.10 browser rule).
  * Pure `resolveEnv` so tests can feed their own values; `env` is the live instance.

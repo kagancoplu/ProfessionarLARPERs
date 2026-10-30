@@ -6,14 +6,14 @@ import { AuthFetch, Random, Transaction, Utils, type WalletInterface } from '@ag
 import {
   buildLighthousePledge, buildPledge, buildReserveAndAnnounce, buildSweep, cancelLighthousePledge, cancelListing as coreCancelListing, cancelPledge, cancelPool as coreCancelPool, COOP_SERVICE, COOP_TOPIC, derivedP2pkhHex, internalizeSettlement, OverlayClient,
   P2PKH_UNLOCKING_SCRIPT_LENGTH, P2pkhWalletSigner, PROVIDER_PROTOCOL, publishOffer, receivePkh, reserveListing, REVENUE_BASKET, signListing, signOffer, signSettlementInput, signWalletP2pkhInput,
-  TokenKit, verifySettlementPlan, type CustomInstructions, type KitQuery, type Offer, type PoolTerms, type TermsDraft
+  TokenKit, verifySettlementPlan, type CustomInstructions, type LineageOptions, type KitQuery, type Offer, type PoolTerms, type TermsDraft
 } from '@agentcoop/core'
 import { beefFromArcade } from '@agentcoop/core/kit/overlayApi'
 import type { VaultUtxo } from '@agentcoop/core/signers/VaultSigner'
-import { guardApi } from '../../api/guard'
+import { createGuardApi } from '../../api/guard'
 import { makeEvent } from '../../events/types'
 import { createVault as opCreateVault, fundVault as opFundVault, ownerBasketUtxos, registerVault, withdrawVault as opWithdrawVault } from './vaultOps'
-import { coopApi } from '../../api/coop'
+import { createCoopApi } from '../../api/coop'
 import type { Catalog, GuardDecision, GuardPolicyResponse, ProviderJob, VaultView } from '../../api/types'
 import type { AppEnv } from '../../env'
 import type { EventBus } from '../../events/bus'
@@ -30,10 +30,26 @@ export interface LiveFlowDeps {
   bus: EventBus
   getWallet: () => WalletInterface | undefined
   getFeed: () => CoordinatorFeed | undefined
+  /** lineage checks (settlement review, sweep): defaults to Arcade at env.urls.arcade; tests pass the mock chain's */
+  lineage?: LineageOptions
+  /** fetch for the coordinator's plain HTTP calls (tests); browser fetch by default */
+  fetchImpl?: typeof fetch
+  /** BEEF of a listing's source tx for a sweep: defaults to Arcade; tests pass the mock chain's */
+  getBeef?: (txid: string) => Promise<number[]>
 }
 
 export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
   const { env, store, bus } = deps
+  // clients built from this env (not the module singletons), so one process can drive several (tests: two wallets)
+  const coopApi = createCoopApi(env.urls.coop)
+  const guardApi = createGuardApi(env.urls.guard)
+  const lineage: LineageOptions = deps.lineage ?? { arcadeUrl: env.urls.arcade }
+  /** a listing's BEEF from the overlay (it keeps the token ancestry, AGENTS.md), else Arcade */
+  const overlayBeef = async (txid: string): Promise<number[]> => {
+    const [o] = await overlay().lookup({ op: 'outpoint', txid, vout: 0 } as unknown as KitQuery)
+    return o !== undefined ? o.beef : await beefFromArcade(txid, env.urls.arcade)
+  }
+  const http = deps.fetchImpl ?? fetch
   const wallet = (): WalletInterface => { const w = deps.getWallet(); if (w === undefined) throw new FlowError('wallet', 'Connect BSV Desktop first.'); return w }
   const overlay = (): OverlayClient => new OverlayClient(env.urls.overlay, undefined, env.network, env.urls.arcade, COOP_TOPIC, COOP_SERVICE)
   const kit = (): TokenKit => new TokenKit(wallet(), overlay())
@@ -71,7 +87,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const terms = pool(poolId)
       // never leave a fee-paid coin with nobody to take it: check the coordinator first (B: POST /pledges/lighthouse)
       await s.step(STEP.lighthouseProbe, 'HTTP', async () => {
-        const res = await fetch(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+        const res = await http(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
         if (res.status === 404 || res.status === 405) throw new FlowError('pledge', 'This coordinator does not take sign-and-leave pledges yet (POST /pledges/lighthouse). Use the normal pledge and stay for the signing round.')
       })
       const guard = await s.step('Ask the guard who it is (/healthz)', 'HTTP', () => guardApi.healthz(), g => ({ detail: `${g.identityKey.slice(0, 12)}…` }))
@@ -81,7 +97,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const lp = await s.step(STEP.lighthouseBuild, 'SINGLE|ACP', () => buildLighthousePledge(wallet(), terms, String(credits), { tokenIndex, guard: guard.identityKey }), r => ({ txid: r.outpoint.split('_')[0], detail: `${r.satoshis} sat coin + ${terms.feeSats} sat fee` }))
       await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(lp.beef))
       await s.step(STEP.lighthouseRegister, 'HTTP', async () => {
-        const res = await fetch(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...lp, beef: undefined }) })
+        const res = await http(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...lp, beef: undefined }) })
         if (!res.ok) throw new FlowError('pledge', `the coordinator refused the signed pledge (${res.status}): ${(await res.text()).slice(0, 200)}. Your coin is yours: withdraw it from My pledges.`)
       })
       const txid = lp.outpoint.split('_')[0]!
@@ -121,7 +137,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       let ok = checks.every(c => c.ok === true)
       try {
         await s.step(STEP.verifySettlement, 'lineage', () =>
-          verifySettlementPlan(req.plan, offer, my.outpoint, { expectedCredits: my.credits, expectedCreditPkh: receivePkh(identity(), my.tokenIndex), verifyLineage: true, lineage: { arcadeUrl: env.urls.arcade } }))
+          verifySettlementPlan(req.plan, offer, my.outpoint, { expectedCredits: my.credits, expectedCreditPkh: receivePkh(identity(), my.tokenIndex), verifyLineage: true, lineage }))
         checks.push({ label: 'Pledge-list hash and the provider\'s credit lineage', ok: true, stamp: 'SPV' })
       } catch (err) {
         checks.push({ label: 'Pledge-list hash and the provider\'s credit lineage', ok: false, detail: String((err as Error).message ?? err), stamp: 'SPV' })
@@ -187,17 +203,26 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
     async redeem (credits) {
       const s = createStepper(bus, 'redeem')
       const catalog = await s.step(STEP.readCatalog, 'BRC-103', () => authJson<Catalog>('/v1/catalog'))
-      const product = catalog.products[0]
-      if (product === undefined || product.tokenId === null) throw new FlowError('redeem', 'The provider has no credit token yet.')
       const k = kit()
-      const sent = await s.step(`Send ${credits} credit(s) to the provider in BSV Desktop`, 'BSV-21', () => k.send(product.tokenId!, BigInt(credits), catalog.credits.redeemTo), r => ({ txid: r.txid }))
-      const beef = await s.step('Collect the transfer\'s AtomicBEEF', 'AtomicBEEF', async () => {
-        const [out] = await overlay().lookup({ op: 'outpoint', outpoint: `${sent.txid}_0` } as unknown as KitQuery)
-        if (out === undefined) throw new FlowError('redeem', 'transfer not on the overlay yet')
-        return out.beef
+      // the provider may sell several products: redeem the one whose credits I actually hold
+      const held = await k.balances()
+      const product = catalog.products.find(p => p.tokenId !== null && held.some(b => b.tokenId === p.tokenId && b.overlay >= BigInt(credits)))
+      if (product === undefined) throw new FlowError('redeem', catalog.products.every(p => p.tokenId === null) ? 'The provider has no credit token yet.' : `You do not hold ${credits} credit(s) of any of this provider's products.`)
+      if (credits > catalog.credits.maxRedeem) throw new FlowError('redeem', `At most ${catalog.credits.maxRedeem} credits per redeem.`)
+      const server = catalog.credits.redeemTo
+      const sent = await s.step(`Send ${credits} credit(s) to the provider in BSV Desktop`, 'BSV-21', () => k.send(product.tokenId!, BigInt(credits), server), r => ({ txid: r.txid }))
+      // the output that pays the provider, found by its locking script (never by index, AGENTS.md)
+      const pkh = receivePkh(server, sent.recipientIndex)
+      const out = await s.step('Find the transfer on the overlay (its AtomicBEEF and output)', 'AtomicBEEF', async () => {
+        for (let i = 0; i < 10; i++) {
+          const found = (await overlay().lookup({ op: 'identity', identityKey: server, tokenId: product.tokenId! } as unknown as KitQuery)).find(o => o.txid === sent.txid && (o.ctx as { ownerPkh?: string }).ownerPkh === pkh)
+          if (found !== undefined) return found
+          await new Promise(r => setTimeout(r, 300))
+        }
+        throw new FlowError('redeem', 'the transfer is not on the overlay yet; try again in a moment (the credits are at the provider\'s address)')
       })
-      const r = await s.step(STEP.redeemAtProvider, 'BRC-103', () => authJson<{ prepaidMinutes: number }>('/v1/credits/redeem', { beef, outputIndex: 0 }))
-      return { txid: sent.txid, prepaidMinutes: r.prepaidMinutes }
+      const r = await s.step(STEP.redeemAtProvider, 'BRC-103', () => authJson<{ prepaidMinutes?: number, prepaidUnits: number }>('/v1/credits/redeem', { beef: out.beef, outputIndex: out.vout }))
+      return { txid: sent.txid, prepaidMinutes: r.prepaidMinutes ?? r.prepaidUnits }
     },
 
     async runJob (kind, minutes) {
@@ -399,7 +424,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const picked = all.filter(l => outpoints.includes(l.outpoint))
       if (picked.length === 0) throw new FlowError('sweep', 'Those listings are gone (swept or cancelled).')
       const total = picked.reduce((a, l) => a + Number(l.askSats), 0)
-      const r = await s.step(`Verify each listing and its credit lineage (SPV, Arcade), then buy ${picked.length} in one transaction (SIGHASH_ALL)`, 'lineage', () => buildSweep(wallet(), kit(), picked, { verifyLineage: true, lineage: { arcadeUrl: env.urls.arcade } }), x => ({ txid: x.txid, detail: `${x.credits} credits · ${total} sat` }))
+      const r = await s.step(`Verify each listing and its credit lineage (SPV, Arcade), then buy ${picked.length} in one transaction (SIGHASH_ALL)`, 'lineage', () => buildSweep(wallet(), kit(), picked, { verifyLineage: true, lineage, getBeef: deps.getBeef ?? overlayBeef }), x => ({ txid: x.txid, detail: `${x.credits} credits · ${total} sat` }))
       for (const l of picked) bus.publish(makeEvent('overlay', 'listing_filled', { listing: l, txid: r.txid, buyer: identity() }, { txid: r.txid, agent: identity() }))
       return { txid: r.txid, credits: r.credits, satoshis: total }
     }
