@@ -9,11 +9,10 @@ Status: **Track B, Faz 3**: AgentCoop records (pools, pledges, settlements, Mand
 Node 22 or newer (`nvm use 22`).
 
 ```bash
-cd packages/overlay
-npm install
-npm run overlay          # http://localhost:8080
-npm test                 # mock chain: validation test 1, the size model, pool/pledge/settlement indexing
-npm run arcade-policy    # validation test 8: Arcade policy + settlement size/fee table
+npm install                          # repo root (npm workspaces)
+npm run overlay -w @agentcoop/overlay   # http://localhost:8080
+npx vitest run packages/overlay      # mock chain: validation test 1, size model, pools/pledges/settlements, vaults, events
+npm run arcade-policy -w @agentcoop/overlay  # validation test 8: Arcade policy + settlement size/fee table
 ```
 
 | Variable | Default | Meaning |
@@ -87,8 +86,6 @@ A settlement with the provider's credit UTXO as input 0 (signed `SINGLE|ANYONECA
 
 Policy is not a limit on settlement size.
 
-## Temporary copies
+## Layout
 
-Until Track A's `@agentcoop/core` exists, `src/kit/{inscription,rules,addresses}.ts` and `test/helpers/mockchain.ts` are verbatim copies of the kit's files. `test/helpers/settlement.ts` is a test-only settlement builder, not Track A's. When A's root workspace lands: delete `package-lock.json` here, import from `@agentcoop/core`, and run the tests from the root config.
-
-`npm run typecheck` covers `src/` and `scripts/`, like the kit (whose `tsconfig` also leaves out `test/`). The verbatim `mockchain.ts` reports the CJS/ESM dual-SDK type mismatch the kit's `vitest.config.ts` alias resolves at runtime.
+npm workspace member of the repo root. Credit rules, inscriptions, addresses, the OP_RETURN envelope, types and the vault script come from `@agentcoop/core` (Track A); this package adds the topic manager, the lookup service, record validation (`src/records.ts`), vault helpers (`src/vault.ts`), the event stream (`src/events.ts`) and the views other packages import (`src/views.ts`). `test/helpers/{settlement,pool}.ts` are test-only builders for edge cases; the end-to-end flow with Track A's real builders is `apps/coordinator/test/e2e.integration.mockchain.test.ts`.

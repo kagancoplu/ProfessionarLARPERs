@@ -3,10 +3,10 @@
  * On `sign_request` it checks its own input and credit output (a minimal
  * stand-in for A's verifySettlementPlan) and then behaves as told.
  */
-import { Transaction, Utils, type WalletInterface } from '@bsv/sdk'
+import { Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
 import { WebSocket } from 'ws'
-import { decodeBsv21 } from '../../../../packages/overlay/src/kit/inscription'
-import { receivePkh } from '../../../../packages/overlay/src/kit/addresses'
+import { decodeBsv21 } from '@agentcoop/core'
+import { receivePkh } from '@agentcoop/core'
 import { SCOPE_ALL, signInput, type Coin } from '../../../../packages/overlay/test/helpers/settlement'
 
 export type Behavior = 'sign' | 'silent' | 'reject' | 'garbage'

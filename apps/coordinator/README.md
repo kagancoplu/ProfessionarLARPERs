@@ -4,17 +4,16 @@ The AgentCoop coordinator and side API (MASTER §3.5). It reads pools and pledge
 
 **It holds no funds and no keys.** An offer is the provider's `SIGHASH_SINGLE|ANYONECANPAY` signature: it can only ever pay the provider its price at output 0. Every participant checks the whole settlement and signs `SIGHASH_ALL`, so the coordinator cannot change any output. Anyone can run a coordinator (FINAL-IDEA §4.5).
 
-Status: **Track B, Faz 3** (mock chain). Signing rounds run once Track A's protocol is plugged in (see below). Run it with the overlay via `node infra/run.mjs` (see `infra/README.md`).
+Status: **Track B, Faz 3 + integration with Track A** (mock chain). `npm run coordinator` runs real signing rounds with Track A's protocol. Run it with the overlay via `node infra/run.mjs` (see `infra/README.md`).
 
 ## Run
 
 Node 22 or newer (`nvm use 22`). Start the overlay first (`packages/overlay`, `npm run overlay`).
 
 ```bash
-cd apps/coordinator
-npm install
-npm run coordinator      # http://localhost:8090, WS ws://localhost:8090/ws
-npm test                 # mock chain: overlay + API + WS + signing rounds end to end
+npm install                                 # repo root (npm workspaces)
+npm run coordinator -w @agentcoop/coordinator  # http://localhost:8090, WS ws://localhost:8090/ws
+npx vitest run apps/coordinator             # mock chain: API, WS, signing rounds, market, restart, and the full flow with Track A's builders
 ```
 
 | Variable | Default | Meaning |
@@ -46,7 +45,7 @@ npm test                 # mock chain: overlay + API + WS + signing rounds end t
 
 `status`: `open`, `locking` (signing round running, Faz 2), `settled`, `failed` (height ≥ `deadlineHeight`, no settlement), `cancelled` (the provider spent the credit UTXO outside a settlement).
 
-Error codes: `LISTING_INVALID_FORMAT`, `LISTING_NOT_ON_OVERLAY`, `LISTING_SPENT`, `LISTING_MISMATCH`, `OFFER_INVALID_FORMAT`, `BAD_POOL_ID`, `POOL_NOT_FOUND`, `POOL_INVALID`, `POOL_NOT_OPEN`, `CREDIT_MISMATCH`, `TERMS_MISMATCH`, `SIGHASH_NOT_SINGLE_ACP`, `SIGNATURE_INVALID`, `OFFER_NOT_FOUND`, `OVERLAY_UNAVAILABLE` (502).
+Error codes: `LISTING_INVALID_FORMAT`, `LISTING_NOT_ON_OVERLAY`, `LISTING_SPENT`, `BAD_LISTING`, `BAD_OFFER`, `OFFER_INVALID_FORMAT`, `BAD_POOL_ID`, `POOL_NOT_FOUND`, `POOL_INVALID`, `POOL_NOT_OPEN`, `TERMS_MISMATCH`, `OFFER_NOT_FOUND`, `OVERLAY_UNAVAILABLE` (502).
 
 ```bash
 curl -s localhost:8090/pools | jq '.[] | {poolId, status, pledgedCredits, target}'
@@ -79,8 +78,8 @@ Blacklists, attempt counts and last rounds are stored in the coordinator's datab
 
 Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
 
-The plan itself comes from Track A (`planSettlement`, `assembleSettlement`, `broadcastEF`, MASTER §3.4), injected through `src/protocol.ts` (`SettlementProtocol`). Without it, `npm run coordinator` runs the side API and the feed only, and `/healthz` reports `engine: false`. The tests use `test/helpers/devProtocol.ts`, a test-only stand-in.
+The plan itself comes from Track A (`planSettlement`: deterministic order, exact N within a 120 % window, fee from the real signed size; MASTER §3.2/§3.4), injected through `src/protocol.ts` (`SettlementProtocol`, `coreProtocol`). `startCoordinator` without a protocol runs the side API and the feed only (`/healthz` → `engine: false`).
 
-## Temporary layout
+## Layout
 
-Until Track A's root workspace exists, this is a standalone package. Its tests import the overlay and test helpers from `packages/overlay` by relative path, and `vitest.config.ts` dedupes the overlay packages so the process has one `@bsv/sdk`. `src/verifyOffer.ts` stands in for A's `verifyOffer`. When A's workspace lands: delete `package-lock.json`, import types from `@agentcoop/core` and `@agentcoop/overlay`, and wire A's functions into `SettlementProtocol` in `src/server.ts`.
+npm workspace member of the repo root. The protocol is Track A's (`@agentcoop/core`): `src/protocol.ts` `coreProtocol` wires `planSettlement`, `assembleSettlement` and `broadcastEF` (Arcade) into the engine, and `/offers`, `/listings` delegate signature and credit checks to A's `verifyOffer` / `verifyListing` (errors `BAD_OFFER` / `BAD_LISTING`). Tests pass `coreProtocol` with a fixed chain policy and a mock-chain broadcast.

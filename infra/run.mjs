@@ -58,9 +58,9 @@ let stopping = false
 const children = new Map()
 
 function start (svc, backoff = 1_000) {
-  const tsx = join(svc.cwd, 'node_modules', '.bin', 'tsx')
+  const tsx = join(root, 'node_modules', '.bin', 'tsx') // npm workspaces: dependencies live at the root
   if (!existsSync(tsx)) {
-    console.error(`[${svc.name}] ${tsx} missing: run npm install in ${svc.cwd}`)
+    console.error(`[${svc.name}] ${tsx} missing: run npm install at the repo root`)
     process.exit(1)
   }
   const startedAt = Date.now()

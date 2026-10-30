@@ -3,11 +3,11 @@
  * (Track B, Faz 1). Stand-ins for Track A's buildReserveAndAnnounce /
  * buildPledge / cancelPledge until @agentcoop/core exists.
  */
-import { Random, Transaction, Utils, type WalletInterface } from '@bsv/sdk'
-import { buildBsv21Script } from '../../src/kit/inscription'
-import { instructionsFor, receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL } from '../../src/kit/addresses'
-import { buildOpReturn } from '../../src/stub/opreturn'
-import type { PoolTerms } from '../../src/stub/types'
+import { Random, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
+import { buildBsv21Script } from '@agentcoop/core'
+import { instructionsFor, receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL } from '@agentcoop/core'
+import { buildOpReturn } from '@agentcoop/core'
+import type { PoolTerms } from '@agentcoop/core'
 import { coinFrom, deployCredits, p2pkhFor, PLEDGE_PROTOCOL, providerPayScript, SCOPE_ALL, signInput, type Coin, type KeyRef } from './settlement'
 
 const UNLOCK_P2PKH = 108

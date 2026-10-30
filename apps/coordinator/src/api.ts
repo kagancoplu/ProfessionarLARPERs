@@ -5,7 +5,7 @@
  * round is running, Faz 2) and `hasOffer`.
  */
 import express, { type Router } from 'express'
-import type { Listing, Offer } from '../../../packages/overlay/src/stub/types'
+import type { Listing, Offer } from '@agentcoop/core'
 import type { PoolView } from '../../../packages/overlay/src/views'
 import type { HeightSource } from './chain'
 import type { CoordinatorStatus } from './engine'
@@ -71,7 +71,7 @@ export function createApiRouter (deps: ApiDeps): Router {
     const poolId = typeof offer?.poolId === 'string' && POOL_ID_RE.test(offer.poolId) ? offer.poolId : undefined
     if (poolId === undefined) throw new OfferError('OFFER_INVALID_FORMAT', 'offer.poolId must be "<txid>_<vout>"')
     const [pool, credit] = await Promise.all([deps.overlay.pool(poolId), deps.overlay.creditOutput(poolId)])
-    const verified = verifyOffer(offer, pool, credit)
+    const verified = verifyOffer(offer, pool, credit, credit?.tx)
     await deps.store.saveOffer(verified)
     res.status(201).json({ poolId, accepted: true })
   }))

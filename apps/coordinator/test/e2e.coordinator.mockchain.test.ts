@@ -1,6 +1,7 @@
 /**
  * B.P2 (plan/phases/B-P2.md §5): lock-in, signing rounds, blacklist, waiting
- * list, the 3-round limit, failed pools. Overlay + coordinator engine + WS
+ * list, the 3-round limit, failed pools, with Track A's planSettlement
+ * (@agentcoop/core) behind the coordinator's SettlementProtocol. Overlay + coordinator engine + WS
  * participant bots in one process; wallet-toolbox wallets on the mock chain.
  * Pledges are mined one per block so the coordinator order (height, txid) is
  * deterministic.
@@ -9,17 +10,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LockingScript, Transaction, UnlockingScript, type MerklePath } from '@bsv/sdk'
+import { LockingScript, Transaction, UnlockingScript, type MerklePath } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { startOverlay, type RunningOverlay } from '../../../packages/overlay/src/server'
-import { createMockChain, type MockChain } from '../../../packages/overlay/test/helpers/mockchain'
-import { lookup, SCOPE_SINGLE_ACP, signInput, submitToOverlay } from '../../../packages/overlay/test/helpers/settlement'
+import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
+import { broadcastMock, lookup, SCOPE_SINGLE_ACP, signInput, submitToOverlay } from '../../../packages/overlay/test/helpers/settlement'
 import { beefOf, openPool, pledge, type OpenedPool, type Pledge } from '../../../packages/overlay/test/helpers/pool'
-import type { Offer } from '../../../packages/overlay/src/stub/types'
+import type { Offer } from '@agentcoop/core'
 import { ManualHeight } from '../src/chain'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
-import { devProtocol } from './helpers/devProtocol'
+import { coreProtocol } from '../src/protocol'
 import { startBot, type Bot } from './helpers/participant'
 
 let chain: MockChain
@@ -79,7 +80,7 @@ beforeAll(async () => {
   overlay = await startOverlay({ port: 18390, dbFile: join(dir, 'overlay.db'), chainTracker: chain.chainTracker, quiet: true })
   coop = await startCoordinator(
     { port: 18391, overlayUrl: overlay.url, arcadeUrl: 'http://unused.invalid', dbFile: join(dir, 'coordinator.db'), pollMs: 200, roundTimeoutMs: 1_500, maxRounds: 3, spentCheck: 'none', network: 'main' },
-    { height, protocol: devProtocol(chain.services), spent: noSpentChecker, log: (event, f) => { logs.push({ event, ...f }) } }
+    { height, protocol: coreProtocol({ arcadeUrl: 'http://unused.invalid', policy: async () => ({ height: 500, satsPerKb: 100 }), broadcast: async tx => { await broadcastMock(chain.services, tx); return tx.id('hex') } }), spent: noSpentChecker, log: (event, f) => { logs.push({ event, ...f }) } }
   )
   const names = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6'] as const
   provider = await chain.makeWallet()
@@ -116,12 +117,12 @@ describe('coordinator engine: rounds, blacklist, waiting list', () => {
     expect(await credits('a2', p.terms.tokenId)).toEqual(['400'])
   })
 
-  it('2. waiting list: the silent first pledge is blacklisted; round 2 settles with a partial last share', async () => {
+  it('2. waiting list: the silent first pledge is blacklisted; round 2 settles from the waiting list', async () => {
     const p = await newPool()
     const silent = await pledgeMined('a3', p, 400n)
     await pledgeMined('a1', p, 600n)
     await pledgeMined('a2', p, 300n)
-    await pledgeMined('a4', p, 200n)
+    await pledgeMined('a4', p, 100n) // A's planSettlement fills exactly N: 600 + 300 + 100
     await postOffer(p)
     const failed = await bot.a1.waitFor(m => m.type === 'round_failed' && m.poolId === p.poolId)
     expect(failed).toMatchObject({ round: 1, missing: [`${silent.txid}_0`] })
@@ -138,8 +139,10 @@ describe('coordinator engine: rounds, blacklist, waiting list', () => {
     const p = await newPool()
     const garbage = await pledgeMined('a5', p, 300n)
     const rejecter = await pledgeMined('a6', p, 300n)
-    await pledgeMined('a1', p, 600n)
+    // Order matters with A's planner: it picks an exact N inside a 120% window of the ordered pledges
+    // (a5 300 + a6 300 + a4 400 = 1000 here; with a1 600 before a4 the window would be 300+300+600, no exact 1000).
     await pledgeMined('a4', p, 400n)
+    await pledgeMined('a1', p, 600n)
     await postOffer(p)
     await bot.a4.waitFor(m => m.type === 'settled' && m.poolId === p.poolId)
     const view = await get(`/pools/${p.poolId}`)
