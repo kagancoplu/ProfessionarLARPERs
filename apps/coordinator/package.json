@@ -8,7 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "coordinator": "tsx src/server.ts",
+    "coordinator": "tsx --import @agentcoop/core/register-sdk src/server.ts",
     "test": "cd ../.. && vitest run apps/coordinator",
     "typecheck": "tsc --noEmit"
   },

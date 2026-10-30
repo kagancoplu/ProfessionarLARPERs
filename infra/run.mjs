@@ -64,7 +64,8 @@ function start (svc, backoff = 1_000) {
     process.exit(1)
   }
   const startedAt = Date.now()
-  const child = spawn(tsx, ['src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  // --import register-sdk: one runtime copy of @bsv/sdk under tsx (packages/core/register-sdk.mjs, MASTER §3.1)
+  const child = spawn(tsx, ['--import', '@agentcoop/core/register-sdk', 'src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
   children.set(svc.name, child)
   const prefix = (stream, out) => {
     let buf = ''
