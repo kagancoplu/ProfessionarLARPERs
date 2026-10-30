@@ -11,7 +11,8 @@
 2. **Kullanıcının anahtarı asla istenmez, saklanmaz, gösterilmez.** Her imza `WalletClient('auto')` üzerinden Desktop'ta atılır. Sunucu cüzdanı, `.env`, özel anahtar bu uygulamanın hiçbir yerinde yok.
 3. **Üç çalışma modu her zaman çalışır:** `live` (gerçek servisler), `mock` (MSW + sahte olay akışı; diğer track'ler hazır değilken geliştirme ve e2e testler), `replay` (kaydedilmiş gerçek mainnet olayları). Bir özellik mock'ta çalışmıyorsa bitmemiştir.
 4. **Yürütme sırası:** P0 → P1 → P2 → P3 → P4 → *(zaman kalırsa P6 avatar → P7 çok oyuncu)* → **P5 teslim** (her zaman son, asla atlanmaz). Teslime 4 saat kala nerede olunursa olunsun P5'e geçilir.
-5. Telif: Stardew Valley yalnızca **atmosfer referansı**. Onun sprite'ları, karakterleri, isimleri, arayüz parçaları kullanılmaz. Her görsel varlık ya CC0 ya takımın ürettiği (Claude ile) ya da açıkça izinli; hepsi `apps/web/assets/LICENSES.md`'de kayıtlı.
+5. Telif: Stardew Valley yalnızca **atmosfer referansı**. Onun sprite'ları, karakterleri, isimleri, arayüz parçaları kullanılmaz. Her görsel varlık ya CC0 ya takımın ürettiği (Claude ile, kod olarak) ya da açıkça izinli; hepsi `apps/web/assets/LICENSES.md`'de kayıtlı. **bsvmunich.com** (BSVA'nın workshop sitesi, büyük ihtimalle jürinin işi) yalnızca referans: izin olmadan kod, sprite veya sahne kopyalanmaz (§6.4).
+6. **Anti-slop kuralları (§6.3) bağlayıcıdır.** P0'da `/design-consultation` ile `apps/web/DESIGN.md` yazılır; her fazın Checkpoint'inde `/design-review` koşulur ve DESIGN.md dışına çıkan her şey bulgu sayılır.
 
 ---
 
@@ -27,7 +28,7 @@
 | Cüzdansız ziyaretçi | Canlı izleme (Kasaba, havuzlar, gezgin, metrikler) + **replay** modu. İşlem yapmak Desktop ister |
 | Yayın | Herkese açık statik site (Cloudflare Pages) **ve** yerelde `npm run web`. Servis URL'leri `VITE_*` env'den; B'nin Faz 5 URL'leri geldiğinde değiştirilir |
 | Ses | Var, **varsayılan sessiz**, tek tıkla açılır (tarayıcı autoplay kuralı). CC0 ses paketleri |
-| Görseller | CC0 paketler + Claude ile üretilen görseller (pixel hattından geçirilir, §6) |
+| Görseller | CC0 paketler (önce Kenney) + Claude'un **kodla çizdiği** sprite'lar (renk matrisi → SVG/PNG, §6.2). AI raster görsel üretimi yok. bsvmunich.com yalnızca referans (§6.4) |
 | Stack | §1 (E kişisinin tercihleri yoksa aynen) |
 
 ---
@@ -42,13 +43,13 @@
 | Sunucu verisi | **TanStack Query 5** (REST: havuzlar, listeler, katalog, vault'lar) + olay akışlarında `invalidate` | Önbellek, yeniden deneme, arkaplan yenileme; SSE/WS olayı gelince ilgili sorgu geçersiz kılınır | Elle fetch + store: yeniden deneme/önbellek elle yazılır |
 | Kasaba motoru | **Phaser 3** (en son 3.x kararlı; kurulumda sürümü sabitle) | Tilemap (Tiled JSON), sprite animasyonu, tween, kamera, parçacık, ses, girdi hazır; `pixelArt: true` + `roundPixels`; P6 avatar için Arcade Physics hazır | PixiJS: daha düşük seviye (tilemap/animasyon elle); Phaser 4: henüz kararlı değilse risk almayın |
 | Harita | **Tiled** (ücretsiz editör) → JSON tilemap, 16×16 tile, **3× ölçek** (48 px) | Katmanlı harita, nesne katmanında "binalar" ve "noktalar" (ajan evleri, pano, tezgâhlar) veri olarak | Elle koordinat: hızlı başlar, büyüyünce yönetilemez |
-| Stil | **Tailwind CSS 4** + küçük özel bileşen seti (`ui/`: Tabela kartı, PixelButton, Parşömen modalı, sayaç) | Pixel kimliği özel bileşen ister; hazır kit'ler (shadcn vb.) "SaaS" görünür | CSS modülleri: olur, ama token/tema yönetimi Tailwind'de hazır |
-| Yazı tipleri | Google Fonts (OFL): **Pixelify Sans** (başlık/etiket), **VT323** (büyük rakamlar, sayaçlar), gövde için okunabilir sans (**Inter** veya sistem) | Pixel kimliği + uzun metinde okunabilirlik | Her yerde Press Start 2P: tablo/formda okunmaz |
+| Stil | **Tailwind CSS 4** + **8bitcn/ui** (shadcn CLI ile kurulan açık kaynak 8-bit bileşenler; erişilebilir) temel, üstüne kendi token'larımız ve özel bileşenler (`ui/`: Tabela kartı, Parşömen modalı, UnderTheHood paneli, sayaç). 21st.dev / Magic MCP (takımın premium hesabı) yalnızca karmaşık etkileşim iskeleti için (tablo, drawer, komut paleti, adım adım form) ve **her zaman** DESIGN.md token'larıyla yeniden stillenir; lisansı "unknown" olan bileşen kurulmaz | Pixel kimliği özel bileşen ister; düz shadcn/21st.dev varsayılanları "AI SaaS" görünür | Pixelact UI (daha az bileşen), nes-ui-react (retro konsol havası, köy temasına uymuyor) |
+| Yazı tipleri | Google Fonts (OFL): **Pixelify Sans** (başlık/etiket), **VT323** (büyük rakamlar, sayaçlar); gövde fontu P0'da `/design-consultation` ile seçilir: okunaklı, karakterli, **Inter/Roboto/Arial/Space Grotesk değil** (jürinin sitesi Inter + Silkscreen kullanıyor; ondan ayrışmak için Silkscreen de kullanılmaz) | Pixel kimliği + uzun metinde okunabilirlik + jüri sitesinden ayrışma | Her yerde Press Start 2P: tablo/formda okunmaz |
 | Cüzdan | `@bsv/sdk` **`WalletClient('auto')`** (tarayıcı; originator = sayfa origin'i), `AuthFetch` (BRC-103/104 + BRC-105 402), **`@agentcoop/core`** builder'ları (`buildPledge`, `signSettlementInput`, `reserveListing`, `buildSweep`, `TokenKit` …) | Tüm imzalar Desktop'ta; core'un aynı kodu CLI'larda da çalışıyor (tek doğruluk kaynağı) | Kendi tx kurucusu: asla |
 | Mock | **MSW 2** (REST) + süreç içi sahte olay üreticisi (`mock/scenario.ts`) + sahte `WalletClient` (`mock/wallet.ts`: onay penceresini simüle eder) | Diğer track'ler hazır olmadan tam akış; e2e testlerin temeli | Ayrı sahte sunucu: iki yerde bakım |
 | Test | **Vitest** (store, adaptörler, replay, akış mantığı) + **React Testing Library** (paneller) + **Playwright** (e2e, mock modda; Kasaba için ekran görüntüsü karşılaştırması) | Kökteki vitest ile uyum; e2e Desktop'suz koşar | Cypress: Playwright daha hızlı ve paralel |
 | Ses | **Howler 2** (tek ses yöneticisi; Kasaba dışındaki ekranlarda da çalışır) | Phaser ses yöneticisi sahneye bağlı; UI sesleri sahnesiz de çalmalı | Phaser Sound: yalnız sahnede |
-| Görsel hattı | `sharp` ile `tools/px.mjs` (nearest-neighbor küçültme + palet kuantizasyonu), `free-tex-packer-core` ile atlas | Claude üretimi görselleri gerçek pixel-art'a indirger ve paleti CC0 paketle hizalar | Elle Aseprite: zaman |
+| Görsel hattı | `assets/sprites/*.ts` (Claude'un yazdığı renk matrisleri + palet) → `tools/sprites.mjs` (React için `crispEdges` SVG, Phaser için PNG + atlas; `sharp`, `free-tex-packer-core`); CC0 PNG'ler için `tools/px.mjs` (palet hizalama) | Gerçek pixel-art: keskin, paletten çıkmaz, bulanık AI görüntüsü yok. Jürinin sitesi de sprite'larını aynı yöntemle (kodda matris → SVG `crispEdges`, canvas `fillRect`) çiziyor | AI raster üretimi (PixelLab, Retro Diffusion vb.): slop ve provenans riski; kullanılırsa `LICENSES.md`'de "AI-generated" |
 | Yayın | **Cloudflare Pages** (ya da Vercel) statik build; `VITE_*` build-time | Ücretsiz, hızlı, özel alan adı kolay; B'nin alan adı altında `app.<alan>` | VPS'e koymak: B'nin Caddy'sine bağımlı olur |
 
 **Tarayıcıda SDK tek kopya kuralı (MASTER §3.1'in tarayıcı karşılığı):** tarayıcıda wallet-toolbox yok, dolayısıyla `@bsv/sdk`'nın **ESM** build'i kullanılır. `packages/core/src/sdk.ts` CJS build'ini göreli yolla yeniden export ettiği için Vite'ta `resolve.alias` ile `/@bsv\/sdk\/dist\/cjs\/mod\.js$/` → `@bsv/sdk` yönlendirmesi yapılır (E.P0 0.6 bunu bir smoke testle doğrular; olmazsa A'dan `exports` içinde `"browser"` koşulu istenir). `@agentcoop/core` **index**'i yalnızca tarayıcı-güvenli modülleri export ediyor (`node/*` ayrı giriş); E.P0'da bu denetlenir ve sızan `node:` importu varsa A'ya STATUS'tan bildirilir.
@@ -172,6 +173,7 @@ Her kaynak kendi biçiminde gelir; adaptörler hepsini `CoopEvent { id, ts, src,
 - **Üst çubuk:** logo (AgentCoop, pixel), gezinme (Town · Pools · Market · My Agents · Provider · Explorer · Metrics), sağda **cüzdan çipi** (bağlı değil → "Connect BSV Desktop"; bağlı → kısaltılmış identity, ağ rozeti `mainnet`), **bildirim zili** (imza istekleri geri sayımla), ses düğmesi, mod rozeti (`LIVE` / `MOCK` / `REPLAY`).
 - **Kasaba** ana sayfa (`/`). Diğer ekranlar sağdan açılan **Drawer** (binaya tıklayınca) ya da tam sayfa (gezinmeden). `Tab` tuşu Kasaba ↔ ilgili tabloya geçer ("Ledger view").
 - Her işlem **"Parşömen"** (scroll) diyaloğuyla onaylanır: ne yapılacak, kaç sat, hangi adres, ardından "Approve in BSV Desktop" adımı (Desktop penceresi açılır; ekranda bekleme animasyonu), sonuç txid + WhatsOnChain linki.
+- **"Under the hood" paneli** (her işlem ekranının sağında): işlemin her adımı insan diliyle bir satır + protokol etiketi (`BRC-29`, `AtomicBEEF`, `SPV`, `SINGLE|ACP`, `ALL`, `2-of-2`, `internalizeAction`, `0-conf`) + ölçülen süre (ms) + WhatsOnChain linki; ücret satoshi ve euro olarak, "1 euro cent" ölçeğine karşı. AgentCoop'a özgü satırlar: "Your coin stays in your wallet (pledge)", "The provider signed once and went offline (SINGLE|ACP)", "Every participant checked the whole transaction before signing (ALL)", "N participants · 1 transaction · 0 sat held by anyone", "The guard checked the policy and co-signed / refused: <reason>". Fikir bsvmunich.com'dan (jüri bu kalıbı seviyor); görünüm ve metin bizim.
 - Tüm sayfalarda **boş durum**, **yükleniyor**, **servis kapalı** (hangi servis, yeniden dene) ve **hata** (insan dilinde; Desktop hataları `wallet/errors.ts` ile çevrilir) durumları var.
 
 ### 4.2 Roller ve yapabildikleri (her satır bir `flows/` fonksiyonu + Desktop onay noktası)
@@ -284,13 +286,67 @@ Her kaynak kendi biçiminde gelir; adaptörler hepsini `CoopEvent { id, ts, src,
 
 ---
 
-## 6. Görsel kimlik ve varlık hattı
+## 6. Görsel kimlik, varlık kaynakları ve anti-slop
 
 - **Palet:** CC0 bir tile paketinden türetilmiş 32–48 renklik sıcak palet (toprak, ahşap, çimen, gün batımı); UI token'ları (`--wood`, `--parchment`, `--ink`, `--gold`, `--grass`, `--danger`) Tailwind temasında; Kasaba ve konsollar aynı paleti kullanır. Dark mode: "gece" paleti (aynı token'lar).
-- **Kaynaklar:** (1) CC0 paketler (ör. Kenney'nin tile/karakter paketleri; itch.io'da **lisansı tek tek doğrulanmış** CC0 paketler), (2) Claude ile üretilen görseller (binalar, bekçi, at arabası, pano, gemi, ikonlar), (3) takım çizimleri. Her dosya `assets/LICENSES.md`'de: dosya, kaynak, lisans, değişiklik.
-- **Claude görsel hattı (`tools/px.mjs`):** üretilen PNG → hedef boyuta **nearest-neighbor** küçültme (ör. 48×48 bina, 16×24 karakter) → paletle **kuantizasyon** (en yakın renk) → şeffaf arka plan temizliği → atlas. Üretim istemi şablonu: "16-bit pixel art, top-down 3/4 view, flat colors, no gradients, transparent background, single object: <nesne>, warm farm-village palette". Önce 3–4 varyant, en uyumlusu seçilir; karakterler için 4 yön × 4 kare yürüme sprite'ı istenir (olmazsa 2 yön + yansıtma).
+- **Kaynaklar:** §6.1. Her dosya `assets/LICENSES.md`'de: dosya, kaynak URL, lisans, el çizimi mi / AI mı / kodla mı, değişiklik.
+- **Claude görsel hattı (§6.2):** Claude raster görsel üretmez; sprite'ı **kod olarak** çizer.
 - **UI parçaları:** 9-slice "tabela" ve "parşömen" çerçeveleri (CC0 veya üretilmiş), pixel ikon seti (jeton, sandık, çan, kalkan, gemi, GPU).
 - **Logo:** AgentCoop için pixel logo; BSVA logosu yalnızca `BSVA Logo Guidance` kurallarına göre, "Built on BSV" alanında, değiştirilmeden.
+
+
+### 6.1 Varlık kaynakları (öncelik sırasıyla)
+
+| Kaynak | Ne için | Lisans | Not |
+|---|---|---|---|
+| **Kenney** (kenney.nl): *Tiny Town* (16×16, 130 dosya), *Tiny Dungeon*, *RPG Urban*, *Pixel UI Pack*; ses: *RPG Audio*, *Interface Sounds*, *Impact Sounds* | Zemin, binalar, UI çerçeveleri, efekt sesleri | **CC0** (atıf gerekmez) | İlk tercih; Tiny Town lisansı doğrulandı |
+| **LimeZu – Serene Village (revamped)** (itch.io) | Sıcak köy havası (Stardew'e en yakın) | **CC-BY 4.0** | Kullanılabilir; README + `LICENSES.md`'de atıf şart |
+| ellen0ra – Cozy Farm Tileset; tofupixel – Fields of Adventure (itch.io) | Çiftlik/köy dekoru | Sayfada yazmıyor | İndirmeden önce lisans alanı kontrol edilir; belirsizse kullanılmaz |
+| **Claude, kodla** (§6.2) | Ayırt edici nesneler: GPU atölyesi, ilan panosu + çuval, kilitli sandık, bekçi, şüpheli yabancı, at arabası, çan, pazar tezgâhı, liman/gemi, köylüler (profil başına), pixel ikon seti, logo | Takımın eseri | Atölye/pano/sandık/bekçi bizim kimliğimiz; CC0'dan alınmaz |
+| Google Fonts (OFL) | Pixelify Sans, VT323 + gövde fontu | OFL | §1 |
+
+**Kaçınılacaklar:** itch.io'da "CC0" etiketli ama AI üretimi paketler (ör. Seedream ile üretilmiş köy paketleri; yorumlarda AI şüphesi olan FreePixelFarm). Her paket için "elle mi çizilmiş" sorusu `LICENSES.md`'ye yazılır.
+
+### 6.2 Kodla çizilen sprite hattı
+
+1. **Palet:** `assets/palette.ts`: seçilen CC0 paketten çıkarılmış 32–48 renk, adlandırılmış (`wood-1`, `grass-2`, `ink`, `gold` …). Paket dışı renk yasak.
+2. **Sprite kaynağı:** `assets/sprites/<ad>.ts` → `{ w, h, palette: 'town', frames: string[][] }`. Her satır bir string, her karakter bir palet indeksi ('.' = şeffaf). Claude bu dosyaları yazar ve düzenler; insan gözden geçirir.
+3. **Derleme:** `tools/sprites.mjs` → (a) React için `crispEdges` SVG bileşenleri (`<Sprite name="chest" zoom={3} />`), (b) Phaser için PNG kareleri ve atlas (`public/game/atlas.png|json`). Tam sayı ölçek; `image-rendering: pixelated`.
+4. **İnceleme:** `/_kit` sayfasında tüm sprite'lar 1×/3× ve gece paletinde yan yana. Karakterler için 4 yön × 4 kare (olmazsa 2 yön + yansıtma).
+5. **Çalışma biçimi:** önce 2–3 varyant, `/design-shotgun` ile karşılaştırılır, biri seçilir. Seçim gerekçesi DESIGN.md'ye.
+
+### 6.3 Anti-slop kuralları (bağlayıcı)
+
+İnternetteki "AI slop" listelerinin ortak maddeleri + projeye özel kurallar. Her fazın Checkpoint'inde `/design-review` (gstack) ve `~/.claude/skills/gstack/review/design-checklist.md` "AI Slop Detection" kategorisi uygulanır.
+
+**Yasak**
+- Mor/indigo/violet gradyanlar, maviden mora geçişler (ör. `#667eea → #764ba2`, `#6366f1–#8b5cf6` aralığı); genel olarak dekoratif gradyan.
+- Başlıkta veya rakamda gradyanlı metin.
+- Varsayılan fontlar: Inter, Roboto, Arial, sistem fontu, Space Grotesk (gövde dahil; jüri sitesinden ayrışmak için Silkscreen de yok).
+- "İkonlu üç kutu" ızgarası, "Welcome to AgentCoop" tipi hero, jenerik pazarlama metni ("Unlock the power of…", "Seamless", "Revolutionize").
+- Gerekçesiz glassmorphism, blur panel, glow, yumuşak/bulanık gölge, büyük `border-radius`.
+- Emoji'nin ikon olarak kullanımı; birden fazla ikon seti karışımı.
+- Düz shadcn/21st.dev varsayılan görünümü (gri-beyaz kart, ince border, yumuşak gölge).
+- Lorem ipsum, uydurma rakamlar; demo değerleri her zaman "demo" etiketli.
+
+**Zorunlu**
+- Tek palet (§6.2), rolleri tanımlı CSS değişkenleri (`--surface-parchment`, `--surface-night`, `--ink`, `--wood`, `--gold`, `--grass`, `--danger`, `--ok`); hex değer bileşende yazılmaz.
+- Tam sayı ölçek (2×, 3×, 4×), `image-rendering: pixelated`, kenar yumuşatma kapalı.
+- Köşeler kare veya pixel-adım; gölgeler 1–2 px sert ofset.
+- Metinler ürüne özgü ve somut: "Festival in 3 days · 600/1000 credits", "Guard refused: maxPerPoolSats exceeded (6,000 > 5,000)".
+- Her etkileşimli öğede hover, `:focus-visible`, disabled ve yükleniyor durumları.
+- Boş / yükleniyor / hata / servis kapalı durumları her ekranda tasarlanmış (jenerik spinner değil: kum saati, köylü bekliyor vb.).
+- Hareket anlamlı (bir olayı anlatır); `prefers-reduced-motion`'a uyar.
+- **DESIGN.md** (`apps/web/DESIGN.md`): P0'da `/design-consultation` ile yazılır (palet, tipografi, boşluk ölçeği, bileşen kuralları, ton). Sonraki her ekran buradan beslenir; değişiklik önce DESIGN.md'ye.
+
+### 6.4 bsvmunich.com (referans, kopya değil)
+
+BSVA'nın "BSV × TUM Blockchain workshop" sitesi, büyük ihtimalle jürinin işi. İncelendi (30.10): lisans, kaynak linki ya da asset kredisi **yok** (varsayılan: tüm hakları saklı). Sprite'lar kodda renk matrisi olarak duruyor, SVG `crispEdges` ve canvas `fillRect` ile çiziliyor; fontlar Silkscreen (pixel), Inter (gövde), JetBrains Mono.
+
+- **Alınan (fikir düzeyinde):** kodla çizilen sprite yöntemi (§6.2), "Under the hood" adım paneli (§4.1), protokol etiketleri + ms + ücret çubuğu, hafif oyunlaştırma (seviye, kupa) fikri.
+- **Alınmayan:** sprite'lar, salon sahnesi, renk paleti birebir, düzen, metinler, kod.
+- **Farklılaşma:** onlar içeride bira salonu ve insanlar arası ödeme; biz dışarıda köy meydanı, ajanlar ve toplu satın alma.
+- **İzin:** D, Axel'e soruyor (MASTER §6.4 soru 7). İzin + lisans gelirse atıfla yeniden kullanım değerlendirilir ve buraya yazılır; gelene kadar yalnızca referans.
 
 ---
 
@@ -316,22 +372,22 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 
 **Görevler**
 - 0.1 `apps/web` workspace paketi: Vite + React + TS + Tailwind 4 + Router + Zustand + TanStack Query + MSW + Vitest/RTL + Playwright; kök `package.json`'a `"web": "npm -w apps/web run dev"`, `"web:mock"`, `"web:build"` (yalnız ekleme). `vite.config.ts`: dev proxy'ler (`/api/*`), `resolve.alias` (§1 SDK kuralı), `define`.
-- 0.2 **Tasarım sistemi:** palet token'ları, fontlar, `ui/` bileşenleri (Tabela, PixelButton, Scroll modal, Counter, Timer, TxLink, IdentityChip, Toast, Drawer, EmptyState, ErrorState), dark/"gece" tema, Storybook yerine `/_kit` gizli sayfası (tüm bileşenler bir arada; tasarım incelemesi için).
+- 0.2 **Tasarım sistemi:** önce `/design-consultation` ile `apps/web/DESIGN.md` (§6.3; palet CC0 paketten, gövde fontu seçimi, ton). Sonra 8bitcn/ui kurulumu (shadcn CLI) ve token'larla yeniden stillenmesi; palet token'ları, fontlar, `ui/` bileşenleri (Tabela, PixelButton, Scroll modal, Counter, Timer, TxLink, IdentityChip, Toast, Drawer, EmptyState, ErrorState), dark/"gece" tema, Storybook yerine `/_kit` gizli sayfası (tüm bileşenler bir arada; tasarım incelemesi için).
 - 0.3 **Store + olay zarfı + reducer'lar:** `events/types.ts` (MASTER §3.10), `bus.ts`, dilimler, seçiciler; birim testler.
 - 0.4 **Adaptörler (iskelet):** `coordinatorWs` (hello, yeniden bağlanma), `overlaySse` + `derive.ts`, `agentsSse`, `guardSse`, `replay`, `mock`. Canlı olanlar gerçek URL'lere bağlanmayı dener, yoksa sağlık rozeti kırmızı.
 - 0.5 **Mock:** MSW handler'ları (MASTER §3.5/3.6/3.7/3.8 şekilleriyle), `mock/scenario.ts` (3 ajan, 1 sağlayıcı: havuz açılır → pledge'ler → lock-in → settlement → redeem → iş → injection 403 → dolmayan havuz; döngüsel, hızlandırılabilir), `mock/wallet.ts` (sahte Desktop; onay diyaloğu; sahte txid'ler `mock_` önekli, link yok).
 - 0.6 **Cüzdan:** `wallet/client.ts` (`WalletClient('auto')`, `waitForAuthentication`, `getNetwork`, `getPublicKey`, durum makinesi), cüzdan çipi, "Connect" akışı, ağ uyuşmazlığı uyarısı. **Smoke:** tarayıcıda `@agentcoop/core`'dan `buildOpReturn`, `vaultLockingScript`, `TokenKit` import edilip çağrılıyor (SDK tek kopya, node importu yok). Sonuç STATUS'a (A'ya).
 - 0.7 **Kabuk:** üst çubuk, rotalar (boş sayfalar), bildirim merkezi iskeleti, mod rozeti, i18n `t()`.
-- 0.8 **Varlık hattı:** `tools/px.mjs`, `tools/atlas.mjs`, `assets/LICENSES.md`, ilk CC0 tile seti + 1 Claude üretimi bina (hat uçtan uca denenmiş), Tiled haritasının ilk taslağı (meydan, atölye, 3 ev, pazar, kapı, liman yeri).
+- 0.8 **Varlık hattı:** `assets/palette.ts`, `assets/sprites/*.ts` biçimi, `tools/sprites.mjs` (matris → SVG + PNG/atlas), `tools/px.mjs` (CC0 palet hizalama), `assets/LICENSES.md`; Kenney Tiny Town + 1 kodla çizilmiş nesne (ilan panosu) uçtan uca (React'te `<Sprite>`, Phaser'da atlas), Tiled haritasının ilk taslağı (meydan, atölye, 3 ev, pazar, kapı, liman yeri).
 - 0.9 CI: `npm -w apps/web run lint|test|build` kök `npm test`'e dahil (vitest include'a `apps/web/test`).
 
-**Kabul:** `npm run web:mock` açılıyor; mock senaryo akarken store doluyor (geliştirici paneli `/_debug` olayları ve state'i gösteriyor); gerçek Desktop'a bağlanıp identity ve ağ görünüyor; `/_kit` sayfası tasarım sistemini gösteriyor; birim testler yeşil; build < 2 MB.
+**Kabul:** `apps/web/DESIGN.md` var ve `/design-review` P0 ekranlarında AI-slop bulgusu vermiyor; `npm run web:mock` açılıyor; mock senaryo akarken store doluyor (geliştirici paneli `/_debug` olayları ve state'i gösteriyor); gerçek Desktop'a bağlanıp identity ve ağ görünüyor; `/_kit` sayfası tasarım sistemini gösteriyor; birim testler yeşil; build < 2 MB.
 
 **Çıktılar:** `apps/web/*` iskeleti, `plan/phases/E-P0.md`, STATUS Track E, A/B/C/D'ye istekler (STATUS "Arayüz değişiklikleri").
 
 #### ✋ Checkpoint (Faz 0 sonu)
 1. **Plan hâlâ iyi mi?** SDK alias'ı çalışmadıysa A'ya `exports` "browser" isteği; Desktop'tan tarayıcıya bağlantıda originator/izin sorunu çıktıysa çözüm STATUS'a (C'nin CLI'ları ve D'nin owner-cli'ı için de geçerli).
-2. **Bu faz bitti** → STATUS Track E.
+2. **Bu faz bitti** → `/design-review` (anti-slop, §6.3) temiz → STATUS Track E.
 3. **Diğer track'ler ne yaptı?** B'nin WS/SSE'si çalışıyor mu (`npm run infra`); C'nin provider-api'si CORS verdi mi; D guard'ı açtı mı?
 4. **Sonraki fazın bağımlılıkları:** B.P1–P3 (`/pools`, WS, SSE) canlı için; yoksa mock'ta devam.
 5. Arayüz değişikliği varsa MASTER §3.10 + STATUS.
@@ -359,7 +415,7 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 
 #### ✋ Checkpoint (Faz 1 sonu)
 1. **Plan hâlâ iyi mi?** Overlay SSE'den fark türetmek yavaş/karmaşıksa B'den zengin olaylar iste (`pledge_added` vb.) ve STATUS'a yaz; Kasaba performansı düşükse kalabalık modunu öne al.
-2. **Bu faz bitti** → STATUS Track E.
+2. **Bu faz bitti** → `/design-review` (anti-slop, §6.3) temiz → STATUS Track E.
 3. **Diğer track'ler ne yaptı?** Mainnet settlement (S1) oldu mu? Olduysa gerçek olayları kaydet (`tools/record.mjs`) ve ilk gerçek replay'i üret.
 4. **Sonraki fazın bağımlılıkları:** A core (var), Desktop (insan), C provider-api CORS.
 5. Arayüz değişikliği varsa MASTER §3.10 + STATUS.
@@ -385,7 +441,7 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 
 #### ✋ Checkpoint (Faz 2 sonu)
 1. **Plan hâlâ iyi mi?** Desktop onay sayısı beklenenden fazlaysa (A test 3) akışları birleştir; AuthFetch tarayıcıda 402'yi ödeyemediyse (CORS başlıkları) C ile çöz, STATUS'a yaz.
-2. **Bu faz bitti** → STATUS Track E (txid'ler "Mainnet işlemleri").
+2. **Bu faz bitti** → `/design-review` temiz → STATUS Track E (txid'ler "Mainnet işlemleri").
 3. **Diğer track'ler ne yaptı?** D.P1 guard API'si hazır mı; A.P2 market builder'ları (var); C.P2 ajan kararları akıyor mu?
 4. **Sonraki fazın bağımlılıkları:** D.P1/P2 (guard, owner akışları), B.P3 (listings, vaults; **var**).
 5. Arayüz değişikliği varsa MASTER §3.10 + STATUS.
@@ -411,7 +467,7 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 
 #### ✋ Checkpoint (Faz 3 sonu)
 1. **Plan hâlâ iyi mi?** Guard SSE yoksa poll; D'nin politika alanları değiştiyse form şeması güncellenir.
-2. **Bu faz bitti** → STATUS Track E.
+2. **Bu faz bitti** → `/design-review` (anti-slop, §6.3) temiz → STATUS Track E.
 3. **Diğer track'ler ne yaptı?** D.P3 Rail sonucu (`docs/RAIL-POC.md`); B Faz 5 URL'leri; S3 tamam mı?
 4. **Sonraki fazın bağımlılıkları:** D.P3 (liman sahnesi; yoksa liman "coming soon" tabelası), B.P5 (yayın URL'leri; yoksa Pages varsayılan alanı).
 5. Arayüz değişikliği varsa MASTER §3.10 + STATUS.
@@ -438,7 +494,7 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 
 #### ✋ Checkpoint (Faz 4 sonu)
 1. **Plan hâlâ iyi mi?** Teslime kalan süre ≥ 6 saat ve S4 henüz ilan edilmediyse P6'ya geç; değilse P5.
-2. **Bu faz bitti** → STATUS Track E (URL, replay dosyaları).
+2. **Bu faz bitti** → `/design-review` temiz → STATUS Track E (URL, replay dosyaları).
 3. **Diğer track'ler ne yaptı?** D README için E bölümünü istiyor mu; video için ekran kayıtları gerekli mi?
 4. **Sonraki faz:** P6 (opsiyonel) veya P5.
 5. Arayüz değişikliği varsa MASTER §3.10 + STATUS.
@@ -504,7 +560,8 @@ Zaman kutuları, yoğun paralel AI kullanımı varsayımıyla. Her faz: önce `p
 | Ajan olay akışı yok | `tools/log-relay.mjs` (activity.log → SSE); mock balonlar |
 | Overlay SSE'den fark türetmek pahalı | Sorguları `txid` bazında daralt (`outpoint`/`history`); B'den zengin olaylar iste |
 | Kasaba performansı | Kalabalık modu, balon sınırı, düşük ayrıntı; Kasaba lazy chunk |
-| Görsel üretim zaman yiyor | Önce CC0 paketle tam sahne; Claude görselleri yalnızca ayırt edici 6–8 nesne için |
+| Görsel üretim zaman yiyor | Önce Kenney CC0 ile tam sahne; kodla çizilen sprite'lar yalnızca ayırt edici 6–8 nesne için |
+| Jüri "bsvmunich'e benziyor" der | §6.4 farklılaşma: dış mekân, ajanlar, toplu satın alma; kopya varlık yok; izin gelirse atıflı |
 | Mainnet koşuları gecikiyor | Mock e2e + replay (mock-demo) teslim edilebilir; gerçek replay gelince dosya değişir |
 | Zaman | P6/P7 düşer; P4.4 cila kısalır; **P5 asla düşmez** |
 

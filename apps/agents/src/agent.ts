@@ -10,6 +10,8 @@
  * at retail via 402. A gpu-h100 credit is one GPU-hour, used by the minute, so
  * what a job leaves over pays for the next one.
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { WalletInterface } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
 import { dataDir, network, requireEnv } from '@agentcoop/core/node/env'
@@ -26,6 +28,17 @@ export interface AgentOptions {
   /** Overlay for credit tokens; without it the agent can only pay retail. */
   overlay?: OverlayClient
   log?: AgentLog
+  /** Where the weekly spend is kept (`<dir>/agents/<name>/state.json`). Omit to keep it in memory. */
+  stateDir?: string
+}
+
+/** ISO week, e.g. "2026-W44": the owner's weekly budget resets with it. */
+export function isoWeek (d = new Date()): string {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  const day = t.getUTCDay() === 0 ? 7 : t.getUTCDay()
+  t.setUTCDate(t.getUTCDate() + 4 - day)
+  const week = Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86_400_000 + 1) / 7)
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
 }
 
 const minutesPerCredit = (product: CatalogProduct): number => product.minutesPerCredit ?? 1
@@ -40,6 +53,8 @@ export class Agent {
   readonly log: AgentLog
   private identity?: string
   private cachedCatalog?: Catalog
+  private readonly stateFile?: string
+  private spend: { week: string, sats: number }
 
   constructor (opts: AgentOptions) {
     this.wallet = opts.wallet
@@ -48,6 +63,30 @@ export class Agent {
     this.overlay = opts.overlay
     this.tokens = opts.overlay === undefined ? undefined : new TokenKit(opts.wallet, opts.overlay)
     this.log = opts.log ?? new AgentLog(opts.profile.name)
+    this.stateFile = opts.stateDir === undefined ? undefined : join(opts.stateDir, 'agents', opts.profile.name, 'state.json')
+    this.spend = this.stateFile !== undefined && existsSync(this.stateFile)
+      ? JSON.parse(readFileSync(this.stateFile, 'utf8')) as { week: string, sats: number }
+      : { week: isoWeek(), sats: 0 }
+  }
+
+  /** Sats spent this ISO week on pledges and retail jobs (the owner's weekly budget). */
+  spentThisWeekSats (): number {
+    if (this.spend.week !== isoWeek()) this.spend = { week: isoWeek(), sats: 0 }
+    return this.spend.sats
+  }
+
+  recordSpend (sats: number): void {
+    this.spend = { week: isoWeek(), sats: this.spentThisWeekSats() + sats }
+    if (this.stateFile !== undefined) {
+      mkdirSync(dirname(this.stateFile), { recursive: true })
+      writeFileSync(this.stateFile, JSON.stringify(this.spend))
+    }
+  }
+
+  /** Spendable sats in the wallet's default basket. */
+  async satsBalance (): Promise<number> {
+    const { outputs } = await this.wallet.listOutputs({ basket: 'default', limit: 10_000 })
+    return outputs.filter(o => o.spendable).reduce((s, o) => s + o.satoshis, 0)
   }
 
   /** Opens the agent's server wallet (`data/wallets/agent-<name>.sqlite`) from the key in `profile.walletEnv`. */
@@ -64,7 +103,8 @@ export class Agent {
       profile,
       providerUrl: opts.providerUrl ?? process.env.PROVIDER_API_URL ?? 'http://localhost:8092',
       overlay: opts.overlay,
-      log: new AgentLog(profile.name, dataDir())
+      log: new AgentLog(profile.name, dataDir()),
+      stateDir: dataDir()
     })
     return { agent, close }
   }
@@ -142,8 +182,12 @@ export class Agent {
 
     const submitted = await this.provider.submitJob({ kind: need.kind, minutes: need.minutes, product: product.id })
     const p = submitted.payment
-    if (p.method === 'credits') this.log.info(`Job ${submitted.jobId} paid from prepaid credits: ${p.minutes} GPU-min.`)
-    else this.log.info(`Job ${submitted.jobId} paid at retail: ${need.minutes} GPU-min at ${product.retailSatsPerCredit} sat/${product.unit} = ${sat(p.satoshis)} sat (HTTP 402, BRC-105). https://whatsonchain.com/tx/${p.txid}`)
+    if (p.method === 'credits') {
+      this.log.info(`Job ${submitted.jobId} paid from prepaid credits: ${p.minutes} GPU-min.`)
+    } else {
+      this.recordSpend(p.satoshis)
+      this.log.info(`Job ${submitted.jobId} paid at retail: ${need.minutes} GPU-min at ${product.retailSatsPerCredit} sat/${product.unit} = ${sat(p.satoshis)} sat (HTTP 402, BRC-105). https://whatsonchain.com/tx/${p.txid}`)
+    }
     const job = await this.provider.waitForJob(submitted.jobId)
     this.log.info(`Job ${job.id} done on ${job.log[0]?.split(' ')[0] ?? 'GPU'} · result ${job.resultHash?.slice(0, 16) ?? '?'}…`)
     return job

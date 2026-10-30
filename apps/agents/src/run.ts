@@ -1,49 +1,88 @@
 /**
- * `npm run agent -- <profile> [--jobs N] [--interval-ms M]`: run one agent.
+ * Run agents against real services (overlay, coordinator, provider-api):
  *
- * The agent works through its own workload (agents/<profile>.json) and pays
- * for each GPU job: prepaid credits when it has them, otherwise retail (402).
- * Faz 2 adds the forecast, the procurement router and pool pledges.
+ *   npm run agents                        all three (finetune, eval, inference)
+ *   npm run agent -- eval [--jobs N]      one agent
  *
- * Env: the profile's wallet key (e.g. WALLET_AGENT_2_KEY), PROVIDER_API_URL,
- * OVERLAY_URL, NETWORK, ARCADE_URL, DATA_DIR.
+ * Each agent stays on the coordinator's WS (so it can be asked to sign),
+ * looks at open pools before each job (forecast → brain → policy → maybe
+ * pledge), then runs its next GPU job on credits or at retail. With --jobs N
+ * it stops after N jobs, waiting for a pending pledge to settle or fail
+ * (--wait-ms); without it, it works until Ctrl+C.
+ *
+ * Env: WALLET_AGENT_1..3_KEY (per profile), PROVIDER_API_URL, OVERLAY_URL,
+ * COOP_API_URL, AGENT_BRAIN=rules|llm (llm: ANTHROPIC_API_KEY), NETWORK,
+ * ARCADE_URL, DATA_DIR. Offline demo instead: npm run demo:k1.
  */
 import { parseArgs } from 'node:util'
 import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { loadDotEnv, network } from '@agentcoop/core/node/env'
 import { Agent } from './agent'
+import { brainFromEnv } from './llmBrain'
+import { PoolParticipant } from './participant'
+import { Procurement } from './procurement'
 import { loadProfile } from './profile'
-import { nextJobs } from './workload'
+import { jobsForDay } from './workload'
 
 loadDotEnv()
 
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
-    jobs: { type: 'string', default: '3' },
-    'interval-ms': { type: 'string', default: '2000' }
+    jobs: { type: 'string' },
+    'interval-ms': { type: 'string', default: '30000' },
+    'wait-ms': { type: 'string', default: '600000' }
   }
 })
-const name = positionals[0]
-if (name === undefined) {
-  console.log('usage: agent <finetune|eval|inference|path/to/profile.json> [--jobs N] [--interval-ms M]')
-  process.exit(1)
+const names = positionals.length > 0 ? positionals : ['finetune', 'eval', 'inference']
+const maxJobs = values.jobs === undefined ? Infinity : Number(values.jobs)
+const intervalMs = Number(values['interval-ms'])
+const coopApiUrl = process.env.COOP_API_URL ?? 'http://localhost:8090'
+const brain = brainFromEnv()
+let stopping = false
+
+/** The agent's own work, day after day from today. */
+function * workload (profile: ReturnType<typeof loadProfile>): Generator<ReturnType<typeof jobsForDay>[number]> {
+  const day = new Date()
+  for (;;) {
+    yield * jobsForDay(profile, day.toISOString().slice(0, 10))
+    day.setUTCDate(day.getUTCDate() + 1)
+  }
 }
 
-const profile = loadProfile(name)
-const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
-const { agent, close } = await Agent.open(profile, { overlay })
-try {
-  agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…): ${profile.description}`)
-  const jobs = nextJobs(profile, Number(values.jobs))
-  for (const [i, need] of jobs.entries()) {
+async function runAgent (name: string): Promise<void> {
+  const profile = loadProfile(name)
+  const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
+  const { agent, close } = await Agent.open(profile, { overlay })
+  const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log })
+  try {
+    agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…, brain ${brain.name}): ${profile.description}`)
     try {
-      await agent.runJob(need)
+      await participant.connect()
     } catch (e) {
-      agent.log.info(`Job failed: ${(e as Error).message}`)
+      agent.log.info(`coordinator ${coopApiUrl} unreachable (${(e as Error).message !== '' ? (e as Error).message : String((e as { code?: string }).code ?? e)}); credits and retail only`)
     }
-    if (i < jobs.length - 1) await new Promise(resolve => setTimeout(resolve, Number(values['interval-ms'])))
+    const procurement = new Procurement({ agent, brain, participant, coopApiUrl })
+    let done = 0
+    for (const need of workload(profile)) {
+      if (stopping || done >= maxJobs) break
+      try {
+        await procurement.tick(need)
+      } catch (e) {
+        agent.log.info(`Job failed: ${(e as Error).message}`)
+      }
+      done++
+      if (done < maxJobs && !stopping) await new Promise(resolve => setTimeout(resolve, intervalMs))
+    }
+    if (participant.busy) {
+      agent.log.info(`Waiting for "${participant.active!.label}" to settle or fail…`)
+      await participant.until(() => !participant.busy, Number(values['wait-ms'])).catch(() => { agent.log.info('Still pending; the pledge coin stays in the wallet.') })
+    }
+  } finally {
+    participant.close()
+    await close()
   }
-} finally {
-  await close()
 }
+
+process.on('SIGINT', () => { stopping = true; console.log('\nstopping after the current job…') })
+await Promise.all(names.map(runAgent))
