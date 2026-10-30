@@ -35,6 +35,8 @@ export class Villager extends Phaser.GameObjects.Container {
   private facing: Facing = 'down'
   home: { x: number, y: number }
   busy = false
+  /** controlled by the keyboard (avatar mode): no wandering, no story walks */
+  player = false
   slotIndex = 0
   purseReserved = false
 
@@ -62,6 +64,7 @@ export class Villager extends Phaser.GameObjects.Container {
 
   /** Walk to (x, y); a new walkTo cancels the previous one (interruptible). Resolves on arrival or cancel. */
   walkTo (x: number, y: number): Promise<void> {
+    if (this.player) return Promise.resolve()
     this.cancelWalk()
     const dist = Phaser.Math.Distance.Between(this.x, this.y, x, y)
     this.face(x - this.x, y - this.y)
@@ -86,11 +89,19 @@ export class Villager extends Phaser.GameObjects.Container {
     this.wanderTimer = this.scene.time.addEvent({
       delay: Phaser.Math.Between(2500, 6000), loop: true,
       callback: () => {
-        if (this.busy || this.walkTween !== undefined) return
+        if (this.busy || this.player || this.walkTween !== undefined) return
         if (Phaser.Math.Between(0, 2) === 0) { this.facing = (['down', 'side', 'up'] as const)[Phaser.Math.Between(0, 2)]!; this.sprite.setFlipX(Math.random() < 0.5); this.idle(); return }
         void this.walkTo(this.home.x + Phaser.Math.Between(-28, 28), this.home.y + Phaser.Math.Between(-8, 14))
       }
     })
+  }
+
+  /** keyboard movement: play walk/idle for the direction the player pushes */
+  stepAnim (dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) { if (this.sprite.anims.currentAnim?.key.includes('walk') === true) this.idle(); return }
+    this.face(dx, dy)
+    const key = `${this.char}_walk_${this.facing}`
+    if (this.sprite.anims.currentAnim?.key !== key) this.sprite.play(key, true)
   }
 
   say (text: string, tone: 'parchment' | 'danger' | 'gold' | 'grass' = 'parchment', ms = 4000): void {

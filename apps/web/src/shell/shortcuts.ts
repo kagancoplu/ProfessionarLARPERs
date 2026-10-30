@@ -17,6 +17,9 @@ export function handleShortcut (e: KeyboardEvent, store: AppStoreApi, navigate: 
   const key = e.key.toLowerCase()
   const stage = STAGES[key]
   if (stage !== undefined && replay !== undefined) { replay.skipTo(stage as never); return true }
+  const avatar = store.getState().settings.avatar
+  if (key === 'v') { store.getState().updateSettings({ avatar: !avatar }); return true }
+  if (avatar && typeof location !== 'undefined' && location.pathname === '/') return false   // WASD/E belong to the Town
   const to = SHORTCUTS[key]
   if (to !== undefined) { navigate(to); return true }
   if (key === 'm') { const s = store.getState(); s.updateSettings({ sound: !s.settings.sound }); return true }

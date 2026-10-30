@@ -17,6 +17,7 @@ import { Animal } from '../entities/Animal'
 import { MAP_H, MAP_W, TILE } from '../map/terrain'
 import { attachBridge } from '../bridge'
 import { DEPTH, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN } from '../game'
+import { AvatarController } from '../avatar'
 
 export interface TownDeps { store: AppStoreApi, bus: EventBus, fx: FxQueue }
 
@@ -45,8 +46,9 @@ export class TownScene extends Phaser.Scene {
   private waterFrame = 0
   private detach?: () => void
   private dragStart?: { x: number, y: number, sx: number, sy: number }
+  avatar?: AvatarController
 
-  constructor (private readonly deps: TownDeps) { super('town') }
+  constructor (readonly deps: TownDeps) { super('town') }
 
   get fx (): FxQueue { return this.deps.fx }
   /** false once the scene (or the game) is torn down; the bridge checks it before touching entities */
@@ -105,7 +107,7 @@ export class TownScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.dragStart = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY } })
     this.input.on('pointerup', () => { this.dragStart = undefined })
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (this.dragStart === undefined || !p.isDown) return
+      if (this.dragStart === undefined || !p.isDown || this.avatar?.enabled === true) return
       cam.setScroll(Math.round(this.dragStart.sx - (p.x - this.dragStart.x) / cam.zoom), Math.round(this.dragStart.sy - (p.y - this.dragStart.y) / cam.zoom))
     })
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
@@ -138,6 +140,17 @@ export class TownScene extends Phaser.Scene {
     g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(0.45, 'rgba(255,255,255,0.35)'); g.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = g; ctx.fillRect(0, 0, size, size)
     canvas.refresh()
+  }
+
+  update (_time: number, delta: number): void { this.avatar?.update(delta) }
+
+  /** Avatar mode on/off (settings.avatar): the player's villager is "you" when a wallet is connected, else a guest. */
+  setAvatarMode (on: boolean): void {
+    if (!on) { this.avatar?.enable(false); return }
+    const me = this.deps.store.getState().me.identityKey
+    const v = me !== undefined ? this.addVillager(me, 'visitor', 'you') : this.addVillager('guest', 'visitor', 'you (guest)')
+    if (this.avatar?.villager !== v) { this.avatar?.destroy(); this.avatar = new AvatarController(this, v) }
+    this.avatar.enable(true)
   }
 
   setZoom (z: number): void { this.cameras.main.setZoom(Phaser.Math.Clamp(Math.round(z), ZOOM_MIN, ZOOM_MAX)) }
@@ -209,7 +222,7 @@ export class TownScene extends Phaser.Scene {
     const visitorSpawn = POINTS['visitor-spawn']
     const spot = house !== undefined ? house.doorstep : prof === 'visitor' && visitorSpawn !== undefined ? { x: visitorSpawn.x, y: visitorSpawn.y } : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
     house?.setOwner(identity, name)
-    const char = prof === 'visitor' ? 'villager_00' : CHARS[this.villagers.size % CHARS.length]!
+    const char = prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!
     const v = new Villager(this, identity, prof, name, spot.x, spot.y, char)
     v.slotIndex = this.villagers.size
     v.on('pointerup', () => this.deps.store.getState().openDrawer('agent', identity))

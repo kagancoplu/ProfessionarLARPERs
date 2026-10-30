@@ -32,6 +32,7 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
     for (const l of listings) { const st = town.stallFor(l.outpoint); if (st !== undefined && st.outpoint !== l.outpoint) st.show(l.outpoint, l.credits, l.askSats) }
     town.setNight(resolveTheme(s.settings.theme, typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) === 'night')
     town.setSpeed(s.mode === 'replay' ? s.settings.replaySpeed : 1)
+    town.setAvatarMode(s.settings.avatar)
   }
   sync()
   const unsubStore = store.subscribe(sync)

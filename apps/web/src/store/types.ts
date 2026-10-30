@@ -110,6 +110,8 @@ export interface Settings {
   reducedMotion: boolean
   presenter: boolean
   replaySpeed: number
+  /** walk the Town with your own villager (P6) */
+  avatar: boolean
 }
 
 export interface StoreData {
@@ -136,7 +138,7 @@ export const FEED_LIMIT = 200
 export const TOAST_LIMIT = 5
 export const SIGN_REQUEST_MS = 60_000
 
-export const DEFAULT_SETTINGS: Settings = { sound: false, theme: 'auto', reducedMotion: false, presenter: false, replaySpeed: 1 }
+export const DEFAULT_SETTINGS: Settings = { sound: false, theme: 'auto', reducedMotion: false, presenter: false, replaySpeed: 1, avatar: false }
 
 export function initialData (mode: DataMode = 'live', replayName?: string): StoreData {
   const health = (): ServiceHealth => ({ ok: 'unknown' })

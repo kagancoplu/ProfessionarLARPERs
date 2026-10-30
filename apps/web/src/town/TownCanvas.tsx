@@ -1,8 +1,8 @@
 /** The Phaser canvas (lazy chunk) with its React overlays: drawer and a small camera hint. */
 import { useEffect, useRef, useState } from 'react'
 import { useRuntime } from '../app-context'
-import { store } from '../store'
-import { LoadingState } from '../ui'
+import { store, useStore } from '../store'
+import { LoadingState, PixelButton } from '../ui'
 import { FxQueue } from './fx/queue'
 import { TownDrawer } from './TownDrawer'
 
@@ -11,6 +11,7 @@ export default function TownCanvas () {
   const { bus } = useRuntime()
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string>()
+  const avatar = useStore(s => s.settings.avatar)
   useEffect(() => {
     const parent = ref.current
     if (parent === null) return
@@ -37,7 +38,10 @@ export default function TownCanvas () {
       <div ref={ref} className="pixelated relative mx-auto overflow-hidden border-2 border-wood bg-ink shadow-hard" style={{ width: '100%', aspectRatio: '16 / 9' }} data-status={status} />
       {status === 'loading' && <div className="absolute inset-0 flex items-center justify-center"><LoadingState title="Building the town…" body="Phaser, atlas and tiles" /></div>}
       {status === 'error' && <div className="absolute inset-0 flex items-center justify-center bg-surface-2/80 p-6 font-display text-danger-dark">The town could not start: {error}</div>}
-      <p className="label mt-2 text-ink-muted">drag to pan · wheel to zoom (2×–4×) · click a villager, the board or the workshop</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <PixelButton size="sm" variant={avatar ? 'primary' : 'secondary'} onClick={() => store.getState().updateSettings({ avatar: !avatar })} data-testid="avatar-toggle">{avatar ? 'Walking · back to the map' : 'Walk the town'}</PixelButton>
+        <p className="label text-ink-muted">{avatar ? 'WASD / arrows to walk · E to open what is in front of you · V to leave' : 'drag to pan · wheel to zoom (2×–4×) · click a villager, the board or the workshop · V to walk'}</p>
+      </div>
       <TownDrawer />
     </div>
   )

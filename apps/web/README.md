@@ -10,6 +10,7 @@ Design rules: [`DESIGN.md`](./DESIGN.md). Plan: `plan/track-E-frontend.md`, phas
 - **Mock mode** needs nothing: a scripted village (pools, pledges, one settlement, a GPU job, a prompt injection the guard refuses, a failed pool, a market sweep, a Coop Rail crossing) loops every ~35 s, and a mock BSV Desktop approves on screen. `?replay=mock-demo` plays a recording.
 - **Live mode** (`npm run web`): the overlay, coordinator, provider-api, guard, agents and maker through the dev proxy; connect the real BSV Desktop from the top bar. Nothing in the browser holds a key: pledges, signatures, redeems, vault funding and withdrawals are all `createAction` / `createSignature` approvals in Desktop.
 - **Presenter mode:** `?presenter=1` (larger, no toasts; in replay `1`–`5` jump between stages).
+- **Avatar mode:** "Walk the town" under the canvas (or `V`, `?avatar=1`): your own villager walks with WASD / arrows, the camera follows, `E` opens whatever is in front of you (board, stall, house, vault chest, workshop, harbor). Works without a wallet as a guest.
 
 ![The Town by day](../../docs/screenshots/web/01-town-day.png)
 
@@ -27,7 +28,7 @@ Agents are villagers; a pool is the notice board with a chest that fills; a pled
 
 ## Known limitations
 
-- Desktop browsers only (≥ 1024 px); English; single player (no avatar, no multiplayer).
+- Desktop browsers only (≥ 1024 px); English; single player (no multiplayer; the avatar is local).
 - Mainnet acceptance not done yet: the live flows (pledge, sign, redeem, 402, mint, open pool, vault fund/withdraw, list/sweep) are written against the real wallet and `@agentcoop/core`, exercised end to end only with the mock Desktop. `AuthFetch` from the browser to the provider-api and the guard needs their CORS in production (the dev proxy covers local).
 - GPU jobs are simulated (`simulated GPU jobs`); pool discounts are `demo pricing`; Coop Rail is `experimental` (quotes only; no swap API yet).
 - The agents' thought bubbles come from the mock scenario or a replay (the agents' event stream from Track C is not live).
