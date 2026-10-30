@@ -111,6 +111,8 @@
 
 **Kabul:** mainnet'te liste+sweep, vault'lu settlement, injection reddi, insan pledge'i; ikinci ürün açık havuzda görünüyor; S3 C ✓.
 
+**Uygulama notları (30.10, Faz 3 sonu):** 3.1 listeler 5'lik partilerle (liste tek UTXO, bölünmez); alıcı eksiği tam karşılayan ve perakendeden ucuz kombinasyonu alır. 3.2 injection demosu `apps/agents/src/demo/injection.ts` (`npm run demo:injection`); D'nin `scripts/demo-injection.ts`'i guard tarafını, C'ninki ajan + guard iki katmanını gösterir. Vault modu `startMockStack({ vaultAgents })` ve `<NAME>_VAULT_ID`; profiller varsayılan p2pkh kalıyor. 3.3 `participant-cli`, ajanların `PoolParticipant`'ını kullanıyor. 3.4 ikinci ürün `data-proxy` + `runners.ts`. Ek: E için `apps/agents` canlı akışı (§3.10) ve provider-api CORS.
+
 ### ✋ Checkpoint (Faz 3 sonu)
 1. **Plan hâlâ iyi mi?** Desktop ile `participant-cli` imza turuna yetişemiyorsa (onay penceresi 60 sn'yi aşıyor) B ile insanlar için daha uzun tur süresi tanımla; MASTER §3.2 ve STATUS.
 2. **Bu faz bitti** → STATUS Track C.

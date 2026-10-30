@@ -10,6 +10,7 @@
  * so the job in front of the agent still runs on credits or at retail.
  */
 import type { PoolTerms } from '@agentcoop/core'
+import { CosignRejected } from '@agentcoop/core/signers/VaultSigner'
 import type { Agent } from './agent'
 import { describe, enforcePolicy, poolCost, type Brain, type Decision, type DecisionContext, type PoolOpportunity } from './brain'
 import { forecastNeed } from './forecast'
@@ -68,7 +69,7 @@ export class Procurement {
     return Array.isArray(body) ? body : body.pools
   }
 
-  /** (c) Look at the open pools for my product and maybe pledge. Returns the decision taken, if any. */
+  /** (c) Look at the open pools for my product and maybe pledge. Returns the pledge, else the last skip decided, else undefined. */
   async considerPools (): Promise<Decision | undefined> {
     const { agent, participant, brain } = this.opts
     this.settleBudget()
@@ -79,6 +80,7 @@ export class Procurement {
     const candidates = (await this.openPools())
       .filter(p => p.status === 'open' && p.hasOffer && p.terms.tokenId === product.tokenId && this.decided.get(p.poolId) !== p.pledgedCredits)
       .sort((a, b) => Number(a.terms.priceSats) / Number(a.terms.credits) - Number(b.terms.priceSats) / Number(b.terms.credits))
+    let last: Decision | undefined
     for (const pool of candidates) {
       this.decided.set(pool.poolId, pool.pledgedCredits)
       const ctx = await this.context(pool)
@@ -89,13 +91,22 @@ export class Procurement {
         ? `Decision: PLEDGE ${decision.credits} credits. ${decision.reason}. (brain: ${decision.brain})`
         : `Decision: SKIP. ${decision.reason}. (brain: ${decision.brain})`)
       if (decision.action === 'pledge') {
-        const pledge = await participant.pledge(pool.terms, decision.credits)
+        let pledge
+        try {
+          pledge = await participant.pledge(pool.terms, decision.credits)
+        } catch (e) {
+          if (!(e instanceof CosignRejected)) throw e
+          agent.log.decision(`The guard refused my pledge: ${e.reason}. My owner's policy wins; nothing left the vault.`)
+          agent.emit('agent_decision', { action: 'skip', poolId: pool.poolId, credits: decision.credits, reason: `guard refused: ${e.reason}` }, { poolId: pool.poolId })
+          return { ...decision, action: 'skip', credits: 0, reason: `guard refused: ${e.reason}` }
+        }
         agent.recordSpend(poolCost(ctx.pool, decision.credits))
         this.refundable.set(pledge.outpoint, Math.ceil((decision.credits * ctx.pool.priceSats) / ctx.pool.credits) + 1)
         return decision
       }
+      last = decision
     }
-    return undefined
+    return last
   }
 
   private async context (pool: ApiPool): Promise<DecisionContext> {

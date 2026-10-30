@@ -12,7 +12,11 @@ import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import type { Wallet } from '@bsv/wallet-toolbox'
-import { Transaction } from '@agentcoop/core/sdk'
+import { AuthFetch, Transaction } from '@agentcoop/core/sdk'
+import { adoptVaultOutput, httpCosigner, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
+import { Guard } from '../../../guard/src/guard'
+import { createGuardApp } from '../../../guard/src/server'
+import { createVault, fundVault, putPolicy, registerVault, type GuardPolicyInput, type VaultInfo } from '../../../owner-cli/src/vault-ops'
 import { COOP_SERVICE, COOP_TOPIC, memoryOutbox, OverlayClient, type LineageOptions } from '@agentcoop/core'
 import { createMockChain, type MockChain } from '../../../../test/helpers/mockchain'
 import { startOverlay, type RunningOverlay } from '../../../../packages/overlay/src/server'
@@ -46,6 +50,8 @@ export interface StackOptions {
   brain?: Brain
   /** Products whose credit token the operator mints at start (default: gpu-h100 only). */
   products?: string[]
+  /** Agents that run in Mandate Vault mode (an owner funds a vault; a guard co-signs). */
+  vaultAgents?: string[]
 }
 
 export interface DemoAgent {
@@ -54,6 +60,8 @@ export interface DemoAgent {
   procurement: Procurement
   market: Market
   wallet: Wallet
+  /** Vault-mode agents: the owner's vault and the policy the guard enforces. */
+  vault?: { info: VaultInfo, policy: GuardPolicyInput, owner: Wallet }
 }
 
 export interface MockStack {
@@ -73,6 +81,9 @@ export interface MockStack {
   /** Every agent's live-feed events (serve them with startAgentsServer). */
   events: AgentEvents
   roster: AgentInfo[]
+  /** In-process guard (Track D) for vault-mode agents. */
+  guardUrl: string
+  guard: Guard
   overlayClient: () => OverlayClient
   openPool: (args: Omit<OpenPoolArgs, 'product'> & { product?: string }) => Promise<PoolRecord>
   agent: (profile: string) => Promise<DemoAgent>
@@ -151,6 +162,12 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
   const apiUrl = `http://localhost:${(api.address() as AddressInfo).port}`
 
   const agents: DemoAgent[] = []
+  // Track D's guard, in-process, for agents in Mandate Vault mode.
+  const guardWallet = await chain.makeWallet()
+  const guard = await Guard.create({ wallet: guardWallet, fetchTx, log: line => { if (/DENY/.test(line)) say(`\x1b[31mguard    ${line}\x1b[0m`) } })
+  const guardServer: Server = await new Promise(resolve => { const s = createGuardApp(guard, guardWallet).listen(0, () => resolve(s)) })
+  const guardUrl = `http://127.0.0.1:${(guardServer.address() as AddressInfo).port}`
+  const cosign: Cosigner = httpCosigner(guardUrl)
   const events = new AgentEvents()
   const roster: AgentInfo[] = []
 
@@ -168,23 +185,40 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
     lineage,
     events,
     roster,
+    guardUrl,
+    guard,
     overlayClient,
     openPool: async args => await openPool(operator, { ...args, product: args.product ?? 'gpu-h100' }),
     agent: async name => {
       const wallet = await chain.makeWallet()
       await chain.fund(wallet)
       const profile = loadProfile(name)
+      // Vault mode: the owner (BSV Desktop in production) creates the vault, registers it and a policy with the guard, funds it.
+      let vault: DemoAgent['vault']
+      if (opts.vaultAgents?.includes(name) === true) {
+        profile.mode = 'vault'
+        const owner = await chain.makeWallet()
+        await chain.fund(owner, 100_000)
+        const info = await createVault(owner, { agent: wallet.identityKey, guard: guardWallet.identityKey })
+        await registerVault(new AuthFetch(owner), guardUrl, info)
+        const policy: GuardPolicyInput = { allowProviders: [operatorWallet.identityKey], maxPerPoolSats: 1_000, weeklyCapSats: profile.budget.weeklyBudgetSats, maxFeeSats: 500, hotWalletDailySats: 0 }
+        await putPolicy(new AuthFetch(owner), guardUrl, wallet.identityKey, policy)
+        const funded = await fundVault(owner, info, 20_000)
+        await adoptVaultOutput(wallet, info.record.vaultId, funded.tx, funded.vout)
+        await overlayClient().submit(funded.tx)
+        vault = { info, policy, owner }
+      }
       const log = new AgentLog(profile.name, dataDir, opts.quiet)
       const client = overlayClient()
-      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir, events })
+      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir, events, vaultId: vault?.info.record.vaultId })
       const identity = await agent.identityKey()
-      roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode })
+      roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode, ...(vault !== undefined ? { vaultId: vault.info.record.vaultId } : {}) })
       agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })
-      const participant = new PoolParticipant({ wallet, kit: agent.tokens!, coopApiUrl: coop.url, log, lineage, reconnect: false, emit: (t, d, x) => { agent.emit(t, d, x) } })
+      const participant = new PoolParticipant({ wallet, kit: agent.tokens!, coopApiUrl: coop.url, log, lineage, reconnect: false, emit: (t, d, x) => { agent.emit(t, d, x) }, ...(vault !== undefined ? { vault: { vaultId: vault.info.record.vaultId, cosign } } : {}) })
       await participant.connect()
       const market = new Market(agent, { coopApiUrl: coop.url, lineage })
       const procurement = new Procurement({ agent, brain: opts.brain ?? rulesBrain, participant, market, coopApiUrl: coop.url })
-      const a = { agent, participant, procurement, market, wallet }
+      const a = { agent, participant, procurement, market, wallet, vault }
       agents.push(a)
       return a
     },
@@ -196,6 +230,7 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
       for (const a of agents) a.participant.close()
       runner.stop()
       await new Promise(resolve => api.close(() => resolve(undefined)))
+      await new Promise(resolve => guardServer.close(() => resolve(undefined)))
       await coop.close()
       await overlay.close()
       await chain.close()

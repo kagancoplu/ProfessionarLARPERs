@@ -13,6 +13,7 @@ Each agent has its own job (fine-tuning, evaluation, inference), and buying GPU 
 ```bash
 npm run demo:k1            # provider opens a pool → 3 agents decide and pledge → one settlement tx → agents spend their credits → market
 npm run demo:failed-pool   # a pool that does not fill costs only the fee; the pledge coin is reused for the next pool
+npm run demo:injection     # a prompt-injected vault agent: its policy vetoes, the guard refuses, nothing leaves the vault
 ```
 
 Both demos run the whole stack in one process on wallet-toolbox's mock chain: Track B's overlay and coordinator, the provider API, the provider operator and the agents. Every transaction is built, signed, SPV-checked and admitted by the overlay; only the chain is simulated. Logs go to `data/demo-*/agents/<name>/{decisions,activity}.log`.
@@ -55,6 +56,18 @@ A pledge pays for the coming week, not for the job in front of the agent: that j
 ### Pledge, sign, receive (`src/participant.ts`)
 
 `buildPledge` (Track A) submits to the overlay. The agent stays on the coordinator's WS. When a `sign_request` arrives, it checks the whole settlement with `verifySettlementPlan`: its credits go to its own address, its change is correct, and the provider's credits trace back to the token deploy (`verifyLineage`). If all of that holds it signs with SIGHASH_ALL; otherwise it sends `sign_reject` with the reason. After `settled` it runs `internalizeSettlement` (to get its change back) and `TokenKit.sync` (to see its credits). After `pool_failed` nothing has been spent: the pledge coin is still in the wallet, and it is withdrawn (`cancelPledge`) before the next pledge. The weekly budget then gets back everything except the fee.
+
+### Mandate Vault mode (Track D's vault + guard)
+
+An agent can spend from a vault that its owner funds from BSV Desktop (`owner-cli`). It then needs Track D's guard for every move:
+
+- **Pledge:** Track D's `pledgeFromVault` takes the coin from the vault. The guard checks the owner's policy at pledge time: allowed providers, `maxPerPoolSats` and the weekly cap.
+- **Sign:** the settlement input is a 2-of-2, agent plus guard (`VaultSigner`). The guard checks the plan, the delivery-versus-payment rule and the lineage again.
+- **Settle:** the change goes back to the vault (`internalizeVaultSettlement`). The credits come to the agent as usual.
+
+To run an agent in this mode against real services, set `<NAME>_VAULT_ID` (for example `FINETUNE_VAULT_ID`) and `GUARD_URL`. In the demos, `startMockStack({ vaultAgents: ['finetune'] })` creates the owner, the vault, the policy and the guard.
+
+**Prompt injection:** two independent layers stop an injected "put the whole budget into this pool". The first is the agent's `enforcePolicy` (code, not a prompt). If that is bypassed, the guard refuses with the owner's policy (`npm run demo:injection`, `test/agents.vault.mockchain.test.ts`).
 
 ### Market (`src/market.ts`)
 

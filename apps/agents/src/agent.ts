@@ -16,6 +16,7 @@ import type { WalletInterface } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
 import { dataDir, network, requireEnv } from '@agentcoop/core/node/env'
 import { openServerWallet } from '@agentcoop/core/node/serverWallet'
+import { listVaultUtxos } from '@agentcoop/core/signers/VaultSigner'
 import type { AgentEvents, EventExtra } from './events'
 import { AgentLog } from './log'
 import type { AgentProfile } from './profile'
@@ -33,6 +34,8 @@ export interface AgentOptions {
   stateDir?: string
   /** Live feed for the web app (events.ts). */
   events?: AgentEvents
+  /** Mandate Vault mode: the owner-funded vault the agent spends from (with the guard). */
+  vaultId?: string
 }
 
 /** ISO week, e.g. "2026-W44": the owner's weekly budget resets with it. */
@@ -58,6 +61,7 @@ export class Agent {
   private cachedCatalog?: Catalog
   private readonly stateFile?: string
   readonly events?: AgentEvents
+  readonly vaultId?: string
   private spend: { week: string, sats: number }
 
   constructor (opts: AgentOptions) {
@@ -68,6 +72,7 @@ export class Agent {
     this.tokens = opts.overlay === undefined ? undefined : new TokenKit(opts.wallet, opts.overlay)
     this.log = opts.log ?? new AgentLog(opts.profile.name)
     this.events = opts.events
+    this.vaultId = opts.vaultId
     this.log.subscribe(text => { this.emit('agent_thought', { text }) })
     this.stateFile = opts.stateDir === undefined ? undefined : join(opts.stateDir, 'agents', opts.profile.name, 'state.json')
     this.spend = this.stateFile !== undefined && existsSync(this.stateFile)
@@ -94,14 +99,15 @@ export class Agent {
     }
   }
 
-  /** Spendable sats in the wallet's default basket. */
+  /** Spendable sats the agent can pledge: its vault in vault mode, otherwise its wallet's default basket. */
   async satsBalance (): Promise<number> {
+    if (this.vaultId !== undefined) return (await listVaultUtxos(this.wallet, this.vaultId)).reduce((s, u) => s + u.satoshis, 0)
     const { outputs } = await this.wallet.listOutputs({ basket: 'default', limit: 10_000 })
     return outputs.filter(o => o.spendable).reduce((s, o) => s + o.satoshis, 0)
   }
 
   /** Opens the agent's server wallet (`data/wallets/agent-<name>.sqlite`) from the key in `profile.walletEnv`. */
-  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
+  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents, vaultId?: string } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
     const { wallet, close } = await openServerWallet({
       name: `agent-${profile.name}`,
       rootKeyHex: requireEnv(profile.walletEnv),
@@ -116,7 +122,8 @@ export class Agent {
       overlay: opts.overlay,
       log: new AgentLog(profile.name, dataDir()),
       stateDir: dataDir(),
-      events: opts.events
+      events: opts.events,
+      vaultId: opts.vaultId
     })
     return { agent, close }
   }

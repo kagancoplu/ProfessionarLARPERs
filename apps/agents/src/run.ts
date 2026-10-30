@@ -13,7 +13,12 @@
  * Live feed for the web app: GET {AGENTS_URL}/events (SSE), /agents, /healthz
  * (events.ts; AGENTS_URL default http://localhost:8093).
  *
- * Env: WALLET_AGENT_1..3_KEY (per profile), PROVIDER_API_URL, OVERLAY_URL,
+ * Mandate Vault mode: set `<NAME>_VAULT_ID` (e.g. FINETUNE_VAULT_ID) to the vault
+ * the owner created and funded with owner-cli (and the agent adopted); that
+ * agent then pledges from the vault and every signature goes through the
+ * guard at GUARD_URL.
+ *
+ * Env: WALLET_AGENT_1..3_KEY (per profile), PROVIDER_API_URL, OVERLAY_URL, GUARD_URL,
  * COOP_API_URL, AGENTS_URL, AGENTS_CORS_ORIGIN, AGENT_BRAIN=rules|llm
  * (llm: ANTHROPIC_API_KEY), NETWORK, ARCADE_URL, DATA_DIR.
  * Offline demo instead: npm run demo:k1.
@@ -21,6 +26,7 @@
 import { parseArgs } from 'node:util'
 import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { loadDotEnv, network } from '@agentcoop/core/node/env'
+import { httpCosigner } from '@agentcoop/core/signers/VaultSigner'
 import { Agent } from './agent'
 import { AgentEvents, startAgentsServer, type AgentInfo } from './events'
 import { brainFromEnv } from './llmBrain'
@@ -64,11 +70,15 @@ function * workload (profile: ReturnType<typeof loadProfile>): Generator<ReturnT
 async function runAgent (name: string): Promise<void> {
   const profile = loadProfile(name)
   const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
-  const { agent, close } = await Agent.open(profile, { overlay, events })
+  const vaultId = process.env[`${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_VAULT_ID`]
+  if (vaultId !== undefined && vaultId !== '') profile.mode = 'vault'
+  const { agent, close } = await Agent.open(profile, { overlay, events, vaultId: profile.mode === 'vault' ? vaultId : undefined })
+  if (profile.mode === 'vault' && (vaultId === undefined || vaultId === '')) throw new Error(`${name} is in vault mode: set ${name.toUpperCase()}_VAULT_ID (owner-cli create-vault / fund, then adopt)`)
   const identity = await agent.identityKey()
-  roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode })
+  roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode, ...(agent.vaultId !== undefined ? { vaultId: agent.vaultId } : {}) })
   agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })
-  const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log, emit: (t, d, x) => { agent.emit(t, d, x) } })
+  const vault = agent.vaultId !== undefined ? { vaultId: agent.vaultId, cosign: httpCosigner(process.env.GUARD_URL ?? 'http://localhost:8091') } : undefined
+  const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log, emit: (t, d, x) => { agent.emit(t, d, x) }, vault })
   try {
     agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…, brain ${brain.name}): ${profile.description}`)
     try {

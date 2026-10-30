@@ -12,6 +12,12 @@
  *
  * The agent must stay connected: the coordinator sends `sign_request` only to
  * sessions that proved the agent's identity in `hello` (B.P5a).
+ *
+ * Vault mode (track C 3.2, Mandate Vault, Track D): the pledge coin comes from
+ * the owner-funded vault (pledgeFromVault: the guard checks the owner's policy
+ * at pledge time), the settlement input is signed agent + guard (VaultSigner:
+ * the guard checks the plan, DvP and lineage again), and the change goes back
+ * to the vault (internalizeVaultSettlement). The guard can refuse either step.
  */
 import { WebSocket } from 'ws'
 import { signHello } from '@agentcoop/coordinator/auth'
@@ -20,6 +26,9 @@ import {
   buildPledge, cancelPledge, internalizeSettlement, P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan,
   type KitQuery, type LineageOptions, type Offer, type PledgeInstructions, type PoolTerms, type SettlementPlan, type TokenKit
 } from '@agentcoop/core'
+import {
+  CosignRejected, internalizeVaultSettlement, listVaultUtxos, pledgeFromVault, VaultSigner, type Cosigner
+} from '@agentcoop/core/signers/VaultSigner'
 import type { AgentLog } from './log'
 
 export type PledgeStatus = 'pending' | 'signed' | 'settled' | 'failed' | 'left-out' | 'withdrawn'
@@ -34,6 +43,8 @@ export interface ActivePledge {
   status: PledgeStatus
   /** What the pool charges per credit (P / N): the market ask is based on it. */
   pricePerCredit: number
+  /** Set for a pledge made from a Mandate Vault. */
+  vaultId?: string
   /** The last plan this agent signed (needed to take its change back). */
   plan?: SettlementPlan
   settledTxid?: string
@@ -50,6 +61,8 @@ export interface ParticipantOptions {
   reconnect?: boolean
   /** Live-feed events (Agent.emit). */
   emit?: (type: string, data: unknown, extra?: { txid?: string, poolId?: string }) => void
+  /** Mandate Vault mode: pledges come from this vault and every signature needs the guard. */
+  vault?: { vaultId: string, cosign: Cosigner }
 }
 
 const short = (txid: string): string => `${txid.slice(0, 12)}…`
@@ -131,8 +144,9 @@ export class PoolParticipant {
   async pledge (terms: PoolTerms, credits: number): Promise<ActivePledge> {
     if (this.busy) throw new Error(`already pledged to ${this.active!.poolId}`)
     // A failed (or left-out) pledge's coin is still in the wallet: withdraw it first.
+    // (A vault pledge coin stays on the vault script, spendable by the owner; nothing to withdraw.)
     const previous = this.active
-    if (previous !== undefined && (previous.status === 'failed' || previous.status === 'left-out')) {
+    if (previous !== undefined && previous.vaultId === undefined && (previous.status === 'failed' || previous.status === 'left-out')) {
       const why = previous.status === 'failed' ? 'that pool failed' : 'it settled without me'
       const { txid, beef } = await cancelPledge(this.opts.wallet, previous.outpoint)
       await this.opts.kit.overlay.submit(beef) // the overlay learns of the withdrawal only from the tx (MASTER §3.4)
@@ -141,16 +155,27 @@ export class PoolParticipant {
     }
     const me = await this.identityKey()
     const tokenIndex = await this.opts.kit.nextIndex(me)
-    const p = await buildPledge(this.opts.wallet, terms, String(credits), 'p2pkh', undefined, { tokenIndex })
+    const p = this.opts.vault === undefined
+      ? await buildPledge(this.opts.wallet, terms, String(credits), 'p2pkh', undefined, { tokenIndex })
+      : await this.pledgeFromVault(terms, credits, tokenIndex) // the guard may refuse here (CosignRejected)
     await this.opts.kit.overlay.submit(p.beef)
     this.active = {
-      poolId: terms.poolId, label: terms.label, outpoint: p.outpoint, credits: p.record.credits, tokenIndex, instructions: p.instructions,
-      status: 'pending', pricePerCredit: Number(terms.priceSats) / Number(terms.credits)
+      poolId: terms.poolId, label: terms.label, outpoint: p.outpoint, credits: p.record.credits, tokenIndex, instructions: p.instructions as PledgeInstructions,
+      status: 'pending', pricePerCredit: Number(terms.priceSats) / Number(terms.credits), vaultId: this.opts.vault?.vaultId
     }
     this.history.push(this.active)
     this.opts.emit?.('agent_payment', { kind: 'pledge', txid: p.txid, sats: p.satoshis }, { txid: p.txid, poolId: terms.poolId })
-    this.opts.log.decision(`Pledged ${credits} credits to "${terms.label}": ${p.satoshis.toLocaleString('en-US')} sat stay in my wallet as a pledge coin until settlement. https://whatsonchain.com/tx/${p.txid}`)
+    this.opts.log.decision(`Pledged ${credits} credits to "${terms.label}": ${p.satoshis.toLocaleString('en-US')} sat stay ${this.opts.vault !== undefined ? 'in my owner\'s vault (the guard approved it)' : 'in my wallet'} as a pledge coin until settlement. https://whatsonchain.com/tx/${p.txid}`)
     return this.active
+  }
+
+  private async pledgeFromVault (terms: PoolTerms, credits: number, tokenIndex: number): ReturnType<typeof pledgeFromVault> {
+    const { vaultId, cosign } = this.opts.vault!
+    const [utxo] = await listVaultUtxos(this.opts.wallet, vaultId)
+    if (utxo === undefined) throw new Error(`vault ${vaultId.slice(0, 12)}… has no spendable funds (the owner funds it)`)
+    // The pool transaction from the overlay saves the guard a fetch.
+    const [pool] = await this.opts.kit.overlay.lookup({ op: 'pool', poolId: terms.poolId } as unknown as KitQuery)
+    return await pledgeFromVault(this.opts.wallet, { vaultId, utxo, terms, credits: String(credits), tokenIndex, cosign, poolBEEF: pool?.beef })
   }
 
   private async onMessage (msg: { type: string, [k: string]: any }): Promise<void> {
@@ -197,13 +222,30 @@ export class PoolParticipant {
       this.opts.log.decision(`Refused to sign round ${msg.round} of "${a.label}": ${reason}`)
       return
     }
-    const unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, new P2pkhWalletSigner(this.opts.wallet, { protocolID: a.instructions.protocolID, keyID: a.instructions.keyID }))
+    const signer = this.opts.vault === undefined
+      ? new P2pkhWalletSigner(this.opts.wallet, { protocolID: a.instructions.protocolID, keyID: a.instructions.keyID })
+      : new VaultSigner(this.opts.wallet, {
+        vaultId: this.opts.vault.vaultId,
+        cosign: this.opts.vault.cosign,
+        plan: msg.plan,
+        context: { kind: 'settle', poolId: msg.poolId, expectedCredits: a.credits, tokenId: offer.terms.tokenId }
+      })
+    let unlock
+    try {
+      unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, signer)
+    } catch (e) {
+      if (!(e instanceof CosignRejected)) throw e
+      this.send({ type: 'sign_reject', poolId: msg.poolId, round: msg.round, reason: `guard: ${e.reason}` })
+      this.opts.emit?.('agent_decision', { action: 'reject', poolId: msg.poolId, reason: `guard refused to co-sign: ${e.reason}` }, { poolId: msg.poolId })
+      this.opts.log.decision(`The guard refused to co-sign round ${msg.round} of "${a.label}": ${e.reason}. Nothing is signed.`)
+      return
+    }
     this.send({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: msg.yourInputIndex, unlockingScriptHex: unlock.toHex() })
     a.plan = msg.plan
     a.status = 'signed'
     this.opts.emit?.('agent_decision', { action: 'sign', poolId: msg.poolId, credits: Number(a.credits), reason: `round ${msg.round}: whole settlement checked, provider credits traced to the deploy` }, { poolId: msg.poolId })
     const mine = msg.plan.participants.find(p => p.outpoint === a.outpoint)
-    this.opts.log.info(`Round ${msg.round} of "${a.label}": checked the whole settlement (my ${a.credits} credits to my address, ${mine?.changeSats ?? '?'} sat change back, the provider's credits traced to the token deploy) → signed with SIGHASH_ALL.`)
+    this.opts.log.info(`Round ${msg.round} of "${a.label}": checked the whole settlement (my ${a.credits} credits to my address, ${mine?.changeSats ?? '?'} sat change back, the provider's credits traced to the token deploy) → signed with SIGHASH_ALL${this.opts.vault !== undefined ? ' (agent + guard 2-of-2; the guard checked it too)' : ''}.`)
   }
 
   private async settlementTx (poolId: string, txid: string): Promise<Transaction> {
@@ -225,7 +267,8 @@ export class PoolParticipant {
       return
     }
     const tx = await this.settlementTx(poolId, txid)
-    await internalizeSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.instructions)
+    if (a.vaultId !== undefined) await internalizeVaultSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.vaultId) // change back on the vault script
+    else await internalizeSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.instructions)
     await this.opts.kit.sync()
     a.status = 'settled'
     this.opts.log.decision(`Pool "${a.label}" filled. One settlement tx paid the provider and delivered every share: ${a.credits} credits are mine. https://whatsonchain.com/tx/${txid}`)

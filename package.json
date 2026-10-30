@@ -28,7 +28,8 @@
     "infra": "node infra/run.mjs",
     "overlay": "npm run overlay -w @agentcoop/overlay",
     "coordinator": "npm run coordinator -w @agentcoop/coordinator",
-    "participant-cli": "tsx --import @agentcoop/core/register-sdk apps/participant-cli/src/cli.ts"
+    "participant-cli": "tsx --import @agentcoop/core/register-sdk apps/participant-cli/src/cli.ts",
+    "demo:injection": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/injection.ts"
   },
   "dependencies": {
     "@bsv/402-pay": "0.3.3",
