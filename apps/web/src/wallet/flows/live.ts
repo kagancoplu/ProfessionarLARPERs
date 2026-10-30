@@ -4,7 +4,7 @@
  */
 import { AuthFetch, Random, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  buildPledge, buildReserveAndAnnounce, buildSweep, cancelListing as coreCancelListing, cancelPledge, cancelPool as coreCancelPool, COOP_SERVICE, COOP_TOPIC, derivedP2pkhHex, internalizeSettlement, OverlayClient,
+  buildLighthousePledge, buildPledge, buildReserveAndAnnounce, buildSweep, cancelLighthousePledge, cancelListing as coreCancelListing, cancelPledge, cancelPool as coreCancelPool, COOP_SERVICE, COOP_TOPIC, derivedP2pkhHex, internalizeSettlement, OverlayClient,
   P2PKH_UNLOCKING_SCRIPT_LENGTH, P2pkhWalletSigner, PROVIDER_PROTOCOL, publishOffer, receivePkh, reserveListing, REVENUE_BASKET, signListing, signOffer, signSettlementInput, signWalletP2pkhInput,
   TokenKit, verifySettlementPlan, type CustomInstructions, type KitQuery, type Offer, type PoolTerms, type TermsDraft
 } from '@agentcoop/core'
@@ -66,7 +66,39 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       return my
     },
 
+    async lighthousePledge (poolId, credits) {
+      const s = createStepper(bus, 'pledge')
+      const terms = pool(poolId)
+      // never leave a fee-paid coin with nobody to take it: check the coordinator first (B: POST /pledges/lighthouse)
+      await s.step(STEP.lighthouseProbe, 'HTTP', async () => {
+        const res = await fetch(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+        if (res.status === 404 || res.status === 405) throw new FlowError('pledge', 'This coordinator does not take sign-and-leave pledges yet (POST /pledges/lighthouse). Use the normal pledge and stay for the signing round.')
+      })
+      const guard = await s.step('Ask the guard who it is (/healthz)', 'HTTP', () => guardApi.healthz(), g => ({ detail: `${g.identityKey.slice(0, 12)}…` }))
+      const k = kit()
+      const me = identity()
+      const tokenIndex = await s.step('Pick my next credit address', 'BSV-21', () => k.nextIndex(me), i => ({ detail: `receive address #${i}` }))
+      const lp = await s.step(STEP.lighthouseBuild, 'SINGLE|ACP', () => buildLighthousePledge(wallet(), terms, String(credits), { tokenIndex, guard: guard.identityKey }), r => ({ txid: r.outpoint.split('_')[0], detail: `${r.satoshis} sat coin + ${terms.feeSats} sat fee` }))
+      await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(lp.beef))
+      await s.step(STEP.lighthouseRegister, 'HTTP', async () => {
+        const res = await fetch(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...lp, beef: undefined }) })
+        if (!res.ok) throw new FlowError('pledge', `the coordinator refused the signed pledge (${res.status}): ${(await res.text()).slice(0, 200)}. Your coin is yours: withdraw it from My pledges.`)
+      })
+      const txid = lp.outpoint.split('_')[0]!
+      const my: MyPledge = { poolId, label: terms.label, txid, outpoint: lp.outpoint, credits: String(credits), coinSats: lp.satoshis, tokenIndex, instructions: { protocolID: [1, 'agentcoop vault'], keyID: lp.record.lhId!, counterparty: 'anyone', poolId } as unknown as MyPledge['instructions'], status: 'signed', createdAt: new Date().toISOString(), mode: 'lighthouse', guard: guard.identityKey }
+      mine.getState().upsertPledge(my)
+      return my
+    },
+
     async cancelPledge (outpoint) {
+      const mineP = mine.getState().pledges.find(p => p.outpoint === outpoint)
+      if (mineP?.mode === 'lighthouse') {
+        const s = createStepper(bus, 'cancelPledge')
+        const r = await s.step('Withdraw the lighthouse coin alone (its OP_IF branch: no guard needed)', 'BRC-100', () => cancelLighthousePledge(wallet(), outpoint), x => ({ txid: x.txid }))
+        await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(r.beef))
+        mine.getState().patchPledge(outpoint, { status: 'withdrawn' })
+        return { txid: r.txid }
+      }
       const s = createStepper(bus, 'cancelPledge')
       const r = await s.step(STEP.cancelPledge, 'BRC-100', () => cancelPledge(wallet(), outpoint), x => ({ txid: x.txid }))
       await s.step('Tell the overlay (tm_agentcoop)', 'overlay', () => overlay().submit(r.beef))
@@ -119,7 +151,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const my = mine.getState().pledges.find(p => p.poolId === poolId && p.status !== 'settled' && p.status !== 'withdrawn')
       if (my === undefined) return
       const s = createStepper(bus, 'settled')
-      if (my.plan === undefined || !my.plan.participants.some(p => p.outpoint === my.outpoint)) {
+      if (my.mode !== 'lighthouse' && (my.plan === undefined || !my.plan.participants.some(p => p.outpoint === my.outpoint))) {
         mine.getState().patchPledge(my.outpoint, { status: 'left-out', settledTxid: txid })
         s.note('The pool settled without my pledge (wait list); my coin was not touched', 'ALL')
         return
@@ -132,7 +164,14 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
         }
         throw new FlowError('settled', 'settlement not on the overlay yet')
       })
+      if (my.mode === 'lighthouse') {
+        const [txidL, voutL] = my.outpoint.split('_')
+        const spent = tx.inputs.some(i => (i.sourceTXID ?? i.sourceTransaction?.id('hex')) === txidL && i.sourceOutputIndex === Number(voutL))
+        if (!spent) { mine.getState().patchPledge(my.outpoint, { status: 'left-out', settledTxid: txid }); s.note('The pool settled without my lighthouse coin; it is still mine', 'ALL'); return }
+        s.note('My coin was spent by the settlement with the guard\'s co-signature (no change: lighthouse)', '2-of-2')
+      } else {
       await s.step(STEP.takeChange, 'internalizeAction', () => internalizeSettlement(wallet(), tx, my.plan!, my.outpoint, my.instructions))
+      }
       await s.step(STEP.syncCredits, 'BSV-21', () => kit().sync(), r => ({ detail: `${r.inserted.length} new credit output(s)` }))
       mine.getState().patchPledge(my.outpoint, { status: 'settled', settledTxid: txid })
     },

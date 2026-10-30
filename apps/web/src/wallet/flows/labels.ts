@@ -22,6 +22,9 @@ export const STEP = {
   putPolicy: 'PUT /policies/:agent at the guard (BRC-103, signed with your identity; no transaction)',
   signListing: 'Sign the listing once: SIGHASH_SINGLE|ANYONECANPAY ("the output at my index pays me askSats")',
   postListing: 'POST /listings at the coordinator (it verifies the outpoint and the signature)',
+  lighthouseBuild: 'Build the pledge coin in BSV Desktop and sign it once (SIGHASH_SINGLE|ANYONECANPAY → your credits)',
+  lighthouseRegister: 'Hand the signed pledge to the coordinator (POST /pledges/lighthouse); you can close the tab now',
+  lighthouseProbe: 'Check that the coordinator takes sign-and-leave pledges',
   cancelListing: 'Spend the listed credits back to your token address (the signature now spends nothing)',
   registerVault: 'Register the vault at the guard (BRC-103); it must derive the very same script'
 } as const

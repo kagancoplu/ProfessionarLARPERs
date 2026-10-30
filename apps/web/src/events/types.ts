@@ -56,7 +56,7 @@ export interface CoopEventMap {
   agent_payment: { kind: '402' | 'pledge' | 'redeem' | 'sweep', txid: string, sats?: number }
   agent_injected: { text: string }
   // guard (§3.7, D)
-  cosign_approved: { agent: string, vaultId: string, kind: string, poolId?: string, sats: number, paidSats?: number, feeSats?: number, txid?: string }
+  cosign_approved: { agent: string, /** absent for a lighthouse co-sign (no vault) */ vaultId?: string, kind: string, poolId?: string, sats: number, paidSats?: number, feeSats?: number, txid?: string }
   cosign_denied: { agent: string, vaultId?: string, kind: string, poolId?: string, sats?: number, reason: string }
   policy_updated: { agent: string, owner?: string }
   vault_registered: { vaultId: string, owner: string, agent: string }

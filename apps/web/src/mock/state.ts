@@ -16,7 +16,7 @@ export interface MockWorld {
   vaultCredits: bigint
   /** the human at the keyboard (mock Desktop): what the flows did */
   me: {
-    pledges: Map<string, { outpoint: string, credits: number, signed: boolean }>
+    pledges: Map<string, { outpoint: string, credits: number, signed: boolean, lighthouse?: boolean }>
     credits: bigint
     prepaidMinutes: number
     jobs: Map<string, ProviderJob>

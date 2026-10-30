@@ -18,13 +18,14 @@ function JoinPool ({ poolId, onDone }: { poolId: string, onDone: () => void }) {
   const flows = useFlows()
   const pool = useStore(s => s.pools.byId[poolId])
   const [credits, setCredits] = useState(100)
+  const [leave, setLeave] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   if (pool === undefined) return null
   const cost = pledgeCost(pool.terms.priceSats, pool.terms.credits, credits, pool.terms.feeSats)
   const join = async (): Promise<void> => {
     setBusy(true); setError(undefined)
-    try { await flows.pledge(poolId, credits); onDone() } catch (err) { setError(String((err as Error).message)) } finally { setBusy(false) }
+    try { await (leave ? flows.lighthousePledge(poolId, credits) : flows.pledge(poolId, credits)); onDone() } catch (err) { setError(String((err as Error).message)) } finally { setBusy(false) }
   }
   return (
     <div className="flex flex-col gap-3" data-testid="join-form">
@@ -33,10 +34,14 @@ function JoinPool ({ poolId, onDone }: { poolId: string, onDone: () => void }) {
         <span className="label">Credits (GPU-hours), {pool.terms.minCredits}–{pool.terms.credits}</span>
         <input type="number" min={Number(pool.terms.minCredits)} max={Number(pool.terms.credits)} value={credits} onChange={e => setCredits(Number(e.target.value))} className="w-40 border-2 border-ink bg-surface-2 px-2 py-1 counter text-[24px]" data-testid="join-credits" />
       </label>
+      <label className="flex items-start gap-2 text-[14px] leading-5" data-testid="join-leave">
+        <input type="checkbox" checked={leave} onChange={e => setLeave(e.target.checked)} className="mt-1" />
+        <span><b className="font-display">Sign now and leave</b> <span className="text-ink-muted">(lighthouse, A-P5)</span>: you sign once, binding your coin to <i>your</i> credits; the guard co-signs the settlement for you, so you do not wait for the 60-second round. Your coin stays withdrawable by you alone until then; no change comes back (the coin is exact).</span>
+      </label>
       <ul className="m-0 list-none p-0 flex flex-col gap-1 text-[14px] leading-5">
         <li><b>{formatInt(cost.coin)} sat</b> pledge coin: locked to <i>your own</i> key, stays in your wallet until the settlement (includes a 300 sat buffer for your fee share)</li>
         <li><b>{formatInt(cost.fee)} sat</b> registration fee → the provider (non-refundable, anti-griefing)</li>
-        <li>1 approval in BSV Desktop (<code>createAction</code>, outputs: coin, fee, OP_RETURN record)</li>
+        <li>{leave ? <>2 approvals in BSV Desktop (<code>createAction</code> for the coin, fee and record; <code>createSignature</code> SINGLE|ANYONECANPAY for your credits)</> : <>1 approval in BSV Desktop (<code>createAction</code>, outputs: coin, fee, OP_RETURN record)</>}</li>
       </ul>
       {error !== undefined && <p className="text-[14px] leading-5 text-danger-dark">{error}</p>}
       <div className="flex gap-2"><PixelButton loading={busy} onClick={() => { void join() }} data-testid="join-confirm">{t('wallet.approveHint')}</PixelButton><PixelButton variant="secondary" onClick={onDone}>Cancel</PixelButton></div>
@@ -60,9 +65,9 @@ function MyPledges ({ onCancelled }: { onCancelled: () => void }) {
           <td className="px-2 py-1">{p.label}</td>
           <td className="px-2 py-1 text-right counter text-[18px]">{formatInt(p.credits)}</td>
           <td className="px-2 py-1 text-right counter text-[18px]">{formatInt(p.coinSats)} sat</td>
-          <td className="px-2 py-1"><Tag tone={STATUS_TONE[p.status]}>{p.status}</Tag></td>
+          <td className="px-2 py-1"><Tag tone={STATUS_TONE[p.status]}>{p.status}</Tag>{p.mode === 'lighthouse' && <Tag tone="info" title="Signed at pledge time; the guard co-signs the settlement">left</Tag>}</td>
           <td className="px-2 py-1"><TxLink txid={p.settledTxid ?? p.txid} chars={4} /></td>
-          <td className="px-2 py-1">{p.status === 'pending' && <PixelButton size="sm" variant="ghost" loading={busy === p.outpoint} onClick={() => { void cancel(p) }}>withdraw</PixelButton>}</td>
+          <td className="px-2 py-1">{(p.status === 'pending' || (p.mode === 'lighthouse' && p.status === 'signed')) && <PixelButton size="sm" variant="ghost" loading={busy === p.outpoint} onClick={() => { void cancel(p) }}>withdraw</PixelButton>}</td>
         </tr>
       ))}</tbody>
     </table>

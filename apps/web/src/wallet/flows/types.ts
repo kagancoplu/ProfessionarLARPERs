@@ -18,6 +18,9 @@ export interface MyPledge {
   plan?: SettlementPlan
   settledTxid?: string
   createdAt: string
+  /** A-P5 lighthouse: signed once (SINGLE|ACP) at pledge time; the named guard co-signs the settlement, the human can be offline */
+  mode?: 'lighthouse'
+  guard?: string
 }
 
 export interface SignRequestData { poolId: string, round: number, plan: SettlementPlan, yourInputIndex: number }
@@ -59,6 +62,8 @@ export interface FlowsApi {
   readonly mode: DataMode
   // participant
   pledge: (poolId: string, credits: number) => Promise<MyPledge>
+  /** pledge, sign once and go offline (guard co-signs the settlement) */
+  lighthousePledge: (poolId: string, credits: number) => Promise<MyPledge>
   cancelPledge: (outpoint: string) => Promise<{ txid: string }>
   reviewSignRequest: (req: SignRequestData) => Promise<SignReview>
   sign: (review: SignReview) => Promise<void>

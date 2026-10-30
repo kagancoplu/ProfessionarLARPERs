@@ -121,7 +121,10 @@ export class MockScenario {
       poolA = { ...current, status: 'locking', coordinator: { round: 1, signed: 0, total, blacklist: [] } }
       world.pools.set(poolA.poolId, poolA)
       pub(9_000, makeEvent('coordinator', 'pool_update', { poolId: poolA.poolId, pledgedCredits: poolA.pledgedCredits, status: 'locking' }, { poolId: poolA.poolId }))
-      if (human !== undefined) {
+      if (human !== undefined && human.lighthouse === true) {
+        // lighthouse: the human signed at pledge time and may be offline; the guard they named co-signs (D-P2c kind 'lighthouse')
+        pub(9_100, makeEvent('guard', 'cosign_approved', { agent: MOCK_IDS.me, kind: 'lighthouse', poolId: poolA.poolId, sats: 0 }, { agent: MOCK_IDS.me, poolId: poolA.poolId }))
+      } else if (human !== undefined) {
         // the coordinator asks the human (connected with a proven hello) to sign input #4
         const participants = [...(world.pledges.get(poolA.poolId) ?? [])].filter(p => !p.spent).map(p => ({ outpoint: p.outpoint, participant: p.participant, credits: p.credits, signer: p.signer, changeSats: String(Math.max(0, p.coinSats - Math.ceil(Number(p.credits) * 25) - 40)) }))
         const idx = participants.findIndex(p => p.outpoint === human.outpoint)

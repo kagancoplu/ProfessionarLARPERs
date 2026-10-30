@@ -180,3 +180,22 @@ describe('mock scenario (vault-locked credits)', () => {
     expect(v?.credits?.[0]?.amt).toBe('300')
   })
 })
+
+describe('mock flows (lighthouse: sign now and leave)', () => {
+  it('pledges signed, gets no sign request, the guard co-signs, the settlement delivers the credits', async () => {
+    const steps = scenario.buildCycle(0, Date.parse('2026-10-30T18:00:00Z'))
+    steps[0]!.run()
+    const poolId = [...world.pools.keys()][0]!
+    const my = await flows.lighthousePledge(poolId, 120)
+    expect(my.mode).toBe('lighthouse')
+    expect(my.status).toBe('signed')
+    for (const s of steps.slice(1, 8)) s.run()
+    const feed = store.getState().feed
+    expect(feed.some(e => e.type === 'sign_request')).toBe(false)
+    expect(feed.some(e => e.type === 'cosign_approved' && e.data.kind === 'lighthouse')).toBe(true)
+    steps.find(s => s.label === 'settlement')!.run()
+    await new Promise(r => setTimeout(r, 500))
+    expect(mine.getState().pledges[0]?.status).toBe('settled')
+    expect(store.getState().metrics.participants).toBe(4)
+  })
+})

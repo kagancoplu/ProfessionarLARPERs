@@ -55,6 +55,35 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       return my
     },
 
+    async lighthousePledge (poolId, credits) {
+      const s = createStepper(bus, 'pledge')
+      const pool = world.pools.get(poolId)
+      if (pool === undefined || pool.status !== 'open') throw new FlowError('pledge', 'That pool is not open.')
+      if (credits < Number(pool.terms.minCredits) || credits > Number(pool.terms.credits)) throw new FlowError('pledge', `Credits must be between ${pool.terms.minCredits} and ${pool.terms.credits}.`)
+      await s.step(STEP.lighthouseProbe, 'HTTP', () => wait(80))
+      const unit = Number(pool.terms.priceSats) / Number(pool.terms.credits)
+      const coinSats = Math.ceil(credits * unit) + 1 + 100
+      const res = await s.step(STEP.lighthouseBuild, 'SINGLE|ACP', async () => {
+        const r = await wallet().createAction({ description: 'AgentCoop: lighthouse pledge', outputs: [out(coinSats, 'lighthouse coin (you alone, or you + the guard)'), out(Number(pool.terms.feeSats), 'registration fee → provider'), out(0, 'OP_RETURN agentcoop pledge (mode lighthouse)')] })
+        await wallet().createSignature({ protocolID: [1, 'agentcoop vault'], keyID: 'lighthouse mock', counterparty: 'anyone', data: [1] })
+        return r
+      }, r => ({ txid: r.txid }))
+      const p: PledgeView = { ...makeMockPledge(pool, me(), String(credits), world.height, 'vault'), txid: res.txid!, outpoint: `${res.txid}_0`, coinSats }
+      const list = world.pledges.get(poolId) ?? []
+      list.push(p)
+      world.pledges.set(poolId, list)
+      const next = { ...pool, pledgedCredits: String(BigInt(pool.pledgedCredits) + BigInt(credits)), pledgeCount: pool.pledgeCount + 1 }
+      world.pools.set(poolId, next)
+      await s.step(STEP.submitOverlay, 'overlay', () => wait(120))
+      await s.step(STEP.lighthouseRegister, 'HTTP', () => wait(120))
+      bus.publish(makeEvent('overlay', 'pledge_added', { pledge: p, pledgedCredits: next.pledgedCredits }, { poolId, txid: p.txid, agent: p.participant }))
+      const my: MyPledge = { poolId, label: pool.terms.label, txid: p.txid, outpoint: p.outpoint, credits: String(credits), coinSats, tokenIndex: 0, instructions: { protocolID: [1, 'agentcoop vault'], keyID: 'lighthouse mock', counterparty: 'anyone', poolId }, status: 'signed', createdAt: ts(), mode: 'lighthouse', guard: MOCK_IDS.guard }
+      mine.getState().upsertPledge(my)
+      // signed already: the scenario does not wait for this human; the guard co-signs at the settlement
+      world.me.pledges.set(poolId, { outpoint: p.outpoint, credits, signed: true, lighthouse: true })
+      return my
+    },
+
     async cancelPledge (outpoint) {
       const s = createStepper(bus, 'cancelPledge')
       const my = mine.getState().pledges.find(p => p.outpoint === outpoint)
