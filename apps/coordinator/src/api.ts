@@ -8,12 +8,13 @@ import express, { type Router } from 'express'
 import type { Offer } from '../../../packages/overlay/src/stub/types'
 import type { PoolView } from '../../../packages/overlay/src/views'
 import type { HeightSource } from './chain'
+import type { CoordinatorStatus } from './engine'
 import { OverlayUnavailableError, type OverlayLookup } from './overlay'
 import type { CoordinatorStore } from './store'
 import { OfferError, verifyOffer } from './verifyOffer'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
-export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true }
+export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
 
 export interface ApiDeps {
   overlay: OverlayLookup
@@ -21,6 +22,8 @@ export interface ApiDeps {
   height: HeightSource
   /** Pools with a signing round in progress (Faz 2 engine). */
   locking: () => ReadonlySet<string>
+  /** Round state for a pool, when the engine runs. */
+  coordinatorStatus?: (poolId: string) => CoordinatorStatus | undefined
 }
 
 const POOL_ID_RE = /^[0-9a-f]{64}_\d+$/
@@ -33,7 +36,14 @@ export async function derivePools (deps: ApiDeps, views: PoolView[]): Promise<Ap
     let status: ApiPoolStatus = v.status
     if (v.status === 'open' && locking.has(v.poolId)) status = 'locking'
     else if (v.status === 'open' && height !== undefined && height >= Number(v.terms.deadlineHeight)) status = 'failed'
-    return { ...v, status, hasOffer: offers.has(v.poolId), ...(height !== undefined ? { height } : { heightUnknown: true as const }) }
+    const coordinator = deps.coordinatorStatus?.(v.poolId)
+    return {
+      ...v,
+      status,
+      hasOffer: offers.has(v.poolId),
+      ...(height !== undefined ? { height } : { heightUnknown: true as const }),
+      ...(coordinator !== undefined ? { coordinator } : {})
+    }
   })
 }
 
@@ -90,7 +100,7 @@ export function createApiRouter (deps: ApiDeps): Router {
     let overlay = true
     try { await deps.overlay.pools() } catch { overlay = false }
     const height = await deps.height.height()
-    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null })
+    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null, engine: deps.coordinatorStatus !== undefined })
   }))
 
   return r

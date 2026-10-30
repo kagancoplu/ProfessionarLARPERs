@@ -73,7 +73,7 @@
 - 2.4 Dolmayan havuz: `height ≥ deadlineHeight` ve `pledgedCredits < N` → `pool_failed`, status `failed`. Hiçbir yayın yok.
 - 2.5 Durum ve loglar: `GET /pools/:id` → `round`, `signed/total`, `blacklist`. Her karar bir log satırı (jüri videosunda görünebilir).
 - 2.6 Test: `test/e2e.coordinator.mockchain.test.ts` (A ile ortak): 3 sahte katılımcı, biri tur 1'de imzalamıyor → tur 2 bekleme listesiyle tamam; dolmayan havuz `failed`.
-- 2.7 Koordinatör cüzdanı: wallet-toolbox (`WALLET_COORDINATOR_KEY`) yalnızca kimlik için (`AuthFetch` sunucu tarafı ve MessageBox). Para tutmaz; README'de yazılır.
+- 2.7 Koordinatör cüzdanı: wallet-toolbox (`WALLET_COORDINATOR_KEY`) yalnızca kimlik için (`AuthFetch` sunucu tarafı ve MessageBox). Para tutmaz; README'de yazılır. **(B.P2: gerekmedi; WS-only turda koordinatörün hiç anahtarı yok. Kimlik Faz 5'te `hello` kanıtı için eklenir.)**
 
 **Kabul:** C'nin ajanlarıyla mainnet'te koordinatörün kurduğu bir settlement (T5) STATUS'ta; dolmayan havuz senaryosu mainnet'te bir kez (pledge tx'leri + `failed`); S2 B ✓.
 

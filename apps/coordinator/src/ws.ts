@@ -1,7 +1,8 @@
 /**
- * WS /ws (MASTER §3.5). Faz 1: participant sessions (`hello`) and the live
- * pool feed (`pool_update`, from a poll of the overlay; only changes are sent).
- * Faz 2 sends `sign_request` to sessions by identity.
+ * WS /ws (MASTER §3.5): participant sessions (`hello`), the live pool feed
+ * (`pool_update`, from a poll of the overlay; only changes are sent), and the
+ * signing-round messages (`sign_request` out by identity; `sign_response` /
+ * `sign_reject` in, handed to the engine with the session's identity).
  */
 import type { Server } from 'node:http'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -23,9 +24,11 @@ export class Feed {
   private readonly last = new Map<string, string>()
   private timer?: NodeJS.Timeout
   private polling = false
+  /** Set by the server when the engine runs (Faz 2). Returns an error to send back, if any. */
+  onParticipantMessage?: (identity: string | undefined, msg: any) => string | undefined
 
   constructor (server: Server, private readonly deps: ApiDeps, private readonly pollMs: number) {
-    this.wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 })
+    this.wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 })
     this.wss.on('connection', ws => {
       this.sessions.set(ws, { poolIds: null })
       ws.on('message', data => { void this.onMessage(ws, data.toString()) })
@@ -76,6 +79,13 @@ export class Feed {
   private async onMessage (ws: WebSocket, raw: string): Promise<void> {
     let msg: any
     try { msg = JSON.parse(raw) } catch { ws.send(JSON.stringify({ type: 'error', error: 'invalid JSON' })); return }
+    if (msg?.type === 'sign_response' || msg?.type === 'sign_reject') {
+      const error = this.onParticipantMessage === undefined
+        ? 'this coordinator runs no signing rounds'
+        : this.onParticipantMessage(this.sessions.get(ws)?.identity, msg)
+      if (error !== undefined) ws.send(JSON.stringify({ type: 'error', poolId: msg.poolId, error }))
+      return
+    }
     if (msg?.type !== 'hello') { ws.send(JSON.stringify({ type: 'error', error: `unsupported message type ${String(msg?.type)}` })); return }
     const poolIds: unknown = msg.poolIds ?? []
     if (typeof msg.identity !== 'string' || !IDENTITY_RE.test(msg.identity) ||

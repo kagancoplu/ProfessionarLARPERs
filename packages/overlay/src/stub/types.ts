@@ -42,3 +42,11 @@ export interface Offer {
   satoshis: number
   terms: PoolTerms
 }
+
+export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular
+  poolId: string
+  round: number
+  participants: Array<{ outpoint: string, participant: string, credits: string, signer: 'p2pkh' | 'vault', changeSats: string }>
+  pledgeListHash: string
+  templateBEEF: number[]              // imzasız tx + tüm girdilerin kaynak tx'leri (AtomicBEEF)
+}
