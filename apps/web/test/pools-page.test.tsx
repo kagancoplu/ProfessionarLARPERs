@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { AppRuntimeContext } from '../src/app-context'
 import { PoolsPage } from '../src/consoles/pools/PoolsPage'
 import { createBus } from '../src/events/bus'
+import { createMockFlows } from '../src/wallet/flows/mock'
 import { createMockWorld } from '../src/mock/state'
 import { MockScenario } from '../src/mock/scenario'
 import { store } from '../src/store'
@@ -20,7 +21,7 @@ describe('PoolsPage', () => {
     new MockScenario({ bus, world: createMockWorld(), loop: false }).runCycleSync(Date.parse('2026-10-30T18:00:00Z'))
     const wallet = new WalletController({ store, bus, factory: () => createMockWallet({ identityKey: MOCK_IDS.me, autoApprove: true, delayMs: 0 }), expectedNetwork: 'main' })
     const router = createMemoryRouter([{ path: '/', element: <PoolsPage /> }])
-    render(<AppRuntimeContext.Provider value={{ bus, wallet }}><QueryClientProvider client={new QueryClient()}><RouterProvider router={router} /></QueryClientProvider></AppRuntimeContext.Provider>)
+    render(<AppRuntimeContext.Provider value={{ bus, wallet, flows: createMockFlows({ world: createMockWorld(), bus, store, getWallet: () => undefined }) }}><QueryClientProvider client={new QueryClient()}><RouterProvider router={router} /></QueryClientProvider></AppRuntimeContext.Provider>)
     expect(screen.getAllByTestId('pool-row')).toHaveLength(2)
     await userEvent.click(screen.getByRole('button', { name: 'settled' }))
     expect(screen.getAllByTestId('pool-row')).toHaveLength(1)

@@ -22,6 +22,12 @@ import { createMockWallet } from './mock/wallet'
 import { ReplayPlayer } from './replay/player'
 import { store } from './store'
 import { WalletController, realWalletFactory } from './wallet/client'
+import { createLiveFlows } from './wallet/flows/live'
+import { createMockFlows } from './wallet/flows/mock'
+import type { FlowsApi } from './wallet/flows/types'
+import { coordinatorHost, signHello } from './wallet/hello'
+import { mine } from './wallet/mine'
+import type { CoordinatorFeed } from './events/adapters/coordinatorWs'
 
 export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   store.getState().setMode(env.mode, env.replayName)
@@ -31,12 +37,18 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
 
   const factory = env.mode === 'mock' ? () => createMockWallet({ identityKey: MOCK_IDS.me, network: env.network === 'main' ? 'mainnet' : 'testnet' }) : realWalletFactory
   const wallet = new WalletController({ store, bus, factory, expectedNetwork: env.network })
-  const runtime: AppRuntime & { stop: () => void } = { bus, wallet, stop: () => { for (const s of stops) s() } }
+  let feed: CoordinatorFeed | undefined
+  let flows: FlowsApi
+  const runtime: AppRuntime & { stop: () => void } = { bus, wallet, get flows () { return flows }, get feed () { return feed }, stop: () => { for (const s of stops) s() } }
+  // my pledges/pools follow the connected identity; a settlement of my pool is taken in automatically
+  stops.push(store.subscribe((s, prev) => { if (s.me.identityKey !== prev.me.identityKey) mine.getState().load(s.me.identityKey) }))
+  stops.push(bus.subscribe(e => { if (e.type === 'settled') void flows.afterSettlement(e.data.poolId, e.data.txid).catch(err => store.getState().pushToast({ kind: 'error', text: `After the settlement: ${String((err as Error).message)}` })) }))
 
   if (env.mode === 'mock') {
     const { startMockMode } = await import('./mock/browser')
     const mock = await startMockMode(bus)
     runtime.mock = mock
+    flows = createMockFlows({ world: mock.world, bus, store, getWallet: () => wallet.wallet })
     stops.push(mock.stop)
     bus.publish(makeEvent('web', 'mode_changed', { mode: 'mock' }))
     return runtime
@@ -45,6 +57,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   if (env.mode === 'replay') {
     const replay = new ReplayPlayer({ bus, speed: store.getState().settings.replaySpeed })
     runtime.replay = replay
+    flows = createLiveFlows({ env, store, bus, getWallet: () => wallet.wallet, getFeed: () => undefined })
     bus.publish(makeEvent('web', 'mode_changed', { mode: 'replay', replayName: env.replayName ?? 'mock-demo' }))
     void replay.load(`/replays/${env.replayName ?? 'mock-demo'}.jsonl`).then(() => replay.play()).catch(err => {
       store.getState().pushToast({ kind: 'error', text: `Replay not found: ${String((err as Error).message)}` })
@@ -61,15 +74,21 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
     if (current.ok === ok && current.detail === detail) return
     bus.publish(makeEvent('web', 'service_health', { service, ok, ...(detail !== undefined ? { detail } : {}) }))
   }
-  const feed = startCoordinatorFeed({ url: wsUrl(env.urls.coop), bus, onStatus: status('coop'), identity: () => store.getState().me.identityKey })
-  stops.push(feed.close)
+  feed = startCoordinatorFeed({
+    url: wsUrl(env.urls.coop), bus, onStatus: status('coop'), identity: () => store.getState().me.identityKey,
+    // B-P5a: prove the identity over the coordinator's nonce so sign_requests reach this browser
+    prove: async nonce => { const w = wallet.wallet; if (w === undefined) throw new Error('no wallet'); return await signHello(w, coordinatorHost(env.urls.coop), nonce) }
+  })
+  const liveFeed = feed
+  stops.push(liveFeed.close)
+  flows = createLiveFlows({ env, store, bus, getWallet: () => wallet.wallet, getFeed: () => liveFeed })
   const overlay = startOverlaySse({ url: `${env.urls.overlay}/agentcoop/events`, bus, store, coop: coopApi, onStatus: status('overlay') })
   stops.push(overlay.close)
   stops.push(startEnvelopeSse('guard', guardApi.eventsUrl, bus, status('guard')).close)
   stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
   // a wallet connection announces itself to the coordinator so sign_requests arrive
   stops.push(store.subscribe((s, prev) => {
-    if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) feed.hello(s.me.identityKey)
+    if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) liveFeed.hello(s.me.identityKey, mine.getState().pledges.filter(p => p.status === 'pending' || p.status === 'signed').map(p => p.poolId))
   }))
   bus.publish(makeEvent('web', 'mode_changed', { mode: 'live' }))
   return runtime

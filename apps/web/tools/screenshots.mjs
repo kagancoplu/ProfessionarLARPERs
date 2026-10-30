@@ -9,7 +9,7 @@ const errors = []
 page.on('pageerror', e => errors.push(String(e)))
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text().slice(0, 200)) })
 await page.goto(`${base}/`)
-await page.waitForTimeout(9000)
+await page.waitForTimeout(Number(process.env.WAIT_MS ?? 9000))
 await page.screenshot({ path: `${out}/town.png` })
 await page.goto(`${base}/_kit`)
 await page.waitForSelector('[data-testid=atlas-status]')

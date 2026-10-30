@@ -5,6 +5,8 @@ import { store, useStore } from '../store'
 import { PixelButton, Scroll, Signboard, Toasts } from '../ui'
 import { t } from '../i18n/t'
 import { TopBar } from './TopBar'
+import { ReplayBar } from '../replay/ReplayBar'
+import { SignCenter } from '../wallet/SignCenter'
 
 function NarrowScreenNotice () {
   return (
@@ -20,7 +22,7 @@ function NarrowScreenNotice () {
 function MockApprovalDialog () {
   const pending = useApproval(s => s.pending)
   return (
-    <Scroll open={pending !== undefined} title={t('wallet.approveHint')} id="mock-approval"
+    <Scroll open={pending !== undefined} title={t('wallet.approveHint')} id="mock-approval" priority
       footer={<>
         <PixelButton variant="secondary" onClick={() => approvalStore.getState().answer(false)}>Deny</PixelButton>
         <PixelButton onClick={() => approvalStore.getState().answer(true)} autoFocus>Approve (mock)</PixelButton>
@@ -50,6 +52,8 @@ export function AppShell () {
       <TopBar />
       <main className="flex-1">{narrow ? <NarrowScreenNotice /> : <Outlet />}</main>
       <Toasts />
+      <SignCenter />
+      <ReplayBar />
       <MockApprovalDialog />
     </div>
   )

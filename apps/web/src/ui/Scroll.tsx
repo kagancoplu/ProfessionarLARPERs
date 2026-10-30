@@ -10,10 +10,12 @@ export interface ScrollProps {
   className?: string
   /** dialog test id */
   id?: string
+  /** above every other scroll (the wallet's approval window) */
+  priority?: boolean
 }
 
 /** The parchment modal: every confirmation goes through it (what, how many sats, which address → Approve in BSV Desktop → txid). */
-export function Scroll ({ open, title, onClose, children, footer, className, id }: ScrollProps) {
+export function Scroll ({ open, title, onClose, children, footer, className, id, priority = false }: ScrollProps) {
   useEffect(() => {
     if (!open || onClose === undefined) return
     const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onClose() }
@@ -22,7 +24,7 @@ export function Scroll ({ open, title, onClose, children, footer, className, id 
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4" role="presentation" onClick={onClose}>
+    <div className={cn('fixed inset-0 flex items-center justify-center bg-ink/60 p-4', priority ? 'z-[70]' : 'z-50')} role="presentation" onClick={onClose}>
       <div id={id} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined} onClick={e => e.stopPropagation()}
         className={cn('steps-in w-full max-w-[560px] border-2 border-ink bg-surface-2 shadow-hard-lg', className)}>
         <div className="h-1 bg-wood" aria-hidden />

@@ -1,6 +1,9 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter } from 'react-router'
-import { AgentsPage, ExplorerPage, MarketPage, MetricsPage, OwnerPage, PoolsPage, ProviderPage, SettingsPage, TownPage } from './consoles/pages'
+import { AgentsPage, ExplorerPage, MarketPage, MetricsPage, OwnerPage, SettingsPage, TownPage } from './consoles/pages'
+import { PoolsPage } from './consoles/pools/PoolsPage'
+import { ParticipantPage } from './consoles/participant/ParticipantPage'
+import { ProviderPage } from './consoles/provider/ProviderPage'
 import { AppShell } from './shell/AppShell'
 import { LoadingState } from './ui'
 
@@ -15,6 +18,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <TownPage /> },
       { path: 'pools', element: <PoolsPage /> },
+      { path: 'me', element: <ParticipantPage /> },
       { path: 'market', element: <MarketPage /> },
       { path: 'agents', element: <AgentsPage /> },
       { path: 'provider', element: <ProviderPage /> },

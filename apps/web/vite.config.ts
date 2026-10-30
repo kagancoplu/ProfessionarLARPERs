@@ -37,7 +37,8 @@ export default defineConfig({
     fs: { allow: ['../..'] },
     proxy: Object.fromEntries(Object.entries(SERVICE_PROXY).map(([path, target]) => [path, {
       target,
-      changeOrigin: true,
+      // the coordinator binds the hello proof to the Host header it sees (B-P5a): keep the browser's
+      changeOrigin: path !== '/api/coop',
       ws: true,
       rewrite: (p: string) => p.replace(path, '')
     }]))

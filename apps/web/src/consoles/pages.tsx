@@ -1,12 +1,19 @@
+import { lazy, Suspense, useState } from 'react'
 /**
  * P0 pages: the Town square shows the live feed and corner counters; the other consoles are
  * concrete placeholders that already read the store (lists arrive in P1–P3).
  */
-import { useShallowStore, useStore } from '../store'
+import { store, useShallowStore, useStore } from '../store'
 import { selectAgents, selectMetrics, selectPools, selectTxs } from '../store/selectors'
-import { Counter, DemoPricingTag, formatInt, EmptyState, IdentityChip, Signboard, SimulatedJobsTag, Tag, TxLink } from '../ui'
+import { TownDrawer } from '../town/TownDrawer'
+import { Counter, DemoPricingTag, EmptyState, IdentityChip, LoadingState, Signboard, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
 import { t } from '../i18n/t'
+import { useQuery } from '@tanstack/react-query'
+import { coopApi } from '../api/coop'
+import { keys } from '../api/queries'
 import { LiveFeed } from './LiveFeed'
+
+const TownCanvas = lazy(() => import('../town/TownCanvas'))
 
 function CornerCounters () {
   const m = useStore(selectMetrics)
@@ -26,6 +33,7 @@ export function TownPage () {
   return (
     <div className="mx-auto flex max-w-[1280px] flex-col gap-6 p-6">
       <CornerCounters />
+      <Suspense fallback={<LoadingState title="Building the town…" />}><TownCanvas /></Suspense>
       <div className="grid grid-cols-[2fr_1fr] gap-6">
         <LiveFeed />
         <Signboard title="On the board now">
@@ -43,31 +51,6 @@ export function TownPage () {
             ))}
         </Signboard>
       </div>
-      <p className="text-ink-muted text-[14px] leading-5">The pixel-art square (Phaser) arrives in Phase 1; this page is the ledger view of the same store.</p>
-    </div>
-  )
-}
-
-export function PoolsPage () {
-  const pools = useShallowStore(selectPools())
-  return (
-    <div className="mx-auto max-w-[1280px] p-6">
-      <Signboard title="Pools" actions={<DemoPricingTag />}>
-        {pools.length === 0 ? <EmptyState title="No pools yet." body={t('states.noPools')} /> : (
-          <table className="w-full border-collapse text-[14px] leading-5">
-            <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-3 py-2">Pool</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 text-right">Pledged</th><th className="px-3 py-2 text-right">Price</th><th className="px-3 py-2">Settlement</th></tr></thead>
-            <tbody>{pools.map(p => (
-              <tr key={p.poolId} className="h-10 border-b border-surface-3 hover:bg-surface-3">
-                <td className="px-3">{p.terms.label}</td>
-                <td className="px-3"><Tag tone={p.status === 'settled' ? 'ok' : p.status === 'failed' || p.status === 'cancelled' ? 'danger' : p.status === 'locking' ? 'warn' : 'neutral'}>{p.status}</Tag></td>
-                <td className="px-3 text-right counter text-[18px]">{formatInt(p.pledgedCredits)} / {formatInt(p.terms.credits)}</td>
-                <td className="px-3 text-right counter text-[18px]">{formatInt(p.terms.priceSats)} sat</td>
-                <td className="px-3">{p.settledTxid !== undefined ? <TxLink txid={p.settledTxid} chars={4} /> : <span className="text-ink-muted">—</span>}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        )}
-      </Signboard>
     </div>
   )
 }
@@ -78,37 +61,44 @@ export function AgentsPage () {
     <div className="mx-auto grid max-w-[1280px] grid-cols-3 gap-4 p-6">
       {agents.length === 0 && <EmptyState title="No agents in the square yet." body="Agents appear when their event stream (or the mock scenario) starts." />}
       {agents.map(a => (
-        <Signboard key={a.identity} title={<span className="flex items-center gap-2">{a.name} <Tag tone={a.mode === 'vault' ? 'gold' : 'neutral'}>{a.mode ?? 'p2pkh'}</Tag></span>}>
+        <Signboard key={a.identity} title={<span className="flex items-center gap-2">{a.name} <Tag tone={a.mode === 'vault' ? 'gold' : 'neutral'}>{a.mode ?? 'p2pkh'}</Tag></span>} className="cursor-pointer" onClick={() => store.getState().openDrawer('agent', a.identity)}>
           <IdentityChip identity={a.identity} role="agent" />
           {a.lastThought !== undefined && <p className="mt-2 italic">“{a.lastThought.text}”</p>}
           {a.lastDecision !== undefined && <p className="mt-2 text-[14px] leading-5"><Tag tone={a.lastDecision.action === 'reject' ? 'danger' : 'ok'}>{a.lastDecision.action}</Tag> {a.lastDecision.reason}</p>}
           {a.injected !== undefined && <p className="mt-2 border-2 border-danger-dark bg-surface-3 p-2 text-[14px] leading-5">Injected: “{a.injected.text}”</p>}
         </Signboard>
       ))}
+      <TownDrawer />
     </div>
   )
 }
 
+const TX_KINDS = ['all', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11'] as const
+
 export function ExplorerPage () {
-  const txs = useStore(selectTxs)
+  const all = useStore(selectTxs)
   const notifications = useStore(s => s.notifications)
+  const [kind, setKind] = useState<typeof TX_KINDS[number]>('all')
+  const txs = kind === 'all' ? all : all.filter(tx => tx.kind === kind)
   return (
     <div className="mx-auto grid max-w-[1280px] grid-cols-[2fr_1fr] gap-6 p-6">
-      <Signboard title="Transactions">
+      <Signboard title="Transactions" actions={<span className="text-surface-2 text-[14px]">{all.length} on record</span>}>
+        <div className="mb-3 flex flex-wrap gap-1">{TX_KINDS.map(k => <button key={k} type="button" onClick={() => setKind(k)} aria-pressed={kind === k} className={`label border px-1.5 py-0 text-[12px] leading-4 ${kind === k ? 'bg-gold border-gold-dark text-ink' : 'bg-surface-3 border-ink-muted text-ink hover:bg-surface-2'}`}>{k}</button>)}</div>
         {txs.length === 0 ? <EmptyState title="No transactions yet." body={t('states.noTxs')} /> : (
           <table className="w-full border-collapse text-[14px] leading-5" data-testid="tx-table">
             <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-3 py-2">Type</th><th className="px-3 py-2">What</th><th className="px-3 py-2">txid</th><th className="px-3 py-2">When</th></tr></thead>
             <tbody>{txs.map(tx => (
-              <tr key={tx.id} className="h-10 border-b border-surface-3 hover:bg-surface-3">
+              <tr key={tx.id} className="h-10 cursor-pointer border-b border-surface-3 hover:bg-surface-3" onClick={() => store.getState().openDrawer('tx', tx.id)}>
                 <td className="px-3"><Tag tone={tx.kind === 'T5' ? 'gold' : 'neutral'}>{tx.kind}</Tag></td>
                 <td className="px-3">{tx.label}</td>
-                <td className="px-3"><TxLink txid={tx.txid} chars={4} /></td>
+                <td className="px-3" onClick={e => e.stopPropagation()}><TxLink txid={tx.txid} chars={4} /></td>
                 <td className="px-3 counter text-[18px] text-ink-muted">{new Date(tx.ts).toLocaleTimeString('en-GB', { hour12: false })}</td>
               </tr>
             ))}</tbody>
           </table>
         )}
       </Signboard>
+      <TownDrawer />
       <Signboard title="Notifications">
         {notifications.length === 0 ? <p className="text-ink-muted">Sign requests and guard refusals land here.</p> : notifications.map(n => (
           <div key={n.id} className="border-b border-surface-3 py-2 last:border-0">
@@ -123,6 +113,8 @@ export function ExplorerPage () {
 
 export function MetricsPage () {
   const m = useStore(selectMetrics)
+  const mode = useStore(s => s.mode)
+  const live = useQuery({ queryKey: keys.metrics, queryFn: () => coopApi.metrics(), enabled: mode === 'live', retry: 0 })
   return (
     <div className="mx-auto flex max-w-[1280px] flex-col gap-6 p-6">
       <CornerCounters />
@@ -134,6 +126,13 @@ export function MetricsPage () {
           <li>GPU jobs are <SimulatedJobsTag />; payments, credits and settlements are real transactions in live mode.</li>
         </ul>
       </Signboard>
+      {mode === 'live' && (
+        <Signboard title="Coordinator /metrics (Track B, computed from the chain)">
+          {live.isError ? <p className="text-ink-muted">The coordinator's /metrics is not answering ({String((live.error as Error).message)}).</p>
+            : live.data === undefined ? <LoadingState title="Asking the coordinator…" />
+              : <pre className="whitespace-pre-wrap break-all text-[14px] leading-5">{JSON.stringify(live.data, null, 1)}</pre>}
+        </Signboard>
+      )}
     </div>
   )
 }
@@ -143,6 +142,5 @@ const stub = (title: string, body: string) => function StubPage () {
 }
 
 export const MarketPage = stub('Market stalls', 'Listings and sweeps arrive in Phase 3. Until then the live feed shows listing events.')
-export const ProviderPage = stub('Provider workshop', 'Mint credits, open a pool, follow revenue: Phase 2 (BSV Desktop flows).')
 export const OwnerPage = stub('Owner console', 'Create a vault, write the policy, watch the guard: Phase 3.')
 export const SettingsPage = stub('Settings', 'Sound, day/night and replay speed live in the top bar for now.')

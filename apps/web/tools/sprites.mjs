@@ -14,7 +14,7 @@ import { packAsync } from 'free-tex-packer-core'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const { PALETTE } = await import(pathToFileURL(resolve(root, 'assets/palette.ts')).href)
-const { SPRITES } = await import(pathToFileURL(resolve(root, 'assets/sprites/index.ts')).href)
+const { SPRITES, GROUND_TILES } = await import(pathToFileURL(resolve(root, 'assets/sprites/index.ts')).href)
 
 const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]
 
@@ -92,4 +92,17 @@ const files = await packAsync(images, {
 })
 await mkdir(resolve(root, 'public/game'), { recursive: true })
 for (const f of files) await writeFile(resolve(root, 'public/game', f.name), f.buffer)
+// ground tileset strip for the Phaser tilemap (gid order = GROUND_TILES)
+const tileW = 16
+const strip = Buffer.alloc(tileW * GROUND_TILES.length * tileW * 4, 0)
+GROUND_TILES.forEach(({ sprite, frame }, i) => {
+  const rows = sprite.frames[frame]
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) {
+    const ch = row[x]; if (ch === '.') continue
+    const [r, g, b] = hex(PALETTE[ch].day)
+    const o = (y * tileW * GROUND_TILES.length + i * tileW + x) * 4
+    strip[o] = r; strip[o + 1] = g; strip[o + 2] = b; strip[o + 3] = 255
+  } })
+})
+await writeFile(resolve(root, 'public/game/ground.png'), await sharp(strip, { raw: { width: tileW * GROUND_TILES.length, height: tileW, channels: 4 } }).png().toBuffer())
 console.log(`sprites: ${SPRITES.length} sprites, ${images.length} frames → src/ui/sprites.generated.ts, palette.generated.css, public/game/${files.map(f => f.name).join(', ')}`)

@@ -1,5 +1,6 @@
 /** Phaser config (track-E §5.2): 16×16 tiles at 3×, pixelArt, no antialias. The Town scene arrives in P1. */
 import type Phaser from 'phaser'
+import { COLORS } from './colors'
 
 export const TILE = 16
 export const SCALE = 3
@@ -11,7 +12,7 @@ export function gameConfig (parent: HTMLElement, scenes: Phaser.Types.Scenes.Sce
     parent,
     width: LOGICAL.width,
     height: LOGICAL.height,
-    backgroundColor: '#5E9E3E',
+    backgroundColor: COLORS.parchment,
     pixelArt: true,
     antialias: false,
     roundPixels: true,
