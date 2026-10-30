@@ -1,11 +1,11 @@
 # Mainnet runbook — sats geldiği andan teslime
 
 > Hazırlayan: Track B (30.10 ~21:30). Bütün track'lerin mainnet adımlarını **tek sıraya** koyar; komutların ayrıntısı her track'in kendi README'sinde ve `docs/OPS.md`'de. Bu dosya onları tekrar etmez, sıralar.
-> Durum (21:30): her track mockchain'de yeşil, **mainnet'te tek işlem yok**. Tek engel sats.
+> Durum (21:40): her track mockchain'de yeşil, **sats elimizde**, mainnet'te henüz işlem yok. Sıradaki: adım 1–5 (S1).
 
-## 0. Şimdi, sats gelmeden (insan, 10 dk)
+## 0. Başlamadan (insan, 5 dk)
 
-1. **Sats talebi:** Treasury BSV Desktop → Payments → Receive → BSV Address. Adresi ve takım adını Telegram'da **@lexamaison**'a gönder. Metin: `plan/phases/D-P0.md` §2 (mesaj 1 + 2; Axel'e sorular da orada).
+1. **Sats:** elimizde (30.10). Miktarı STATUS → Track D "Cüzdan/fon durumu"na yazın.
 2. **Treasury hangi Desktop?** Bu repo makinesindeki Desktop `03e8836800…94a45a`, mainnet ve kilidi açık (preflight). Treasury buysa STATUS → Track D'ye yaz; değilse treasury laptopunun identity key'ini yaz.
 3. **`.env` izni:** `chmod 600 .env` (preflight 644 gördü). Anahtarları kasaya kopyala (`docs/OPS.md` §2).
 4. **Ön kontrol:** `node infra/preflight.mjs`. Para harcamaz, anahtar basmaz. `Ready for S1` görene kadar `✗` satırlarını düzelt; `!` satırları uyarı.
