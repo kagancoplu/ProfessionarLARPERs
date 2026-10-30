@@ -1,10 +1,11 @@
 import { useEffect } from 'react'
-import { Outlet } from 'react-router'
+import { Outlet, useNavigate } from 'react-router'
 import { useApproval, approvalStore } from '../mock/approvals'
 import { store, useStore } from '../store'
 import { PixelButton, Scroll, Signboard, Toasts } from '../ui'
 import { t } from '../i18n/t'
 import { TopBar } from './TopBar'
+import { handleShortcut } from './shortcuts'
 import { ReplayBar } from '../replay/ReplayBar'
 import { SignCenter } from '../wallet/SignCenter'
 
@@ -40,6 +41,12 @@ function MockApprovalDialog () {
 
 export function AppShell () {
   const narrow = useStore(s => s.ui.narrowScreen)
+  const navigate = useNavigate()
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => { if (handleShortcut(e, store, to => { void navigate(to) })) e.preventDefault() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navigate])
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)')
     const apply = (): void => store.getState().setNarrowScreen(mq.matches)

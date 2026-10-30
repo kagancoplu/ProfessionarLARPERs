@@ -3,6 +3,7 @@ import { t } from '../i18n/t'
 import { store, useStore } from '../store'
 import { selectHealth, selectMode, selectSettings, selectUnread } from '../store/selectors'
 import { cn, ServiceBadge, Tag } from '../ui'
+import { OPTIONAL_SERVICES, type ServiceName } from '../env'
 import { WalletChip } from './WalletChip'
 
 const NAV: Array<{ to: string, key: 'town' | 'pools' | 'market' | 'agents' | 'provider' | 'owner' | 'explorer' | 'metrics' }> = [
@@ -21,7 +22,7 @@ export function TopBar () {
   const unread = useStore(selectUnread)
   const settings = useStore(selectSettings)
   const health = useStore(selectHealth)
-  const down = Object.values(health).filter(h => h.ok === false).length
+  const down = (Object.entries(health) as Array<[ServiceName, { ok: boolean | 'unknown' }]>).filter(([name, h]) => h.ok === false && !OPTIONAL_SERVICES.includes(name)).length
   const resolvedTheme = typeof document !== 'undefined' ? document.documentElement.dataset.theme ?? 'day' : 'day'
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 whitespace-nowrap border-b-2 border-wood-dark bg-wood px-4 text-surface-2">

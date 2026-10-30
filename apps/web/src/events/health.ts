@@ -3,6 +3,7 @@ import { arcadeApi } from '../api/arcade'
 import { agentsApi } from '../api/agents'
 import { coopApi } from '../api/coop'
 import { guardApi } from '../api/guard'
+import { makerApi } from '../api/maker'
 import { overlayApi } from '../api/overlay'
 import { providerApi } from '../api/provider'
 import type { ServiceName } from '../env'
@@ -15,7 +16,8 @@ const CHECKS: Record<ServiceName, () => Promise<boolean>> = {
   provider: async () => (await providerApi.healthz()).ok,
   guard: async () => (await guardApi.healthz()).ok,
   agents: async () => (await agentsApi.healthz()).ok,
-  arcade: async () => (await arcadeApi.height()) > 0
+  arcade: async () => (await arcadeApi.height()) > 0,
+  maker: async () => (await makerApi.healthz()).ok
 }
 
 export async function checkService (service: ServiceName, bus: EventBus): Promise<boolean> {

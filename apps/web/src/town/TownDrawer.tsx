@@ -1,6 +1,7 @@
 /** What a click in the Town (or a row in a console) opens: pool detail, agent card, transaction scroll. */
 import { shortHex } from '../api/woc'
 import { PoolDetail } from '../consoles/pools/PoolDetail'
+import { RailCard } from '../consoles/RailCard'
 import { store, useStore } from '../store'
 import { selectDrawer } from '../store/selectors'
 import { Counter, Drawer, IdentityChip, PixelButton, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
@@ -80,7 +81,7 @@ function ListingCard ({ outpoint }: { outpoint: string }) {
 
 export function TownDrawer () {
   const drawer = useStore(selectDrawer)
-  const title = drawer === undefined ? '' : drawer.kind === 'pool' ? 'Pool' : drawer.kind === 'agent' ? 'Villager' : drawer.kind === 'tx' ? 'Transaction' : drawer.kind === 'me' ? 'Workshop' : drawer.kind === 'vault' ? 'Vault' : drawer.kind === 'listing' ? 'Stall' : 'Details'
+  const title = drawer === undefined ? '' : drawer.kind === 'pool' ? 'Pool' : drawer.kind === 'agent' ? 'Villager' : drawer.kind === 'tx' ? 'Transaction' : drawer.kind === 'me' ? 'Workshop' : drawer.kind === 'vault' ? 'Vault' : drawer.kind === 'listing' ? 'Stall' : drawer.kind === 'rail' ? 'Harbor office' : 'Details'
   return (
     <Drawer open={drawer !== undefined} title={title} onClose={() => store.getState().closeDrawer()}>
       {drawer?.kind === 'pool' && <PoolDetail poolId={drawer.id} />}
@@ -88,6 +89,7 @@ export function TownDrawer () {
       {drawer?.kind === 'tx' && <TxScroll id={drawer.id} />}
       {drawer?.kind === 'vault' && <VaultCard vaultId={drawer.id} />}
       {drawer?.kind === 'listing' && <ListingCard outpoint={drawer.id} />}
+      {drawer?.kind === 'rail' && <RailCard />}
       {drawer?.kind === 'me' && <div className="flex flex-col gap-2"><p>The provider's workshop. Credits are H100 GPU-hours; jobs are <SimulatedJobsTag />, payments and settlements are real.</p><p className="text-ink-muted text-[14px]">The provider console (mint, open a pool, revenue) arrives in Phase 2.</p></div>}
     </Drawer>
   )

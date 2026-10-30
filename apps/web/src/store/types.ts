@@ -96,7 +96,7 @@ export interface Metrics {
 
 export interface Toast { id: string, kind: 'info' | 'success' | 'error' | 'warn', text: string, ts: string }
 
-export type DrawerKind = 'pool' | 'agent' | 'tx' | 'vault' | 'listing' | 'me'
+export type DrawerKind = 'pool' | 'agent' | 'tx' | 'vault' | 'listing' | 'me' | 'rail'
 
 export interface UiState {
   drawer?: { kind: DrawerKind, id: string }
@@ -144,7 +144,7 @@ export function initialData (mode: DataMode = 'live', replayName?: string): Stor
     mode,
     ...(replayName !== undefined ? { replayName } : {}),
     me: { status: 'idle' },
-    health: { coop: health(), overlay: health(), provider: health(), guard: health(), agents: health(), arcade: health() },
+    health: { coop: health(), overlay: health(), provider: health(), guard: health(), agents: health(), arcade: health(), maker: health() },
     pools: { byId: {}, order: [] },
     listings: { byOutpoint: {} },
     vaults: { byId: {} },

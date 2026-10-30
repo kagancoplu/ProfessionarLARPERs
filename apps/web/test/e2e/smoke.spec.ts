@@ -15,6 +15,11 @@ test('mock mode: feed flows, kit and debug render, mock Desktop connects', async
   await expect(page.getByTestId('kit')).toBeVisible()
   await expect(page.getByRole('heading', { name: /Nobody held anyone/ })).toBeVisible()
 
+  // the harbor (Coop Rail, experimental) answers a quote in mock mode
+  await page.goto('/metrics')
+  await page.getByTestId('rail-quote').click()
+  await expect(page.getByTestId('rail-quote-result')).toContainText('sat', { timeout: 10_000 })
+
   await page.goto('/_debug')
   await expect(page.getByTestId('debug')).toBeVisible()
   await expect(page.getByTestId('debug-events').locator('li')).not.toHaveCount(0, { timeout: 10_000 })

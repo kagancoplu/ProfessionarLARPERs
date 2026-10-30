@@ -2,6 +2,7 @@
 import { HttpResponse, http } from 'msw'
 import type { OverlayQuery } from '../api/overlay'
 import type { MockWorld } from './state'
+import { MOCK_IDS } from './data'
 
 const encode = (ctx: unknown): number[] => Array.from(new TextEncoder().encode(JSON.stringify(ctx)))
 const outputList = (ctxs: unknown[]) => HttpResponse.json({ type: 'output-list', outputs: ctxs.map((ctx, i) => ({ beef: [], outputIndex: i, context: encode(ctx) })) })
@@ -20,6 +21,15 @@ export function createHandlers (world: MockWorld) {
       return HttpResponse.json(all ? pledges : pledges.filter(p => !p.spent && p.valid))
     }),
     http.get('*/listings', () => HttpResponse.json([...world.listings.values()])),
+    // maker (D.P3 Coop Rail): quotes only; the swap has no HTTP API yet
+    http.get('*/quote', ({ request }) => {
+      const u = new URL(request.url)
+      const raw = u.searchParams.get('amount') ?? ''
+      if (!/^[1-9]\d{0,15}$/.test(raw)) return HttpResponse.json({ reason: 'amount: USDC base units (6 decimals), a positive integer' }, { status: 400 })
+      if (BigInt(raw) > 1_000_000n) return HttpResponse.json({ reason: 'at most 1000000 base units per swap (PoC)' }, { status: 400 })
+      const sats = Number((BigInt(raw) * 2_000n) / 1_000_000n * 9_850n / 10_000n)
+      return HttpResponse.json({ dir: 'usdc-bsv', usdc: raw, sats, satsPerUsdc: 2_000, spreadBps: 150, expiresAt: new Date(Date.now() + 120_000).toISOString(), maker: { evm: '0xmaker', bsv: MOCK_IDS.providerServer }, htlc: '0xhtlc', token: '0xusdc', terms: { hash: 'sha256', minBaseTimeoutLeftS: 3600, bsvRefundBlocks: 6, landsIn: 'vault (agent + guard claim)' } })
+    }),
     http.get('*/metrics', () => HttpResponse.json({ settlements: [...world.pools.values()].filter(p => p.status === 'settled').length, custodiedSats: 0, custodyCheck: 'ok (mock)' })),
     // overlay (§3.8)
     http.get('*/listTopicManagers', () => HttpResponse.json({ tm_agentcoop: { name: 'tm_agentcoop (mock)' } })),

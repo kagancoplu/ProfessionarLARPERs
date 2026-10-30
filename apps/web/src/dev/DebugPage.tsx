@@ -1,10 +1,11 @@
 /** /_debug — events, state, health, mode controls and the core-in-browser smoke test (track-E 0.6). */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRuntime } from '../app-context'
 import { env } from '../env'
 import { store, useShallowStore, useStore } from '../store'
 import { Counter, PixelButton, ServiceBadge, Signboard, Tag } from '../ui'
 import { describeEvent } from '../consoles/LiveFeed'
+import { Recorder, download } from '../replay/recorder'
 
 interface SmokeResult { ok: boolean, lines: string[] }
 
@@ -34,6 +35,12 @@ async function coreSmoke (): Promise<SmokeResult> {
 
 export default function DebugPage () {
   const rt = useRuntime()
+  const recorder = useRef<Recorder | undefined>(undefined)
+  const [recording, setRecording] = useState(false)
+  const toggleRecording = (): void => {
+    recorder.current ??= new Recorder(rt.bus)
+    if (recorder.current.recording) { recorder.current.end(); const f = recorder.current.file({ mode: env.mode, urls: env.urls }); download(f.name, f.text); setRecording(false) } else { recorder.current.start(); setRecording(true) }
+  }
   const feed = useStore(s => s.feed)
   const health = useStore(s => s.health)
   const counters = useStore(s => s.counters)
@@ -68,6 +75,10 @@ export default function DebugPage () {
             </div>
           )}
           {rt.mock === undefined && rt.replay === undefined && <p className="text-ink-muted">Live mode: adapters connect to the URLs above.</p>}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <PixelButton size="sm" variant={recording ? 'danger' : 'secondary'} onClick={toggleRecording} data-testid="record-replay">{recording ? `stop & download (${recorder.current?.events.length ?? 0} events)` : 'record a replay'}</PixelButton>
+            <span className="text-[14px] text-ink-muted">Collects every event until you stop, then downloads <code>{env.mode === 'live' ? 'mainnet' : env.mode}-&lt;date&gt;.jsonl</code>; drop it into <code>public/replays/</code> and open <code>?replay=&lt;name&gt;</code>.</span>
+          </div>
           <p className="mt-2 text-[14px] text-ink-muted">URLs: {Object.entries(env.urls).map(([k, v]) => `${k}=${v}`).join(' · ')}</p>
         </Signboard>
       </div>

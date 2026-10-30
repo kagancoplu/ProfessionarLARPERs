@@ -81,6 +81,15 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
         town.coop.sign.setHTML('Coop hall · policy updated')
         town.time.delayedCall(4000, () => town.coop.sign.setHTML('Coop hall · vaults & guard'))
         break
+      case 'rail_funded_bsv':
+        town.fx.enqueue('rail', ctx => town.boatCrossing([...store.getState().feed].reverse().find(x => x.type === 'rail_quote')?.data.quote as string | undefined, ctx.speed))
+        break
+      case 'rail_claimed': {
+        const agent = e.agent
+        const vault = agent !== undefined ? Object.values(store.getState().vaults.byId).find(v => v.agent === agent) : undefined
+        town.boatClaim(vault?.vaultId)
+        break
+      }
       case 'listing_filled': {
         const buyer = e.data.buyer !== undefined ? town.villagers.get(e.data.buyer) : undefined
         const stall = town.stalls.find(s => s.outpoint === e.data.listing.outpoint)

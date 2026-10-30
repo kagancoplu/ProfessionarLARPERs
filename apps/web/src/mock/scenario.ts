@@ -36,6 +36,7 @@ export class MockScenario {
   private elapsed = 0
 
   constructor (private readonly opts: ScenarioOptions) {
+    opts.bus.subscribe(e => { if (e.type === 'wallet_connected') this.humanConnected = true; if (e.type === 'wallet_disconnected') { this.humanConnected = false; this.sweepWaits = 0 } })
     this.speed = opts.speed ?? 1
     this.loop = opts.loop ?? true
   }
@@ -197,11 +198,23 @@ export class MockScenario {
       pub(28_050, makeEvent('overlay', 'listing_added', { listing }, { txid, agent: A.inference }))
     })
     step(30_000, 'eval sweeps the listing', () => {
+      // a human at the keyboard gets the stall first: wait while they are connected, skip if they bought it
+      if (!world.listings.has(listing.outpoint)) return
+      if (this.humanConnected && this.sweepWaits++ < 3) { this.postpone(15_000); return }
       const txid = mockTxid('sweep')
       world.listings.delete(listing.outpoint)
       pub(30_000, makeEvent('agents', 'agent_decision', { action: 'buy', credits: '100', sats: 3_000, reason: 'cheaper than retail and than the next pool' }, { agent: A.eval }))
       pub(30_050, makeEvent('overlay', 'listing_filled', { listing, txid, buyer: A.eval }, { txid, agent: A.eval }))
       pub(30_060, makeEvent('agents', 'agent_payment', { kind: 'sweep', txid, sats: 3_000 }, { agent: A.eval, txid }))
+    })
+    step(31_000, 'Coop Rail: USDC lands as BSV in the vault (experimental)', () => {
+      const fund = mockTxid('rail_fund'), claim = mockTxid('rail_claim')
+      pub(31_000, makeEvent('maker', 'rail_quote', { dir: 'usdc-bsv', amount: '500000', quote: '985' }, { agent: A.finetune }))
+      pub(31_300, makeEvent('maker', 'rail_locked_base', { txHash: '0x' + 'ab'.repeat(32) }, { agent: A.finetune }))
+      pub(31_900, makeEvent('maker', 'rail_funded_bsv', { txid: fund }, { txid: fund, agent: A.finetune }))
+      pub(32_600, makeEvent('maker', 'rail_claimed', { txid: claim, txHash: '0x' + 'cd'.repeat(32) }, { txid: claim, agent: A.finetune }))
+      const vault = world.vaults.get(MOCK_VAULT_ID)
+      if (vault !== undefined) { const next = { ...vault, balanceSats: vault.balanceSats + 985, utxos: [...vault.utxos, { outpoint: `${claim}_0`, satoshis: 985 }] }; world.vaults.set(MOCK_VAULT_ID, next); pub(32_700, makeEvent('overlay', 'vault_funded', { vault: next, txid: claim }, { txid: claim, agent: A.finetune })) }
     })
     step(33_000, 'cycle ends', () => { world.height += 1 })
     return steps
@@ -259,6 +272,10 @@ export class MockScenario {
   }
 
   /** Called from inside a step: run the same step again after `ms` (real time), keeping the order. */
+  /** set from the bus: the mock Desktop is connected (wallet_connected / wallet_disconnected) */
+  humanConnected = false
+  private sweepWaits = 0
+
   postpone (ms: number): void {
     const current = this.steps[this.index]
     if (current === undefined) return

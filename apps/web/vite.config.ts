@@ -16,7 +16,8 @@ const SERVICE_PROXY: Record<string, string> = {
   '/api/overlay': process.env.OVERLAY_URL ?? 'http://localhost:8080',
   '/api/provider': process.env.PROVIDER_API_URL ?? 'http://localhost:8092',
   '/api/guard': process.env.GUARD_URL ?? 'http://localhost:8091',
-  '/api/agents': process.env.AGENTS_URL ?? 'http://localhost:8093'
+  '/api/agents': process.env.AGENTS_URL ?? 'http://localhost:8093',
+  '/api/maker': process.env.MAKER_URL ?? 'http://localhost:8094'
 }
 
 export default defineConfig({

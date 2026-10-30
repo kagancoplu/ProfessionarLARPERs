@@ -30,6 +30,8 @@ export class TownScene extends Phaser.Scene {
   readonly houses: House[] = []
   readonly stalls: Stall[] = []
   readonly chests = new Map<string, VaultChest>()
+  harbor!: Building
+  boat!: Phaser.GameObjects.Image
   guard!: Guard
   board!: Board
   workshop!: Workshop
@@ -73,7 +75,7 @@ export class TownScene extends Phaser.Scene {
 
     // props, trees, buildings (depth = y)
     for (const p of [...PLACES, ...TREES]) {
-      if (p.kind === 'house' || p.kind === 'workshop' || p.kind === 'coop' || p.kind === 'board' || p.kind === 'fountain' || p.kind === 'stall') continue
+      if (p.kind === 'house' || p.kind === 'workshop' || p.kind === 'coop' || p.kind === 'board' || p.kind === 'fountain' || p.kind === 'stall' || p.kind === 'fisherman' || p.kind === 'boat') continue
       if (p.anim !== undefined) placeAnimated(this, p.frame.replace(/_\d+$/, ''), p.anim.frames, p.anim.fps, p.x, p.y, Math.floor(p.x / 7))
       else placeStatic(this, p.frame, p.x, p.y)
       if (p.kind === 'lantern') this.lamps.push(this.add.image(p.x, p.y - 34, 'glow').setTint(0xffb347).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setDepth(DEPTH.lights))
@@ -85,6 +87,11 @@ export class TownScene extends Phaser.Scene {
     for (const st of STALLS) this.stalls.push(new Stall(this, st.x, st.y, st.frame, (st.slot ?? 1) - 1))
     const gate = POINTS.gate!
     this.guard = new Guard(this, gate.x + 58, gate.y + 8)
+    const harbor = PLACES.find(p => p.kind === 'fisherman')!
+    this.harbor = new Building(this, harbor.x, harbor.y, harbor.frame, 'Harbor office · Coop Rail (experimental)', { x: harbor.x, y: harbor.y + TILE })
+    const boatPlace = PLACES.find(p => p.kind === 'boat')!
+    this.boat = placeStatic(this, boatPlace.frame, boatPlace.x, boatPlace.y)
+    this.boatHome = { x: boatPlace.x, y: boatPlace.y }
     for (const a of ANIMALS) new Animal(this, a)
     this.board = new Board(this, BOARD.x, BOARD.y)
     this.bell = new Bell(this, FOUNTAIN.x, FOUNTAIN.y)
@@ -105,6 +112,7 @@ export class TownScene extends Phaser.Scene {
     const open = (kind: 'pool' | 'agent' | 'workshop', id: string) => () => { if (kind === 'workshop') this.deps.store.getState().openDrawer('me', 'workshop'); else this.deps.store.getState().openDrawer(kind, id) }
     this.board.on('pointerup', () => { if (this.board.poolId !== undefined) open('pool', this.board.poolId)() })
     for (const st of this.stalls) st.on('pointerup', () => { if (st.outpoint !== undefined) this.deps.store.getState().openDrawer('listing', st.outpoint) })
+    this.harbor.on('pointerup', () => this.deps.store.getState().openDrawer('rail', 'harbor'))
     this.coop.on('pointerup', () => { const first = [...this.chests.keys()][0]; if (first !== undefined) this.deps.store.getState().openDrawer('vault', first) })
     this.workshop.on('pointerup', open('workshop', 'workshop'))
     this.detach = attachBridge(this, this.deps.store, this.deps.bus)
@@ -164,6 +172,25 @@ export class TownScene extends Phaser.Scene {
     await stranger.whisper({ x: v.x, y: v.y }, text, speed)
     v.say('…the instruction says to pledge everything', 'parchment', 2500)
     this.pendingStranger = stranger
+  }
+
+  boatHome = { x: 0, y: 0 }
+  /** Coop Rail: the boat crosses the pond with the swap; the claim drops the gold into the agent's vault chest. */
+  async boatCrossing (sats: string | undefined, speed: number): Promise<void> {
+    const b = this.boat
+    const label = this.add.dom(b.x, b.y - 40, 'div', 'font-size:6px').setOrigin(0.5, 1)
+    label.node.className = 'town-label town-label-gold'
+    label.setHTML(`USDC → BSV${sats !== undefined ? ` · ${sats} sat` : ''}`)
+    label.setDepth(DEPTH.banner)
+    await new Promise<void>(resolve => this.tweens.add({ targets: [b], x: b.x + 56, y: b.y - 20, duration: 2600 / speed, ease: 'Sine.InOut', yoyo: true, onUpdate: () => { label.setPosition(b.x, b.y - 40) }, onComplete: () => resolve() }))
+    label.destroy()
+  }
+
+  boatClaim (vaultId: string | undefined): void {
+    const chest = vaultId !== undefined ? this.chests.get(vaultId) : undefined
+    const coin = this.add.image(this.boat.x, this.boat.y - 16, 'town', 'icon_res_12').setOrigin(0.5, 1).setDepth(DEPTH.banner)
+    const to = chest ?? { x: this.harbor.x, y: this.harbor.y - 20 }
+    this.tweens.add({ targets: coin, x: to.x, y: to.y - 10, duration: 1100, ease: 'Quad.InOut', onComplete: () => { coin.destroy(); chest?.setBalance(Number(this.deps.store.getState().vaults.byId[vaultId ?? '']?.balanceSats ?? 0)) } })
   }
 
   pendingStranger?: Stranger

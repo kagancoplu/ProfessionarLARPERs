@@ -17,7 +17,7 @@ export async function startMockMode (bus: EventBus, opts: { speed?: number, work
     await worker.start({ onUnhandledRequest: 'bypass', quiet: true, serviceWorker: { url: '/mockServiceWorker.js' } })
     stopWorker = () => { worker.stop() }
   }
-  const services: ServiceName[] = ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade']
+  const services: ServiceName[] = ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker']
   for (const service of services) bus.publish(makeEvent('web', 'service_health', { service, ok: true, detail: 'mock' }))
   const scenario = new MockScenario({ bus, world, speed: opts.speed ?? 1, loop: true })
   scenario.start()

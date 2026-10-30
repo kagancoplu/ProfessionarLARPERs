@@ -8,6 +8,8 @@
 import { coopApi } from './api/coop'
 import { agentsApi } from './api/agents'
 import { guardApi } from './api/guard'
+import { makerApi } from './api/maker'
+import { startSfx } from './audio'
 import { invalidateFor, queryClient } from './api/queries'
 import type { AppRuntime } from './app-context'
 import { env, wsUrl } from './env'
@@ -34,6 +36,8 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   const bus = createBus(store)
   const stops: Array<() => void> = []
   bus.subscribe(e => { invalidateFor(queryClient, e) })
+  // sound: synthesised effects, off by default, unlocked on the first gesture (track-E §5.3)
+  stops.push(startSfx(bus, store))
 
   const factory = env.mode === 'mock' ? () => createMockWallet({ identityKey: MOCK_IDS.me, network: env.network === 'main' ? 'mainnet' : 'testnet' }) : realWalletFactory
   const wallet = new WalletController({ store, bus, factory, expectedNetwork: env.network })
@@ -67,9 +71,9 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   }
 
   // live
-  const health = startHealthPolling(bus, ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade'])
+  const health = startHealthPolling(bus, ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker'])
   stops.push(health.close)
-  const status = (service: 'coop' | 'overlay' | 'guard' | 'agents') => (ok: boolean, detail?: string) => {
+  const status = (service: 'coop' | 'overlay' | 'guard' | 'agents' | 'maker') => (ok: boolean, detail?: string) => {
     const current = store.getState().health[service]
     if (current.ok === ok && current.detail === detail) return
     bus.publish(makeEvent('web', 'service_health', { service, ok, ...(detail !== undefined ? { detail } : {}) }))
@@ -86,6 +90,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   stops.push(overlay.close)
   stops.push(startEnvelopeSse('guard', guardApi.eventsUrl, bus, status('guard')).close)
   stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
+  stops.push(startEnvelopeSse('maker', makerApi.eventsUrl, bus, status('maker')).close)
   // a wallet connection announces itself to the coordinator so sign_requests arrive
   stops.push(store.subscribe((s, prev) => {
     if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) liveFeed.hello(s.me.identityKey, mine.getState().pledges.filter(p => p.status === 'pending' || p.status === 'signed').map(p => p.poolId))

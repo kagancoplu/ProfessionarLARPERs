@@ -1,3 +1,4 @@
+import { OPTIONAL_SERVICES, type ServiceName } from '../env'
 import type { ApiPoolStatus } from '../api/types'
 import type { AppStore } from './index'
 import type { PoolEntry, ServiceHealth } from './types'
@@ -14,7 +15,7 @@ export const selectUnread = (s: AppStore): number => s.notifications.filter(n =>
 export const selectSignRequests = (s: AppStore) => s.notifications.filter(n => n.kind === 'sign_request')
 export const selectHealth = (s: AppStore) => s.health
 export const selectHealthSummary = (s: AppStore): 'ok' | 'degraded' | 'down' | 'unknown' => {
-  const values = Object.values(s.health) as ServiceHealth[]
+  const values = (Object.entries(s.health) as Array<[ServiceName, ServiceHealth]>).filter(([name]) => !OPTIONAL_SERVICES.includes(name)).map(([, h]) => h)
   if (values.every(h => h.ok === 'unknown')) return 'unknown'
   const known = values.filter(h => h.ok !== 'unknown')
   if (known.every(h => h.ok === true)) return 'ok'

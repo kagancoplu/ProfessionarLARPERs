@@ -12,6 +12,8 @@ import { useQuery } from '@tanstack/react-query'
 import { coopApi } from '../api/coop'
 import { keys } from '../api/queries'
 import { LiveFeed } from './LiveFeed'
+import { RailCard } from './RailCard'
+import { TourBanner } from '../shell/TourBanner'
 
 const TownCanvas = lazy(() => import('../town/TownCanvas'))
 
@@ -32,6 +34,7 @@ export function TownPage () {
   const open = pools.filter(p => p.status === 'open' || p.status === 'locking')
   return (
     <div className="mx-auto flex max-w-[1280px] flex-col gap-6 p-6">
+      <TourBanner />
       <CornerCounters />
       <Suspense fallback={<LoadingState title="Building the town…" />}><TownCanvas /></Suspense>
       <div className="grid grid-cols-[2fr_1fr] gap-6">
@@ -108,6 +111,7 @@ export function MetricsPage () {
           <li>GPU jobs are <SimulatedJobsTag />; payments, credits and settlements are real transactions in live mode.</li>
         </ul>
       </Signboard>
+      <Signboard title="Harbor · Coop Rail" data-testid="rail-signboard"><RailCard /></Signboard>
       {mode === 'live' && (
         <Signboard title="Coordinator /metrics (Track B, computed from the chain)">
           {live.isError ? <p className="text-ink-muted">The coordinator's /metrics is not answering ({String((live.error as Error).message)}).</p>

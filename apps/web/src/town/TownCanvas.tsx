@@ -21,7 +21,8 @@ export default function TownCanvas () {
     void Promise.all([import('phaser'), import('./scenes/TownScene')]).then(([{ default: Phaser }, { TownScene }]) => {
       if (cancelled) return
       game = new Phaser.Game({
-        type: Phaser.AUTO, parent, backgroundColor: '#1d1f2b',
+        // headless automation (Playwright) has flaky WebGL framebuffers: draw with Canvas there, WebGL for people
+        type: navigator.webdriver ? Phaser.CANVAS : Phaser.AUTO, parent, backgroundColor: '#1d1f2b',
         pixelArt: true, antialias: false, roundPixels: true, dom: { createContainer: true },
         scale: { mode: Phaser.Scale.RESIZE, width: parent.clientWidth, height: parent.clientHeight },
         scene: [new TownScene({ store, bus, fx })]

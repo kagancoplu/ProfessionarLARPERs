@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createBus } from '../src/events/bus'
-import { MOCK_IDS } from '../src/mock/data'
+import { MOCK_IDS, MOCK_VAULT_ID } from '../src/mock/data'
 import { MockScenario } from '../src/mock/scenario'
 import { createMockWorld } from '../src/mock/state'
 import { createMockWallet } from '../src/mock/wallet'
@@ -157,5 +157,17 @@ describe('mock flows (market)', () => {
     expect(world.me.credits).toBe(220n)
     expect(store.getState().listings.byOutpoint[listing.outpoint]).toBeUndefined()
     expect(store.getState().txs.some(t => t.kind === 'T8')).toBe(true)
+  })
+})
+
+describe('mock scenario (Coop Rail beat)', () => {
+  it('records the Rail transactions as T11 and credits the vault', () => {
+    const steps = scenario.buildCycle(0, Date.parse('2026-10-30T18:00:00Z'))
+    const before = world.vaults.get(MOCK_VAULT_ID)!.balanceSats
+    steps.find(s => s.label.startsWith('Coop Rail'))!.run()
+    const t11 = store.getState().txs.filter(t => t.kind === 'T11')
+    expect(t11.length).toBe(2)
+    expect(world.vaults.get(MOCK_VAULT_ID)!.balanceSats).toBe(before + 985)
+    expect(store.getState().vaults.byId[MOCK_VAULT_ID]?.balanceSats).toBe(before + 985)
   })
 })
