@@ -127,6 +127,22 @@ export function httpCosigner (guardUrl: string): Cosigner {
   }
 }
 
+/**
+ * The coordinator's call for a lighthouse input (Track A 5.5–5.7, guard D-P2c): `POST {guardUrl}/cosign`
+ * with `context.kind: 'lighthouse'`. The guard derives the offer from the plan itself and runs
+ * cosignLighthouse; returns the complete unlocking script (human + guard). Throws CosignRejected.
+ */
+export async function lighthouseCosign (guardUrl: string, req: { plan: SettlementPlan, inputIndex: number, pledge: unknown }): Promise<string> {
+  const res = await fetch(`${guardUrl.replace(/\/+$/, '')}/cosign`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ context: { kind: 'lighthouse' }, plan: req.plan, inputIndex: req.inputIndex, pledge: req.pledge })
+  })
+  const body = await res.json().catch(() => ({})) as { unlockingScriptHex?: string, reason?: string }
+  if (!res.ok || typeof body.unlockingScriptHex !== 'string') throw new CosignRejected(res.status, body.reason ?? `HTTP ${res.status}`)
+  return body.unlockingScriptHex
+}
+
 // ── signers ──────────────────────────────────────────────────────────────────
 
 /** The vault keys of an input: a plain vault output or vault-locked credits (A 5.1). */

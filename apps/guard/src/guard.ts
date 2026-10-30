@@ -21,6 +21,7 @@ import { decodeTxBEEF, evaluateCosign, inputOutpoint, validatePolicy, WEEK_MS, t
 import { errorReason, findPledgeRecord, poolFactsFromTx, txFromBytes, type PoolFacts } from './pool'
 import { evaluateRail } from './rail'
 import { evaluateCredits } from './credits'
+import { evaluateLighthouse, type LighthouseRequest } from './lighthouse'
 import { evaluateSettle } from './settle'
 import { GuardStore, type Decision } from './store'
 
@@ -215,6 +216,13 @@ export class Guard {
    * the policy decision, the signature and the ledger update run one request at a time.
    */
   async cosign (body: unknown): Promise<GuardResult> {
+    // D-P2c: a lighthouse pledge has no agent and no vault; the guard co-signs for an offline human.
+    const b = body as { kind?: unknown, context?: { kind?: unknown } } | null
+    if (b !== null && typeof b === 'object' && (b.context?.kind === 'lighthouse' || b.kind === 'lighthouse')) {
+      const run = this.queue.then(async () => await this.lighthouseNow(body as LighthouseRequest))
+      this.queue = run.catch(() => {})
+      return await run
+    }
     const prepared = await this.prepare(body)
     const run = this.queue.then(async () => await this.cosignNow(prepared))
     this.queue = run.catch(() => {})
@@ -339,6 +347,13 @@ export class Guard {
       ...(r.inflowSats !== undefined ? { inflowSats: r.inflowSats } : {}),
       ...(r.credits !== undefined ? { credits: r.credits } : {})
     }, 200, res as unknown as Record<string, unknown>)
+  }
+
+  /** POST /cosign kind 'lighthouse' (D-P2c): Track A's cosignLighthouse, with the offer from the plan itself. */
+  private async lighthouseNow (req: LighthouseRequest): Promise<GuardResult> {
+    const r = await evaluateLighthouse(this.wallet, req, this.lineage, this.originator)
+    if (!r.ok) return this.decide({ decision: 'deny', kind: 'lighthouse', agent: r.participant, poolId: r.poolId, outpoint: r.outpoint, reason: r.reason }, r.status)
+    return this.decide({ decision: 'allow', kind: 'lighthouse', agent: r.participant, poolId: r.poolId, outpoint: r.outpoint, credits: { tokenId: r.tokenId, amount: r.credits } }, 200, { unlockingScriptHex: r.unlockingScriptHex })
   }
 
   /** A vault input that spends a pledge coin (out0 of a pledge tx) resolves that pledge's reservation. */
