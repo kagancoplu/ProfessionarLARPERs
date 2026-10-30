@@ -1,0 +1,32 @@
+{
+  "name": "@agentcoop/guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentCoop Mandate Vault guard: policy engine and co-signer for agent + guard 2-of-2 vault spends (Track D)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "guard": "tsx src/main.ts",
+    "adopt": "tsx src/adopt.ts",
+    "validation5": "tsx src/validation5.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bsv/auth-express-middleware": "2.2.9",
+    "@bsv/sdk": "3.2.1",
+    "@bsv/wallet-toolbox": "2.14.9",
+    "@types/express": "5.0.6",
+    "better-sqlite3": "^13.0.3",
+    "express": "5.3.0",
+    "knex": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}

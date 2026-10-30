@@ -1,0 +1,21 @@
+{
+  // CommonJS on purpose, like scripts/ and apps/guard (MASTER §3.1 note). Until the root
+  // workspace exists (A.P0), "paths" resolves @bsv/sdk for packages/core/src and scripts/
+  // from this package (tsc and tsx), so the CLI loads one copy.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true,
+    "paths": {
+      "@bsv/sdk": ["./node_modules/@bsv/sdk", "./node_modules/@bsv/sdk/dist/types/mod.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

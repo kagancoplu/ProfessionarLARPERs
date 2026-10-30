@@ -1,0 +1,21 @@
+{
+  "name": "@agentcoop/owner-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentCoop vault owner CLI (BSV Desktop): create-vault, fund, policy, withdraw, status (Track D)",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "owner": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bsv/sdk": "3.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

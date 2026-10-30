@@ -1,0 +1,26 @@
+{
+  // CommonJS package on purpose (no "type": "module" in package.json), like scripts/:
+  // wallet-toolbox is CJS and require()s the CJS build of @bsv/sdk (MASTER §3.1 note).
+  //
+  // Until the root workspace exists (A.P0), packages/core/src and scripts/ have no
+  // node_modules of their own. "paths" points their package imports at this package's
+  // copies, for tsc and for tsx at run time, so the process loads one @bsv/sdk.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true,
+    "paths": {
+      "@bsv/sdk": ["./node_modules/@bsv/sdk", "./node_modules/@bsv/sdk/dist/types/mod.d.ts"],
+      "@bsv/wallet-toolbox": ["./node_modules/@bsv/wallet-toolbox"],
+      "knex": ["./node_modules/knex"]
+    }
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "../../packages/core/src/scripts/vault.ts", "../../packages/core/src/signers/VaultSigner.ts", "../owner-cli/src/**/*.ts"]
+}

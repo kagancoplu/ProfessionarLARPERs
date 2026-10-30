@@ -74,7 +74,8 @@
 | OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault`; json UTF-8, tüm sayılar **string** |
 | Kredi token'ı | BSV-21, kit'in `TOKEN_PROTOCOL = [1,'bsv21 token']`, basket `bsv21` | Kit'in `TokenKit` ve `addresses.ts` **kopyalanır**, yeniden yazılmaz |
 | Pledge coin anahtarı | protocol `[1,'agentcoop pledge']`, keyID = rastgele nonce, counterparty `'anyone'`, basket `agentcoop` | Basket'te her an **tek aktif pledge** (kör imza zararını sınırlamak için) |
-| Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox) |
+| Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox). Ajanın ve guard'ın vault anahtarı herkesçe `new KeyDeriver('anyone').derivePublicKey(proto, vaultId, identityKey)` ile hesaplanır (= kendi `getPublicKey(forSelf:true)`'ları; D.P1'de doğrulandı) |
+| Vault script'i ve kaydı (D.P1) | `OP_IF <ownerPub> OP_CHECKSIG OP_ELSE OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMULTISIG OP_ENDIF` (109 B, hex `6321{o}ac675221{a}21{g}52ae68`). Unlock: sahip `<sig> OP_1` (**75**), 2-of-2 `OP_0 <sigA> <sigG> OP_0` (**150**); sighash ALL\|FORKID, subscript = tüm script. Kayıt: `OP_RETURN agentcoop vault {v:'1', vaultId (32 hex), owner, agent, guard}` (**identity key**'ler, üçü farklı) | Fonlama tx'i: `out0` vault coin, `out1` kayıt (`randomizeOutputs:false`). Overlay için geçerlilik: kayıt geçerli **ve** `out0` script'i = kayıttan türetilen script. Kayıtsız vault coin'leri (para üstü, vault'lu pledge coin) script eşitliğiyle tanınır. Ayrıntı: `plan/phases/D-P1.md` §6, kod `packages/core/src/scripts/vault.ts` |
 | Sağlayıcı gelir anahtarı | protocol `[1,'agentcoop provider']`, keyID = poolNonce, counterparty `'anyone'`, basket `agentcoop revenue` | Settlement çıktısı 0 ve kayıt bedelleri buraya; `sweep-revenue` ile default'a taşınır |
 | Overlay isimleri | topic `tm_agentcoop`, service `ls_agentcoop` (BRC-87: rakam yok) | Kredi token'ları için kit'in kuralları aynı topic içinde |
 | Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | BIP-143 ön görüntüsü SINGLE\|ACP'de de tx `version`, `lockTime` ve girdinin `sequence`'ını içerir: teklif `version=1`, `lockTime=0`, in0 `sequence=0xffffffff` ile imzalanır ve **settlement bu değerlerle kurulmalı**, yoksa teklif geçersiz olur (B.P1). Koordinatörün `verifyOffer`'ı bu değerlerle doğrular |
@@ -103,6 +104,8 @@ export interface PoolTerms {
   backstopMax?: string        // Y (K3; şimdilik bilgi)
   label: string               // "8×H100 · 1 week"
   retailSatsPerCredit: string // bilgi: perakende fiyat
+  payKeyID?: string           // (D.P1 eki) payScript'in keyID'si (= poolNonce): payScriptHex == P2PKH(derive([1,'agentcoop provider'],
+                              // payKeyID, provider, 'anyone')) herkesçe doğrulanabilsin. Guard alıcıyı overlay'e güvenmeden kanıtlar (D-P1 §7 G8)
 }
 
 export interface PledgeRecord {       // OP_RETURN op=pledge
@@ -138,6 +141,8 @@ export interface InputSigner {        // A tanımlar; A: P2pkhWalletSigner, D: V
   unlockingScriptLength: number
   sign (tx: Transaction, inputIndex: number): Promise<UnlockingScript>
 }
+// VaultSigner (D, packages/core/src/signers/VaultSigner.ts): unlockingScriptLength = 150; `tx`'te HER girdinin
+// sourceTransaction'ı olmalı (guard ücret ve vault çıkışını bunlardan hesaplar). Guard reddederse CosignRejected { status, reason } fırlatır.
 ```
 
 ### 3.4 Core fonksiyon yüzeyi (A; imzalar dondurulur, gövdeler gelişir)
@@ -146,7 +151,7 @@ export interface InputSigner {        // A tanımlar; A: P2pkhWalletSigner, D: V
 // scripts
 buildOpReturn(op, json): LockingScript
 parseOpReturn(script): { op, json } | null
-vaultLockingScript(ownerPub, agentPub, guardPub): LockingScript        // D doldurur, A iskeleti
+vaultLockingScript(ownerPub, agentPub, guardPub): LockingScript        // D: packages/core/src/scripts/vault.ts (D.P1 yazdı; A iskeleti gelince yerinde kalır)
 htlcLockingScript(hash, agentPub, guardPub, makerPub): LockingScript     // D doldurur
 
 // offer / pledge / settlement
@@ -206,8 +211,11 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 
 | Yöntem | Yol | Ne yapar |
 |---|---|---|
-| `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sahip imzasıyla, BRC-103 AuthFetch) |
-| `POST` | `/cosign` `{ plan \| txBEEF, inputIndex, agent, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId? } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex }` veya `403 { reason }` |
+| `PUT` | `/vaults/:vaultId` **(D.P1 eki)** | sahip kaydı (BRC-103 AuthFetch, kimlik = `owner`): gövde = vault kaydı `{ v:'1', vaultId, owner, agent, guard }`. Guard script'i kendisi türetir → `{ vaultId, lockingScriptHex, guardPub }`; sahip CLI'ı eşit değilse fonlamaz. Aynı vaultId başka anahtarlarla → 409 |
+| `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sayılar sat, tam sayı; sahip imzasıyla, BRC-103 AuthFetch). **(sahip, ajan) çiftine yazılır**; sahibin o ajanla kayıtlı vault'u yoksa 404 |
+| `GET` | `/vaults/:vaultId` **(D.P1 eki)** | sahip veya ajan (BRC-103): kayıt, script, politika, son 7 günde harcanan |
+| `POST` | `/cosign` `{ plan \| txBEEF, inputIndex, agent, agentSignatureHex, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId?, payees?: [{ vout, provider, keyID }] } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex, guardPub }` veya `403 { reason }` / `400 { reason }`. **(D.P1 ekleri:)** `agentSignatureHex` = ajanın aynı sighash üzerindeki imzası (guard sighash'i **kendisi** hesaplar ve önce bunu doğrular); imzalar checksig biçimi (DER ‖ `0x41`), hex; `txBEEF` AtomicBEEF (`number[]` veya hex), her girdinin kaynağıyla; `payees` = ödeme çıktılarının alıcı kanıtı (guard `P2PKH(derive([1,'agentcoop provider'], keyID, provider, 'anyone'))`'i yeniden hesaplar). Tx başına vault başına tek girdi; tx final olmalı (lockTime 0). D.P1'de yalnızca `kind:'pay'`; `settle` D.P2, `rail` D.P3. Kontrol listesi: `plan/phases/D-P1.md` §7.2 |
+| `GET` | `/healthz` | `{ ok, identityKey, network }` |
 
 ### 3.8 Overlay lookup (B) — `POST /lookup { service:'ls_agentcoop', query }`
 
