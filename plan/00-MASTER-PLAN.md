@@ -66,6 +66,12 @@
 
 **ESM/CJS kuralı:** wallet-toolbox CJS'dir. SDK **yalnızca `@agentcoop/core/sdk` üzerinden** import edilir (`packages/core/src/sdk.ts` CJS build'i yeniden export eder). Testlerde kök `vitest.config.ts` alias'ı `@bsv/sdk`'yı aynı CJS dosyasına yönlendirir. Çalışma zamanında (tsx/Node) wallet-toolbox kullanan her app ve script **`tsx --import @agentcoop/core/register-sdk <dosya>`** ile başlatılır: senkron Node hook'u (`packages/core/register-sdk.mjs`, `module.registerHooks`) SDK'nın CJS girişine yapılan her ESM importunu (`sdk.ts`'in re-export'u veya çıplak `@bsv/sdk`) export listesi yükleme anında okunan bir ESM sarmalayıcıya yönlendirir; sarmalayıcı wallet-toolbox'ın `require` ettiği kopyanın aynısını verir. Aynı sarmalayıcı `knex` için de var (ortak `test/helpers/mockchain.ts`'in `import { knex }`'i, demolar bu yardımcıyı çalışma zamanında kullanıyor). *(C, 30.10: hook olmadan `tsx` altında `import { Transaction } from '@agentcoop/core/sdk'` → `does not provide an export named 'Transaction'`, çünkü Node CJS build'in named export'larını statik olarak göremiyor; vitest alias'ı yüzünden testlerde görünmüyordu. Hook'la tek kopya doğrulandı.)* Hata belirtisi: `script[serializedBytes] is not a function`.
 
+> **Doğrulama notu (D, 2026-10-30 16:20; tsx 4.23 + Node 24, `@bsv/sdk` 3.2.1, wallet-toolbox 2.14.9).** (a) `"type":"module"` bir pakette tsx altında `import { PrivateKey } from '@bsv/sdk'` ESM build'i yüklüyor, wallet-toolbox ise CJS build'i: `PrivateKey === require('@bsv/sdk').PrivateKey` → **false** (iki kopya). (b) tsconfig `paths` ile `@bsv/sdk` → `dist/cjs/mod.js` tsx'te uygulanıyor, ama ESM'den **isimli** import başarısız oluyor (`does not provide an export named 'PrivateKey'`). Yani yukarıdaki yöntem tsx çalışma zamanında olduğu gibi çalışmıyor. (c) **Çalışan yol:** wallet-toolbox kullanan paket **CommonJS** olarak çalışır (`package.json`'da `"type"` yok; tsx import'ları `require`'a çevirir → tek kopya, **true**). Tip denetimi için tsconfig `"module": "NodeNext", "moduleResolution": "NodeNext"` (bizim kod da wallet-toolbox da `dist/cjs` tiplerini görür). Top-level await yerine `main().catch(…)`. Örnek: `scripts/package.json`, `scripts/tsconfig.json`. Testlerde kit'in vitest alias'ı aynen çalışıyor. A, `@agentcoop/core` için hangi yolu seçtiğini STATUS'a yazar.
+>
+> **Ek (D, 2026-10-30 17:45, A.P0 `main`'e geldikten sonra; Node 22.22, tsx 4.23).** A'nın köprüsü `packages/core/src/sdk.ts` → `export * from '…/@bsv/sdk/dist/cjs/mod.js'` **vitest'te çalışıyor** (alias), ama **tsx/Node çalışma zamanında çalışmıyor**: Node'un ESM→CJS köprüsü (cjs-module-lexer) SDK CJS build'inin 186 export'undan **58'ini göremiyor** (`PrivateKey`, `PublicKey`, `Transaction`, `Script`, `LockingScript`, `P2PKH`, `WalletClient`, `CachedKeyDeriver`…). Belirti: `SyntaxError: The requested module '../sdk' does not provide an export named 'LockingScript'` (A'nın `scripts/lineage-check.ts`'i dahil her `@agentcoop/core` kullanıcısı). **Denenen çözüm:** kök, `packages/core`, `scripts`, `apps/*` `package.json`'larından `"type": "module"` kaldırılınca (CJS; tsx import'ları `require`'a çevirir) core + guard + `verifyLineage` yükleniyor ve süreçte **tek** SDK kopyası var (`PrivateKey === require('@bsv/sdk').PrivateKey`); yalnızca top-level `await` kullanan betikler (`lineage-check.ts`) `main().catch(…)`'a çevrilmeli. Karar A'nın (STATUS → Blokajlar).
+>
+> **Ek (D, 2026-10-30 18:20): çözüldü — Node 24'te.** A `sdk.ts`'i değiştirmedi; C'nin `register-sdk` hook'u (yukarıdaki kural) kullanılıyor. **Node 24.22**'de guard (`/healthz` 200, boş `/cosign` 400, kimliksiz `PUT` 401), owner-cli ve `scripts/balances.ts` hook'la yükleniyor; D'nin `npm run …` script'leri hook'u ekliyor. **Node 22.22**'de hook kırık: `registerHooks` `load` zincirinde CJS modülleri (`@bsv/wallet-toolbox/out/src/index.js`, `express`) `source: undefined` döner → `ERR_INVALID_RETURN_PROPERTY_VALUE` (C'nin `npm run provider`'ı da). Çalışma zamanı için **Node 24** kullanın (treasury laptopu 24.13); vitest her ikisinde çalışır. `scripts/demo-injection.ts` A'nın `test/helpers/mockchain.ts`'ini tsx altında kullanabilmek için ayrıca `scripts/lib/register-cjs.mjs` (aynı desen, yalnız `knex`) yükler.
+
 ### 3.2 Sabitler
 
 | Ad | Değer | Not |
@@ -73,7 +79,8 @@
 | OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault \| offer`; json UTF-8, tüm sayılar **string**. `offer { v, poolId, unlockingScriptHex }` (B.P6b): sağlayıcının SINGLE\|ACP teklif imzası, ayrı küçük bir tx'te zincirde; terms ve kilit script'i havuz kaydından/tx'inden gelir. Okuyan `verifyOffer` ile doğrular |
 | Kredi token'ı | BSV-21, kit'in `TOKEN_PROTOCOL = [1,'bsv21 token']`, basket `bsv21` | Kit'in `TokenKit` ve `addresses.ts` **kopyalanır**, yeniden yazılmaz |
 | Pledge coin anahtarı | protocol `[1,'agentcoop pledge']`, keyID = rastgele nonce, counterparty `'anyone'`, basket `agentcoop` | Basket'te her an **tek aktif pledge** (kör imza zararını sınırlamak için) |
-| Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox) |
+| Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox). Ajanın ve guard'ın vault anahtarı herkesçe `new KeyDeriver('anyone').derivePublicKey(proto, vaultId, identityKey)` ile hesaplanır (= kendi `getPublicKey(forSelf:true)`'ları; D.P1'de doğrulandı) |
+| Vault script'i ve kaydı (D.P1) | `OP_IF <ownerPub> OP_CHECKSIG OP_ELSE OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMULTISIG OP_ENDIF` (109 B, hex `6321{o}ac675221{a}21{g}52ae68`). Unlock: sahip `<sig> OP_1` (**75**), 2-of-2 `OP_0 <sigA> <sigG> OP_0` (**150**); sighash ALL\|FORKID, subscript = tüm script. Kayıt: `OP_RETURN agentcoop vault {v:'1', vaultId (32 hex), owner, agent, guard}` (**identity key**'ler, üçü farklı) | Fonlama tx'i: `out0` vault coin, `out1` kayıt (`randomizeOutputs:false`). Overlay için geçerlilik: kayıt geçerli **ve** `out0` script'i = kayıttan türetilen script. Kayıtsız vault coin'leri (para üstü, vault'lu pledge coin) script eşitliğiyle tanınır. Ayrıntı: `plan/phases/D-P1.md` §6, kod `packages/core/src/scripts/vault.ts` |
 | Sağlayıcı gelir anahtarı | protocol `[1,'agentcoop provider']`, keyID = poolNonce, counterparty `'anyone'`, basket `agentcoop revenue` | Settlement çıktısı 0 ve kayıt bedelleri buraya; `sweep-revenue` ile default'a taşınır |
 | Overlay isimleri | topic `tm_agentcoop`, service `ls_agentcoop` (BRC-87: rakam yok) | Kredi token'ları için kit'in kuralları aynı topic içinde |
 | Teklif UTXO'su (A-P1) | kredi UTXO'su `[1,'agentcoop provider']`, keyID `offer <poolNonce>`, `'anyone'` P2PKH'ye taşınır; basket `agentcoop offers`; customInstructions `{ protocolID, keyID, counterparty, payKeyID: poolNonce, tokenId, credits }` | Token receive adresinde kalmaz → `TokenKit.sync/send` dokunmaz. `payScriptHex` = P2PKH(`[1,'agentcoop provider']`, keyID = poolNonce). Pool OP_RETURN json = terms − `poolId` + `nonce` |
@@ -142,6 +149,10 @@ export interface InputSigner {        // A tanımlar; A: P2pkhWalletSigner, D: V
   unlockingScriptLength: number
   sign (tx: Transaction, inputIndex: number): Promise<UnlockingScript>
 }
+// VaultSigner (D, packages/core/src/signers/VaultSigner.ts): unlockingScriptLength = 150; `tx`'te HER girdinin
+// sourceTransaction'ı olmalı (guard ücret ve vault çıkışını bunlardan hesaplar). Guard reddederse CosignRejected { status, reason } fırlatır.
+// D.P2: settlement'ta new VaultSigner(wallet, { vaultId, cosign, plan, context: { kind:'settle', poolId, expectedCredits, tokenId } }) — plan
+// gönderilir, tx gönderilmez. Vault'lu pledge: pledgeFromVault (A.3.1 düzeni); sonra internalizeVaultSettlement; sıcak cüzdan: topUpHotWallet.
 ```
 
 ### 3.4 Core fonksiyon yüzeyi (A; imzalar dondurulur, gövdeler gelişir)
@@ -150,7 +161,7 @@ export interface InputSigner {        // A tanımlar; A: P2pkhWalletSigner, D: V
 // scripts
 buildOpReturn(op, json): LockingScript
 parseOpReturn(script): { op, json } | null
-vaultLockingScript(ownerPub, agentPub, guardPub): LockingScript        // D doldurur, A iskeleti
+vaultLockingScript(ownerPub, agentPub, guardPub): LockingScript        // D: packages/core/src/scripts/vault.ts (D.P1 yazdı; A iskeleti gelince yerinde kalır)
 htlcLockingScript(hash, agentPub, guardPub, makerPub): LockingScript     // D doldurur
 
 // offer / pledge / settlement
@@ -234,11 +245,14 @@ publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRe
 
 | Yöntem | Yol | Ne yapar |
 |---|---|---|
-| `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sahip imzasıyla, BRC-103 AuthFetch) |
-| `POST` | `/cosign` `{ plan \| txBEEF, inputIndex, agent, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId? } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex }` veya `403 { reason }` |
-| `GET` | `/policies/:agentIdentity` **(E için; D.P2)** | sahip veya ajan (BRC-103): yüklü politika + `updatedAt`, `owner`; yoksa 404 |
-| `GET` | `/decisions?agent=&limit=` **(E için; D.P2)** | sahip veya ajan (BRC-103): guard kararları yeni → eski `{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason?, txid? }` (`data/guard/decisions.jsonl`) |
-| `GET` | `/events` **(E için; D.P2)** | SSE, MASTER §3.10 zarfı: `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`, `vault_paused`/`vault_resumed` (Faz 5B). Kimliksiz okunabilir (yalnız kısaltılmış identity ve nedenler; tutarlar dahil, gizli yok); `Last-Event-ID` ile devam |
+| `PUT` | `/vaults/:vaultId` **(D.P1 eki)** | sahip kaydı (BRC-103 AuthFetch, kimlik = `owner`): gövde = vault kaydı `{ v:'1', vaultId, owner, agent, guard }`. Guard script'i kendisi türetir → `{ vaultId, lockingScriptHex, guardPub }`; sahip CLI'ı eşit değilse fonlamaz. Aynı vaultId başka anahtarlarla → 409 |
+| `PUT` | `/policies/:agentIdentity` | sahip CLI yazar: `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }` (sayılar sat, tam sayı; sahip imzasıyla, BRC-103 AuthFetch). **(sahip, ajan) çiftine yazılır**; sahibin o ajanla kayıtlı vault'u yoksa 404 |
+| `GET` | `/vaults/:vaultId` **(D.P1 eki)** | sahip veya ajan (BRC-103): kayıt, script, politika, son 7 günde harcanan (`spentLast7dSats`), **(D.P2)** son 24 sa sıcak cüzdan (`hotLast24hSats`) |
+| `POST` | `/cosign` `{ txBEEF? \| plan?, inputIndex, agent, agentSignatureHex, context: { kind: 'settle'\|'pay'\|'rail', poolId?, expectedCredits?, tokenId?, payees?: [{ vout, provider, keyID }], poolBEEF?, hotWallet?: [{ vout, derivationPrefix, derivationSuffix }] } }` | politikayı ve DvP'yi kontrol eder → `{ signatureHex, guardPub }` veya `403 { reason }` / `400 { reason }`. **(D.P1 ekleri:)** `agentSignatureHex` = ajanın aynı sighash üzerindeki imzası (guard sighash'i **kendisi** hesaplar ve önce bunu doğrular); imzalar checksig biçimi (DER ‖ `0x41`), hex; `txBEEF` AtomicBEEF (`number[]` veya hex), her girdinin kaynağıyla; `payees` = ödeme çıktılarının alıcı kanıtı (guard `P2PKH(derive([1,'agentcoop provider'], keyID, provider, 'anyone'))`'i yeniden hesaplar). Tx başına vault başına tek girdi; tx final olmalı (lockTime 0). Kontrol listesi: `plan/phases/D-P1.md` §7.2. **(D.P2 ekleri, `plan/phases/D-P2.md` §6–7:)** **`kind:'settle'`** → **`plan` (SettlementPlan) zorunlu, `txBEEF` gönderilmez/yok sayılır**: guard tx'i `planTransaction(plan)` ile kendisi kurar; `context.poolId` zorunlu (= `plan.poolId`), `expectedCredits`/`tokenId` yalnız çapraz kontrol; terms + `nonce` girdi 0'ın kaynak tx'indeki `pool` kaydından, beklenen kredi pledge coin'in kaynak tx'indeki `pledge` kaydından (`participant` = ajan, `signer:'vault'`); sağlayıcı ∈ allowlist, `payScriptHex` = sağlayıcının gelir anahtarı, teklif UTXO'su sağlayıcının `offer <nonce>` anahtarında; A'nın `verifySettlementPlan(…, { expectedCredits, expectedCreditPkh: receivePkh(agent, tokenIndex), maxFeeSats, verifyLineage: true })`; havuz başına + haftalık tavan. **`kind:'pay'` + `agentcoop pledge` kaydı** (A.3.1 düzeni: out0 pledge coin = vault script'i, out1 bedel → `payScriptHex`, out2 kayıt) → pledge anında aynı sağlayıcı kanıtları + `verifyLineage(poolId)` (önbellekli), bedel + coin ≤ `maxPerPoolSats`, coin haftalık tavana rezerve; havuz tx'i `poolBEEF`'ten (AtomicBEEF/BEEF/ham, txid ile doğrulanır) ya da guard Arcade'den çeker. **`hotWallet`** → çıktı = `P2PKH(KeyDeriver('anyone').derivePublicKey([2,'3241645161d8'], '<prefix> <suffix>', vault.agent))` (BRC-29, gönderici `'anyone'`; ajan `internalizeAction` `senderIdentityKey` = `1·G` ile alır), kayan 24 sa `hotWalletDailySats`. `rail` D.P3 |
+| `GET` | `/healthz` | `{ ok, identityKey, network }` |
+| `GET` | `/policies/:agentIdentity` **(E için; D.P2 ✅)** | sahip veya ajan (BRC-103): `{ owner, agent, policy, updatedAt }` (ajan, kendisi için en son yazılanı alır); yoksa 404 |
+| `GET` | `/decisions?agent=&limit=` **(E için; D.P2 ✅)** | ajanın kendisi veya ajanın bir vault'unun sahibi (BRC-103): `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason? }] }` yeni → eski, ≤ 500 (`data/guard/decisions.jsonl`). `txid` yok: guard imza anında tx'in son txid'ini bilmez (diğer girdiler henüz imzasız). `kind`: `pay`, `pay/pledge`, `pay/hot`, `settle` |
+| `GET` | `/events` **(E için; D.P2 ✅)** | SSE, MASTER §3.10 zarfı (`src:'guard'`): `cosign_approved { agent, vaultId, kind, poolId?, sats, paidSats, feeSats, committedSats?, hotSats? }`, `cosign_denied { agent, vaultId?, kind, poolId?, reason }`, `policy_updated { agent, owner }`, `vault_registered { vaultId, owner, agent }`; `vault_paused`/`vault_resumed` Faz 5B. Kimliksiz okunabilir: identity key'ler public, tutarlar dahil, gizli yok; son 500 olay, `Last-Event-ID` ile devam, 15 sn'de `: keepalive`. CORS: `GUARD_CORS_ORIGIN` (varsayılan `*`), `x-bsv-auth-*` başlıkları açığa çıkarılır |
 
 ### 3.8 Overlay lookup (B) — `POST /lookup { service:'ls_agentcoop', query }`
 
@@ -271,6 +285,11 @@ PROVIDER_API_URL=http://localhost:8092
 # sunucu cüzdanları (64 hex; scripts/keygen.ts üretir; ASLA commit etme)
 WALLET_PROVIDER_API_KEY=   WALLET_COORDINATOR_KEY=   WALLET_GUARD_KEY=
 WALLET_AGENT_1_KEY=  WALLET_AGENT_2_KEY=  WALLET_AGENT_3_KEY=  WALLET_MAKER_KEY=
+# overlay + koordinatör (B; infra/run.mjs) — D.P1'de eklendi
+OVERLAY_PORT=8080  COOP_PORT=8090  OVERLAY_PRIVATE_KEY=(gizli, boşsa data/overlay/overlay.key)  TOKEN_WHITELIST=
+ROUND_TIMEOUT_MS=60000  MAX_ROUNDS=3  SPENT_CHECK=woc|none  DATA_DIR=(opsiyonel; infra/run.mjs ve core/node/env, D'nin script'leri her zaman <repo>/data)
+# guard (D.P2): tarayıcı konsolu için CORS kökeni
+GUARD_CORS_ORIGIN=*
 # Desktop'a bağlanan CLI'lar için originator
 APP_ORIGINATOR=agentcoop.local
 # ajan beyni
@@ -307,7 +326,7 @@ SSE biçimi (her kaynak için aynı): `id: <id>\ndata: <CoopEvent json>\n\n`; 15
 | koordinatör (B) | WS `/ws` | `pool_update`, `sign_request`, `settled`, `round_failed`, `pool_failed`, `hello_ack`, `error` (§3.5) | var |
 | overlay (B) | SSE `/agentcoop/events` | `admitted { txid }`, `spent { txid }` (§3.8). Web bunlardan türetir: `pool_opened`, `pledge_added`, `pledge_cancelled`, `pool_settled`, `pool_cancelled`, `listing_added`, `listing_filled`, `listing_cancelled`, `vault_funded`, `vault_spent` | var |
 | ajanlar (C) | SSE `{AGENTS_URL}/events`, `GET {AGENTS_URL}/agents` | `agent_started { name, profile, identity }`, `agent_thought { text }`, `agent_decision { action: 'pledge'\|'skip'\|'redeem'\|'retail'\|'list'\|'buy'\|'sign'\|'reject', poolId?, credits?, sats?, reason }`, `agent_job { jobId, kind, minutes, status }`, `agent_payment { kind: '402'\|'pledge'\|'redeem'\|'sweep', txid, sats? }`, `agent_injected { text }` (demo-injection). `GET /agents` → `[{ name, profile, identity, mode: 'p2pkh'\|'vault', vaultId? }]` | **istek (E → C)**; yedek: `apps/web/tools/log-relay.mjs` `activity.log`'u SSE'ye çevirir |
-| guard (D) | SSE `{GUARD_URL}/events` | `cosign_approved { agent, vaultId, kind, poolId?, sats, txid? }`, `cosign_denied { agent, vaultId, kind, poolId?, sats?, reason }`, `policy_updated { agent }`, `vault_registered { vaultId, owner, agent }`, `vault_paused { agent }` | D.P2 |
+| guard (D) | SSE `{GUARD_URL}/events` | `cosign_approved { agent, vaultId, kind, poolId?, sats, txid? }`, `cosign_denied { agent, vaultId, kind, poolId?, sats?, reason }`, `policy_updated { agent }`, `vault_registered { vaultId, owner, agent }`, `vault_paused { agent }` | ✅ D.P2 (`vault_paused` Faz 5B) |
 | sağlayıcı (C, opsiyonel) | SSE `/v1/events` | `job_queued`/`job_running`/`job_done { jobId, owner, kind, minutes, resultHash? }`, `credits_redeemed { agent, credits, txid }`, `payment_received { txid, sats, owner }` | düşük öncelik; yedek `GET /v1/jobs/:id` poll |
 | maker (D, Rail) | SSE `{MAKER_URL}/events`, `GET /quote?dir=&amount=` | `rail_quote`, `rail_locked_base { txHash }`, `rail_funded_bsv { txid }`, `rail_claimed { txid, txHash }`, `rail_refunded` | D.P3/P5 |
 
@@ -400,10 +419,13 @@ Toplam ≈ **300k sat** marj dahil. Settlement ücreti birkaç yüz sat, 402 öd
 > 3. We index our own overlay topic (`tm_agentcoop`). Is that encouraged? Any public overlay hosting we can use?
 > 4. Participants sign a coordinator-built multi-party tx with `createSignature({ hashToDirectlySign })`. Any plan for BSV Desktop to show structured sign requests? (For our threat model note.)
 > 5. A short-lived, capped prepaid balance at the provider when credits are redeemed for API calls (≤ one session, returnable): acceptable within non-custodial judging?
+> 6. Cross-chain: an HTLC atomic swap USDC (Base) ↔ BSV, with the BSV refund as a pre-signed nLockTime tx (no CLTV). Does that count as a "cross-chain flow", and is a $1–2 swap on Base mainnet OK for the demo?
 > 7. We love the pixel-art style of bsvmunich.com. Is its source or art open source, and would it be OK to build on its sprite-rendering approach or reuse any assets with attribution? (numbered 7 to match trackD's list; 6 is D's cross-chain question)
 > Our treasury address for sats: `<adres>`. Thanks!
 
-Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır, 7 hayır (yalnızca referans, track-E §6.4).
+Sats talebi soru mesajından **ayrı ve önce** gönderilir (adres + takım adı + miktar: ana demo için ~300k, 50 ajanlık ölçek testi için ek ~250k sat). Hazır metin: `plan/phases/D-P0.md` §2.
+
+Varsayımlar (cevap yoksa): 1 evet, 2 evet, 3 kendi overlay'imizi yerel çalıştırırız, 4 yok, 5 README'de açıkça yazılır, 6 evet; Base mainnet yalnızca Faz 5 A yolunda ve $2'yi aşmayan tutarlarla; 7 hayır (yalnızca referans, track-E §6.4).
 
 ---
 

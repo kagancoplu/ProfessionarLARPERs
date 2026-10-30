@@ -3,7 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Ops and spike scripts (keygen, fund, skeleton, spikes)",
+  "description": "Ops and spike scripts: keygen, wallets (openWallet), fund, receive, balances (Track D); skeleton, spikes (Track A)",
+  "scripts": {
+    "keygen": "tsx --import @agentcoop/core/register-sdk keygen.ts",
+    "identities": "tsx --import @agentcoop/core/register-sdk identities.ts",
+    "fund": "tsx --import @agentcoop/core/register-sdk fund.ts",
+    "receive": "tsx --import @agentcoop/core/register-sdk receive.ts",
+    "balances": "tsx --import @agentcoop/core/register-sdk balances.ts",
+    "demo-injection": "tsx --import @agentcoop/core/register-sdk --import ./lib/register-cjs.mjs demo-injection.ts"
+  },
   "dependencies": {
     "@agentcoop/core": "0.1.0"
   }
