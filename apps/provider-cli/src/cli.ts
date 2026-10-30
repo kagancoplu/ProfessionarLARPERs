@@ -4,6 +4,7 @@
  *   whoami
  *   mint --sym GPUMIN --amt 100000 --dec 0 [--product gpu-h100]
  *   open-pool --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
+ *   post-offer <poolId>   register a signed offer with the coordinator again
  *   cancel-pool <poolId>
  *   list-pools
  *   sync-revenue      track pledge fees and settlement payments (from the overlay) in the revenue basket
@@ -15,17 +16,18 @@
  */
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { WalletClient } from '@bsv/sdk'
-import { OverlayClient } from '@agentcoop/core'
-import { dataDir, loadDotEnv, network } from '@agentcoop/core/env'
-import { cancelPool, listPools, mint, openPool, sweepRevenue, syncRevenue, whoami, type CliContext } from './commands'
+import { WalletClient } from '@agentcoop/core/sdk'
+import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
+import { dataDir, loadDotEnv, network } from '@agentcoop/core/node/env'
+import { cancelPool, listPools, mint, openPool, postOffer, sweepRevenue, syncRevenue, whoami, type CliContext } from './commands'
 import { PoolRegistry } from './pools'
 
 loadDotEnv()
 
-const USAGE = `usage: provider-cli <whoami|mint|open-pool|cancel-pool|list-pools|sync-revenue|sweep-revenue> [options]
+const USAGE = `usage: provider-cli <whoami|mint|open-pool|post-offer|cancel-pool|list-pools|sync-revenue|sweep-revenue> [options]
   mint        --sym GPUMIN --amt 100000 --dec 0 [--product gpu-h100]
   open-pool   --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
+  post-offer  <poolId>
   cancel-pool <poolId>`
 
 async function main (): Promise<void> {
@@ -52,7 +54,7 @@ async function main (): Promise<void> {
   await wallet.waitForAuthentication({})
   const ctx: CliContext = {
     wallet,
-    overlay: new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL),
+    overlay: new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE),
     coopApiUrl: process.env.COOP_API_URL ?? 'http://localhost:8090',
     providerApiUrl: process.env.PROVIDER_API_URL ?? 'http://localhost:8092',
     pools: new PoolRegistry(join(dataDir(), 'provider-cli', 'pools.json')),
@@ -76,6 +78,7 @@ async function main (): Promise<void> {
         label: need(values.label, '--label')
       })
       break
+    case 'post-offer': await postOffer(ctx, need(arg, '<poolId>')); break
     case 'cancel-pool': await cancelPool(ctx, need(arg, '<poolId>')); break
     case 'list-pools': await listPools(ctx); break
     case 'sync-revenue': await syncRevenue(ctx); break

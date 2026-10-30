@@ -3,7 +3,7 @@
  * The pool nonce is the keyID of the pool's revenue key, so without this file
  * sweep-revenue cannot sign; it holds no secret (the key stays in the wallet).
  */
-import type { PoolTerms } from '@agentcoop/core'
+import type { Offer, PoolTerms } from '@agentcoop/core'
 import { JsonFile } from '../../provider-api/src/jsonFile'
 
 export interface PoolRecord {
@@ -13,6 +13,8 @@ export interface PoolRecord {
   poolId?: string
   status: 'draft' | 'announced' | 'open' | 'cancelled' | 'settled'
   announceTxid?: string
+  /** The signed SINGLE|ACP offer, kept so `post-offer` can register it again. */
+  offer?: Offer
   cancelTxid?: string
   createdAt: string
 }

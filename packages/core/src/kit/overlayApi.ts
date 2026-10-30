@@ -2,22 +2,16 @@
  * Minimal client for the kit overlay: standard POST /submit and POST /lookup,
  * plus an outbox so token transactions reach the overlay in order.
  *
- * AgentCoop copy (starter kit client/overlayApi.ts): default names are the
- * AgentCoop overlay's (tm_agentcoop / ls_agentcoop, MASTER §3.2). The names are
- * a constructor option so tests can run the kit's own overlay unchanged.
- *
  * The overlay only admits a transfer whose token inputs it already knows, and
  * it does not fetch missing parents itself, so a failed submit must be retried
  * before any child transaction is submitted.
  */
-import { Beef, MerklePath, Transaction, Utils } from '@bsv/sdk'
-import type { OutputContext, OverlayQuery } from './overlayTypes'
+import { Beef, MerklePath, Transaction, Utils } from '../sdk'
+import type { KitQuery, OutputContext } from './lookupTypes'
 import { decodeBsv21 } from './inscription'
 
-export const TOPIC = 'tm_agentcoop'
-export const SERVICE = 'ls_agentcoop'
-
-export interface OverlayNames { topic: string, service: string }
+export const TOPIC = 'tm_tokenkit'
+export const SERVICE = 'ls_tokenkit'
 
 export interface OverlayOutput {
   txid: string
@@ -87,7 +81,9 @@ export class OverlayClient {
     private readonly outbox: OutboxStore = memoryOutbox(),
     readonly chain: 'main' | 'test' = 'main',
     readonly arcadeUrl = DEFAULT_ARCADE_URL,
-    readonly names: OverlayNames = { topic: TOPIC, service: SERVICE }
+    // AgentCoop: overlay topic/service (kit defaults; AgentCoop passes tm_agentcoop / ls_agentcoop)
+    readonly topic = TOPIC,
+    readonly service = SERVICE
   ) {}
 
   /** Queue a transaction (BEEF or AtomicBEEF) and flush the queue in order. */
@@ -136,7 +132,7 @@ export class OverlayClient {
       try {
         res = await fetch(`${this.url}/submit`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream', 'X-Topics': JSON.stringify([this.names.topic]) },
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Topics': JSON.stringify([this.topic]) },
           body: new Uint8Array(item.beef)
         })
       } catch {
@@ -178,7 +174,7 @@ export class OverlayClient {
   private async unadmittedTokenOutputs (item: OutboxItem, steak: Record<string, any>): Promise<number[]> {
     const tx = Transaction.fromBEEF(item.beef, item.txid)
     const tokenVouts = tx.outputs.map((o, vout) => (decodeBsv21(o.lockingScript) !== null ? vout : -1)).filter(v => v >= 0)
-    const admitted = new Set<number>(steak[this.names.topic]?.outputsToAdmit ?? [])
+    const admitted = new Set<number>(steak[this.topic]?.outputsToAdmit ?? [])
     const missing: number[] = []
     for (const vout of tokenVouts) {
       if (admitted.has(vout)) continue
@@ -191,11 +187,11 @@ export class OverlayClient {
     return this.outbox.load()
   }
 
-  async lookup (query: OverlayQuery): Promise<OverlayOutput[]> {
+  async lookup (query: KitQuery): Promise<OverlayOutput[]> {
     const res = await fetch(`${this.url}/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ service: this.names.service, query })
+      body: JSON.stringify({ service: this.service, query })
     })
     const answer = await res.json() as any
     if (!res.ok) throw new Error(`lookup failed: ${String(answer.message ?? res.statusText)}`)

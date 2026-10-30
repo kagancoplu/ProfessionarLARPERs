@@ -15,8 +15,8 @@
 import express, { type Express, type Response } from 'express'
 import { createAuthMiddleware } from '@bsv/auth-express-middleware'
 import { createPaymentMiddleware, type PaymentReplayStore, type PaymentRequest } from '@bsv/payment-express-middleware'
-import type { WalletInterface } from '@bsv/sdk'
-import { MAX_PENDING_CREDITS, MAX_REDEEM_CREDITS, TokenKit, type OverlayClient } from '@agentcoop/core'
+import type { WalletInterface } from '@agentcoop/core/sdk'
+import { MAX_PENDING_REDEEM_CREDITS, MAX_REDEEM_CREDITS, TokenKit, type OverlayClient, type TxFetcher } from '@agentcoop/core'
 import { CreditLedger } from './credits'
 import { minutesPerCredit, retailSatsFor, type Product } from './products'
 import { CreditError, redeemCredits, returnCredits, Serial, type CreditDeps, type VerifyLineage } from './redeem'
@@ -37,6 +37,8 @@ export interface ProviderAppOptions {
   overlay?: OverlayClient
   /** Override Track A's verifyLineage (tests). */
   verifyLineage?: VerifyLineage
+  /** Ancestor source for verifyLineage beyond the posted BEEF (tests: the mock chain). Default Arcade. */
+  fetchTx?: TxFetcher
   arcadeUrl?: string
 }
 
@@ -87,7 +89,7 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
   const ledger = opts.ledger ?? new CreditLedger()
   const credits: CreditDeps | undefined = opts.overlay === undefined
     ? undefined
-    : { wallet, kit: new TokenKit(wallet, opts.overlay), overlay: opts.overlay, ledger, products, verifyLineage: opts.verifyLineage, arcadeUrl: opts.arcadeUrl }
+    : { wallet, kit: new TokenKit(wallet, opts.overlay), overlay: opts.overlay, ledger, products, verifyLineage: opts.verifyLineage, fetchTx: opts.fetchTx, arcadeUrl: opts.arcadeUrl }
   const tokenOps = new Serial()
   /** Jobs whose price was covered by prepaid credits (set by the price function). */
   const paidWithCredits = new WeakMap<object, { minutes: number, tokenId: string }>()
@@ -124,7 +126,7 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
       })),
       jobKinds: JOB_KINDS,
       maxJobMinutes: MAX_JOB_MINUTES,
-      credits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_CREDITS, redeemTo: server },
+      credits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_REDEEM_CREDITS, redeemTo: server },
       pools,
       poolsSource: source
     })
@@ -182,7 +184,7 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
         const prepaidMinutes = ledger.balance(me, p.tokenId!)
         return { product: p.id, tokenId: p.tokenId, minutesPerCredit: minutesPerCredit(p), prepaidMinutes, returnableCredits: Math.floor(prepaidMinutes / minutesPerCredit(p)) }
       }),
-      limits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_CREDITS }
+      limits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_REDEEM_CREDITS }
     })
   })
 

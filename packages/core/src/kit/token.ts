@@ -6,7 +6,7 @@
  * pulls what the overlay says you own into the basket, and `send()` spends
  * from the basket, so the wallet tracks spends and backs the tokens up.
  */
-import { Beef, Transaction, type WalletInterface } from '@bsv/sdk'
+import { Beef, Transaction, type WalletInterface } from '../sdk'
 import { buildBsv21Script, decodeBsv21, tokenIdFromOutpoint, type DecodedBsv21 } from './inscription'
 import { instructionsFor, receivePkh, TOKEN_BASKET, type CustomInstructions } from './addresses'
 import type { OverlayClient, OverlayOutput } from './overlayApi'

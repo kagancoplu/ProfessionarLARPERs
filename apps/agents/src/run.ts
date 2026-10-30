@@ -9,8 +9,8 @@
  * OVERLAY_URL, NETWORK, ARCADE_URL, DATA_DIR.
  */
 import { parseArgs } from 'node:util'
-import { OverlayClient } from '@agentcoop/core'
-import { loadDotEnv, network } from '@agentcoop/core/env'
+import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
+import { loadDotEnv, network } from '@agentcoop/core/node/env'
 import { Agent } from './agent'
 import { loadProfile } from './profile'
 import { nextJobs } from './workload'
@@ -31,7 +31,7 @@ if (name === undefined) {
 }
 
 const profile = loadProfile(name)
-const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL)
+const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
 const { agent, close } = await Agent.open(profile, { overlay })
 try {
   agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…): ${profile.description}`)

@@ -8,7 +8,7 @@
  *
  * Block headers never change once buried, so verified roots are cached.
  */
-import type { ChainTracker } from '@bsv/sdk'
+import type { ChainTracker } from '../sdk'
 
 export const ARCADE_MAINNET = 'https://arcade-v2-us-1.bsvblockchain.tech'
 export const ARCADE_TESTNET = 'https://arcade-v2-testnet-us-1.bsvblockchain.tech'

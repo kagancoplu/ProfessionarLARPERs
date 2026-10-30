@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import type { Wallet } from '@bsv/wallet-toolbox'
+import { Transaction } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
 import { createProviderApp } from '../apps/provider-api/src/app'
 import { CreditLedger } from '../apps/provider-api/src/credits'
@@ -40,6 +41,10 @@ let api: Listening
 let agent: Agent
 let agentKit: TokenKit, strangerKit: TokenKit
 let agentOverlay: OverlayClient
+
+/** Ancestors verifyLineage cannot find in the posted BEEF come from the mock chain (Arcade on mainnet). */
+const fetchTx = async (txid: string): Promise<Transaction> =>
+  Transaction.fromBinary(Array.from((await (chain.services as any).storage.getTransaction(txid)).rawTx as number[]))
 
 const spendableSats = async (w: Wallet): Promise<number> =>
   (await w.listOutputs({ basket: 'default', limit: 1000 })).outputs.filter(o => o.spendable).reduce((s, o) => s + o.satoshis, 0)
@@ -79,7 +84,7 @@ beforeAll(async () => {
 
   runner = new JobRunner({ products })
   ledgerFile = join(mkdtempSync(join(tmpdir(), 'agentcoop-ledger-')), 'balances.json')
-  api = await listen(createProviderApp({ wallet: providerApi, products, runner, ledger: new CreditLedger(ledgerFile), overlay: overlay.client() }))
+  api = await listen(createProviderApp({ wallet: providerApi, products, runner, ledger: new CreditLedger(ledgerFile), overlay: overlay.client(), fetchTx }))
   server = providerApi.identityKey
 
   agentOverlay = overlay.client()
@@ -157,7 +162,8 @@ describe('credits at the provider (one credit = one GPU-hour, used by the minute
   it('redeems up to the cap, and refuses what would push the prepaid balance over 20 credits', async () => {
     redeemed = await transfer(agentKit, agentOverlay, tokenId, 12n, server)
     const res = await agent.provider.redeem(redeemed.beef, redeemed.outputIndex)
-    expect(res).toMatchObject({ credits: 12, prepaidMinutes: 720, lineage: 'overlay' })
+    expect(res).toMatchObject({ credits: 12, prepaidMinutes: 720 })
+    expect(res.lineageDepth).toBeGreaterThan(1) // Track A's verifyLineage walked it back to the deploy
     const over = await transfer(agentKit, agentOverlay, tokenId, 9n, server)
     await expectRefusal(agent.provider.redeem(over.beef, over.outputIndex), 400, 'ERR_REDEEM_LIMIT')
     // The agent itself checks the cap before sending anything.
@@ -188,7 +194,7 @@ describe('credits at the provider (one credit = one GPU-hour, used by the minute
   it("uses Track A's verifyLineage when it is available, and refuses what it rejects", async () => {
     const strict = await listen(createProviderApp({
       wallet: providerApi, products, runner, overlay: overlay.client(),
-      verifyLineage: async () => ({ ok: false, tokenId, amt: '0', ownerPkh: '' })
+      verifyLineage: async () => ({ ok: false, depth: 0, reason: 'test: forged ancestry' })
     }))
     try {
       const body = await transfer(agentKit, agentOverlay, tokenId, 2n, server)

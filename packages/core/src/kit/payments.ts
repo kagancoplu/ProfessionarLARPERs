@@ -6,7 +6,7 @@
  * derivation data. The recipient verifies it with SPV and internalizes it; the
  * output is spendable immediately — no block confirmation needed.
  */
-import { P2PKH, PublicKey, Random, Transaction, Utils, type ChainTracker, type WalletInterface, type WalletProtocol } from '@bsv/sdk'
+import { P2PKH, PublicKey, Random, Transaction, Utils, type ChainTracker, type WalletInterface, type WalletProtocol } from '../sdk'
 
 /** BRC-29 payment protocol ID. */
 export const BRC29_PROTOCOL: WalletProtocol = [2, '3241645161d8']

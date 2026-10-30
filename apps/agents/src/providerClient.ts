@@ -3,7 +3,7 @@
  * every request is mutually authenticated (BRC-103/104) and a 402 challenge is
  * paid automatically from the agent's wallet (BRC-105).
  */
-import { AuthFetch, type WalletInterface } from '@bsv/sdk'
+import { AuthFetch, type WalletInterface } from '@agentcoop/core/sdk'
 
 export interface CatalogProduct { id: string, label: string, unit: string, retailSatsPerCredit: number, minutesPerCredit?: number, tokenId: string | null }
 export interface Catalog {
@@ -63,7 +63,7 @@ export class ProviderClient {
   }
 
   /** Claim a BSV-21 transfer to the provider-api's token address as prepaid credits. */
-  async redeem (beef: number[], outputIndex: number): Promise<{ outpoint: string, product: string, credits: number, prepaidMinutes: number, lineage: string }> {
+  async redeem (beef: number[], outputIndex: number): Promise<{ outpoint: string, product: string, credits: number, prepaidMinutes: number, lineageDepth: number }> {
     return await this.call('POST', '/v1/credits/redeem', { beef, outputIndex })
   }
 

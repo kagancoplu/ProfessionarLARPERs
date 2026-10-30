@@ -9,9 +9,9 @@
  * provider/balances.json (prepaid credits), provider/outbox.json (overlay queue).
  */
 import { join } from 'node:path'
-import { dataDir, loadDotEnv, network, requireEnv } from '@agentcoop/core/env'
-import { openServerWallet } from '@agentcoop/core/wallet'
-import { OverlayClient, type OutboxItem } from '@agentcoop/core'
+import { dataDir, loadDotEnv, network, requireEnv } from '@agentcoop/core/node/env'
+import { openServerWallet } from '@agentcoop/core/node/serverWallet'
+import { COOP_SERVICE, COOP_TOPIC, OverlayClient, type OutboxItem } from '@agentcoop/core'
 import { createProviderApp } from './app'
 import { CreditLedger } from './credits'
 import { JsonFile } from './jsonFile'
@@ -38,7 +38,9 @@ const overlay = new OverlayClient(
   process.env.OVERLAY_URL ?? 'http://localhost:8080',
   { load: () => outbox.read(), save: items => { outbox.write(items) } },
   network(),
-  process.env.ARCADE_URL
+  process.env.ARCADE_URL,
+  COOP_TOPIC,
+  COOP_SERVICE
 )
 const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL })
 

@@ -14,7 +14,7 @@
  *     one Transaction instance per txid.
  */
 import { knex as makeKnex, type Knex } from 'knex'
-import { Beef, CachedKeyDeriver, MerklePath, PrivateKey, Script, Transaction, type ChainTracker } from '@bsv/sdk'
+import { Beef, CachedKeyDeriver, MerklePath, PrivateKey, Script, Transaction, type ChainTracker } from '@agentcoop/core/sdk'
 import {
   MockServices,
   ScriptTemplateBRC29,

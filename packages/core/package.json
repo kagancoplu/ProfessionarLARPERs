@@ -3,21 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AgentCoop protocol core (Track A). TEMPORARY: minimal stub created by Track C until A.P0 lands; A owns this package.",
+  "description": "AgentCoop protocol core: types, tx builders, signers, verifiers",
   "exports": {
     ".": "./src/index.ts",
     "./sdk": "./src/sdk.ts",
     "./types": "./src/types.ts",
-    "./constants": "./src/constants.ts",
-    "./env": "./src/env.ts",
-    "./wallet": "./src/wallet.ts",
     "./kit/*": "./src/kit/*.ts",
+    "./scripts/*": "./src/scripts/*.ts",
+    "./signers/*": "./src/signers/*.ts",
+    "./node/*": "./src/node/*.ts",
     "./register-sdk": "./register-sdk.mjs"
-  },
-  "dependencies": {
-    "@bsv/sdk": "3.2.1",
-    "@bsv/wallet-toolbox": "2.14.9",
-    "better-sqlite3": "13.0.3",
-    "knex": "3.3.0"
   }
 }

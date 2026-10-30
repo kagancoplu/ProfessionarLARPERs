@@ -9,8 +9,10 @@
  *  3. it moves ≤ 20 credits, and the caller's prepaid balance stays ≤ 20;
  *  4. the caller spent its own tokens in that transaction (otherwise anyone who
  *     saw the transfer on the overlay could claim it first);
- *  5. its lineage is genuine: Track A's `verifyLineage` when available,
- *     otherwise the overlay vouches for the output (admitted, unspent);
+ *  5. its lineage is genuine: Track A's `verifyLineage` walks it back to the
+ *     token's deploy itself (ancestors from the posted BEEF, the rest from
+ *     Arcade; txids are recomputed, so a forged BEEF fails). The overlay is
+ *     only used for discovery;
  *  6. it was not redeemed before.
  * Then the wallet internalizes it into the `bsv21` basket (SPV-checked) and
  * the caller's prepaid balance grows by credits × minutesPerCredit minutes.
@@ -18,10 +20,10 @@
  * Return: unused whole credits go back to the caller as tokens (TokenKit.send);
  * a remainder smaller than one credit stays prepaid.
  */
-import { Beef, Transaction, Utils, type WalletInterface } from '@bsv/sdk'
+import { Beef, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  decodeBsv21, GAP_LIMIT, instructionsFor, MAX_PENDING_CREDITS, MAX_REDEEM_CREDITS, NotImplementedError, receivePkh, TOKEN_BASKET,
-  verifyLineage as coreVerifyLineage, type OverlayClient, type TokenKit
+  arcadeTxFetcher, decodeBsv21, GAP_LIMIT, instructionsFor, MAX_PENDING_REDEEM_CREDITS, MAX_REDEEM_CREDITS, receivePkh, TOKEN_BASKET,
+  verifyLineage as coreVerifyLineage, type OverlayClient, type TokenKit, type TxFetcher
 } from '@agentcoop/core'
 import type { CreditLedger } from './credits'
 import { minutesPerCredit, type Product } from './products'
@@ -41,7 +43,10 @@ export interface CreditDeps {
   overlay: OverlayClient
   ledger: CreditLedger
   products: Product[]
+  /** Override Track A's verifyLineage (tests). */
   verifyLineage?: VerifyLineage
+  /** Where ancestors missing from the posted BEEF come from. Default: Arcade, then WhatsOnChain. */
+  fetchTx?: TxFetcher
   arcadeUrl?: string
 }
 
@@ -52,7 +57,8 @@ export interface RedeemResult {
   credits: number
   /** Prepaid balance after the redeem, in GPU minutes. */
   prepaidMinutes: number
-  lineage: 'verifyLineage' | 'overlay'
+  /** Transactions verifyLineage walked back to the deploy. */
+  lineageDepth: number
 }
 
 /** One token operation of the provider wallet at a time (coin selection must not race). */
@@ -71,23 +77,21 @@ const parseBeef = (beef: unknown): number[] => {
   throw new CreditError(400, 'ERR_BAD_REQUEST', 'beef must be a byte array or hex string')
 }
 
-async function checkLineage (deps: CreditDeps, txid: string, vout: number, expect: { tokenId: string, amount: bigint, ownerPkh: string }): Promise<'verifyLineage' | 'overlay'> {
+/** Ancestors from the BEEF the agent posted first, then the network. */
+const beefFirst = (beef: Beef, fallback: TxFetcher): TxFetcher => async (txid: string) => beef.findTxid(txid)?.tx ?? await fallback(txid)
+
+async function checkLineage (deps: CreditDeps, beef: Beef, txid: string, vout: number, expect: { tokenId: string, amount: bigint, ownerPkh: string }): Promise<number> {
   const verify = deps.verifyLineage ?? coreVerifyLineage
+  let r: Awaited<ReturnType<VerifyLineage>>
   try {
-    const r = await verify(`${txid}_${vout}`, { arcadeUrl: deps.arcadeUrl })
-    if (!r.ok || r.tokenId !== expect.tokenId || BigInt(r.amt) !== expect.amount || r.ownerPkh !== expect.ownerPkh) {
-      throw new CreditError(400, 'ERR_BAD_LINEAGE', 'the credit output does not descend from the token deploy')
-    }
-    return 'verifyLineage'
+    r = await verify(`${txid}_${vout}`, { fetchTx: beefFirst(beef, deps.fetchTx ?? arcadeTxFetcher(deps.arcadeUrl)) })
   } catch (e) {
-    if (!(e instanceof NotImplementedError)) throw e
+    throw new CreditError(400, 'ERR_BAD_LINEAGE', `could not verify the credits' lineage: ${(e as Error).message}`)
   }
-  // TODO(verifyLineage): remove this fallback once A.P2 lands; the overlay is then discovery only.
-  const [o] = await deps.overlay.lookup({ op: 'outpoint', txid, vout })
-  if (o === undefined || o.ctx.spent || o.ctx.tokenId !== expect.tokenId || BigInt(o.ctx.amt) !== expect.amount || o.ctx.ownerPkh !== expect.ownerPkh) {
-    throw new CreditError(400, 'ERR_BAD_LINEAGE', 'the overlay does not vouch for this credit output (submit the transfer to the overlay first)')
+  if (!r.ok || r.tokenId !== expect.tokenId || r.amt !== expect.amount || r.ownerPkh !== expect.ownerPkh) {
+    throw new CreditError(400, 'ERR_BAD_LINEAGE', `the credit output does not descend from the token deploy${r.reason !== undefined ? ` (${r.reason})` : ''}`)
   }
-  return 'overlay'
+  return r.depth
 }
 
 export async function redeemCredits (deps: CreditDeps, caller: string, body: unknown): Promise<RedeemResult> {
@@ -97,8 +101,9 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
   const beef = parseBeef(rawBeef)
   let tx: Transaction
   let txid: string
+  let parsed: Beef
   try {
-    const parsed = Beef.fromBinary(beef)
+    parsed = Beef.fromBinary(beef)
     txid = parsed.atomicTxid ?? parsed.txs[parsed.txs.length - 1].txid
     tx = Transaction.fromBEEF(beef, txid)
   } catch {
@@ -138,15 +143,15 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
   if (!spendsOwn) throw new CreditError(403, 'ERR_NOT_SENDER', 'only the identity that sent these credits can redeem them')
 
   // 5. genuine credits
-  const lineage = await checkLineage(deps, txid, vout, { tokenId, amount: decoded.amount, ownerPkh: decoded.ownerPkh })
+  const lineageDepth = await checkLineage(deps, parsed, txid, vout, { tokenId, amount: decoded.amount, ownerPkh: decoded.ownerPkh })
 
   // 3 + 6, atomically: claim the outpoint and room under the pending cap
   const mpc = minutesPerCredit(product)
-  const reserved = deps.ledger.reserveRedeem(outpoint, caller, tokenId, credits * mpc, MAX_PENDING_CREDITS * mpc)
+  const reserved = deps.ledger.reserveRedeem(outpoint, caller, tokenId, credits * mpc, MAX_PENDING_REDEEM_CREDITS * mpc)
   if (reserved === 'replayed') throw new CreditError(409, 'ERR_REDEEM_REPLAYED', 'these credits were already redeemed')
   if (reserved === 'over-limit') {
     const have = deps.ledger.balance(caller, tokenId) / mpc
-    throw new CreditError(400, 'ERR_REDEEM_LIMIT', `prepaid balance would exceed ${MAX_PENDING_CREDITS} credits (have ${Number(have.toFixed(2))}); spend or return some first`)
+    throw new CreditError(400, 'ERR_REDEEM_LIMIT', `prepaid balance would exceed ${MAX_PENDING_REDEEM_CREDITS} credits (have ${Number(have.toFixed(2))}); spend or return some first`)
   }
   try {
     await deps.wallet.internalizeAction({
@@ -168,7 +173,7 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
     throw new CreditError(400, 'ERR_REDEEM_FAILED', `the wallet did not accept the transfer: ${(e as Error).message}`)
   }
   const prepaidMinutes = deps.ledger.commitRedeem(outpoint)
-  return { outpoint, product: product.id, tokenId, credits, prepaidMinutes, lineage }
+  return { outpoint, product: product.id, tokenId, credits, prepaidMinutes, lineageDepth }
 }
 
 export async function returnCredits (deps: CreditDeps, caller: string, body: unknown): Promise<{ txid: string, product: string, credits: number, prepaidMinutes: number }> {

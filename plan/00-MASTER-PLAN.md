@@ -63,7 +63,7 @@
 └─ test/                  uçtan uca mockchain senaryoları (herkes ekler)
 ```
 
-**ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) **`tsx --import @agentcoop/core/register-sdk <dosya>`** ile başlatılır: bu senkron Node hook'u (`packages/core/register-sdk.mjs`, `module.registerHooks`) her ESM `import … from '@bsv/sdk'`'yı wallet-toolbox'ın `require` ettiği CJS kopyaya yönlendirir. tsconfig `paths` yalnızca tip denetimi içindir (`@bsv/sdk` → `dist/cjs/mod.d.ts`). *(C, 30.10: "paths ile CJS build'e yönlendir" çalışma zamanında çalışmıyor; Node, CJS build'in named export'larını göremiyor: `does not provide an export named 'Transaction'`. Hook ile tek kopya doğrulandı.)* Hata belirtisi: `script[serializedBytes] is not a function`.
+**ESM/CJS kuralı:** wallet-toolbox CJS'dir. SDK **yalnızca `@agentcoop/core/sdk` üzerinden** import edilir (`packages/core/src/sdk.ts` CJS build'i yeniden export eder). Testlerde kök `vitest.config.ts` alias'ı `@bsv/sdk`'yı aynı CJS dosyasına yönlendirir. Çalışma zamanında (tsx/Node) wallet-toolbox kullanan her app ve script **`tsx --import @agentcoop/core/register-sdk <dosya>`** ile başlatılır: senkron Node hook'u (`packages/core/register-sdk.mjs`, `module.registerHooks`) SDK'nın CJS girişine yapılan her ESM importunu (`sdk.ts`'in re-export'u veya çıplak `@bsv/sdk`) export listesi yükleme anında okunan bir ESM sarmalayıcıya yönlendirir; sarmalayıcı wallet-toolbox'ın `require` ettiği kopyanın aynısını verir. *(C, 30.10: hook olmadan `tsx` altında `import { Transaction } from '@agentcoop/core/sdk'` → `does not provide an export named 'Transaction'`, çünkü Node CJS build'in named export'larını statik olarak göremiyor; vitest alias'ı yüzünden testlerde görünmüyordu. Hook'la tek kopya doğrulandı.)* Hata belirtisi: `script[serializedBytes] is not a function`.
 
 ### 3.2 Sabitler
 
@@ -75,7 +75,12 @@
 | Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox) |
 | Sağlayıcı gelir anahtarı | protocol `[1,'agentcoop provider']`, keyID = poolNonce, counterparty `'anyone'`, basket `agentcoop revenue` | Settlement çıktısı 0 ve kayıt bedelleri buraya; `sweep-revenue` ile default'a taşınır |
 | Overlay isimleri | topic `tm_agentcoop`, service `ls_agentcoop` (BRC-87: rakam yok) | Kredi token'ları için kit'in kuralları aynı topic içinde |
-| Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | |
+| Teklif UTXO'su (A-P1) | kredi UTXO'su `[1,'agentcoop provider']`, keyID `offer <poolNonce>`, `'anyone'` P2PKH'ye taşınır; basket `agentcoop offers`; customInstructions `{ protocolID, keyID, counterparty, payKeyID: poolNonce, tokenId, credits }` | Token receive adresinde kalmaz → `TokenKit.sync/send` dokunmaz. `payScriptHex` = P2PKH(`[1,'agentcoop provider']`, keyID = poolNonce). Pool OP_RETURN json = terms − `poolId` + `nonce` |
+| Market anahtarları (A-P2) | listelenen kredi `[1,'agentcoop market']` keyID `list <nonce>` P2PKH, basket `agentcoop listings`; satış bedeli keyID `pay <nonce>`; aynı tx'te `OP_RETURN list { v, tokenId, credits, askSats, seller }` | Teklif UTXO'suyla aynı neden: TokenKit dokunmaz |
+| Outpoint biçimi (A-P1) | AgentCoop verisinde her yerde `txid_vout`; yalnız cüzdan çağrılarında `txid.vout` (`toWalletOutpoint`) | |
+| `pledgeListHash` (A-P1) | `sha256_hex(join(',', sort_lex(dahil outpoint'ler)))` | Seçim sırası ayrı kural (blockHeight, txid); hash zincir bilgisi gerektirmez |
+| Settlement para üstü (A-P1) | Katılımcı yayından sonra `internalizeSettlement` ile para üstünü `agentcoop` basket'ine `change:true` işaretiyle alır, harcanan pledge coin'ini `relinquishOutput` eder | "Tek aktif pledge" kontrolü `change:true` çıktıları saymaz |
+| Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | BIP-143 ön görüntüsü SINGLE\|ACP'de de tx `version`, `lockTime` ve girdinin `sequence`'ını içerir: teklif `version=1`, `lockTime=0`, in0 `sequence=0xffffffff` ile imzalanır ve **settlement bu değerlerle kurulmalı**, yoksa teklif geçersiz olur (B.P1). Koordinatörün `verifyOffer`'ı bu değerlerle doğrular |
 | Liste (market) sighash | satıcı `SINGLE \| ANYONECANPAY \| FORKID`; alıcı `ALL \| FORKID` | Sağlayıcı teklifiyle aynı primitif |
 | Arcade | `https://arcade-v2-us-1.bsvblockchain.tech` | Yayın (EF), tx durumu, header'lar `/chaintracks/v2` |
 | Redeem sınırı | tek seferde ≤ 20 kredi, ajan başına bekleyen ≤ 20 kredi | §4.7. gpu-h100'de 1 kredi = 1 GPU-saat, yani bekleyen ≤ 20 GPU-saat (≈ bir fine-tune oturumu). Bekleyen bakiye dakika olarak tutulur |
@@ -87,7 +92,8 @@
 ```ts
 export interface PoolTerms {
   v: '1'
-  poolId: string              // kredi UTXO outpoint'i "txid_vout" (= teklif girdisi)
+  poolId: string              // kredi UTXO outpoint'i "txid_vout" (= teklif girdisi). ZİNCİRDEKİ OP_RETURN pool
+                              // json'unda YOK (tx kendi txid'ini içeremez); overlay `${txid}_0` olarak türetir (B.P1)
   provider: string            // sağlayıcı identity key (teklifi imzalayan cüzdan)
   providerApi: string         // https://... provider-api kökü
   tokenId: string             // BSV-21 kredi token id
@@ -150,7 +156,7 @@ htlcLockingScript(hash, agentPub, guardPub, makerPub): LockingScript     // D do
 buildReserveAndAnnounce(wallet, kitTokenKit, terms): Promise<{ txid, poolId }>   // N krediyi tek UTXO'ya al + OP_RETURN pool
 signOffer(wallet, outpoint, terms): Promise<Offer>                                 // SINGLE|ACP
 buildPledge(wallet, terms, credits, signer:'p2pkh'|'vault', vaultScript?): Promise<{ txid, outpoint }>
-cancelPledge(wallet, outpoint): Promise<string>
+cancelPledge(wallet, outpoint): Promise<string>                                   // iptal tx'i tm_agentcoop'a submit edilir (B.P1)
 planSettlement(offer, pledges, chain): SettlementPlan                              // deterministik sıralama, ücret, para üstü
 verifySettlementPlan(plan, offer, myOutpoint, opts): Promise<void>                 // DvP kontrolü + verifyLineage; hata fırlatır
 signSettlementInput(plan, inputIndex, signer: InputSigner): Promise<UnlockingScript>
@@ -166,6 +172,22 @@ verifyLineage(outpoint, { arcadeUrl, wocUrl }): Promise<{ ok, tokenId, amt, owne
 
 // signers
 new P2pkhWalletSigner(wallet, { protocolID, keyID })
+
+// A-P1 eklemeleri (kırıcı değil; tam imzalar packages/core/src/pool/*.ts)
+verifyOffer(offer, { sourceTx }): void                                             // çevrimdışı: kredi miktarı/token, SINGLE|ACP imzası Spend ile
+planTransaction(plan): Transaction                                                  // templateBEEF → tx
+internalizeSettlement(wallet, tx, plan, myOutpoint, pledgeInstructions): Promise<void>
+fetchChainPolicy(arcadeUrl): Promise<{ height, satsPerKb, maxTxSize? }>            // Arcade /health; planSettlement'ın `chain`'i
+// A-P2: doğrulama ve market (MASTER'daki `buildSweep(wallet, listings[]): { plan }` bununla DEĞİŞTİ; henüz kullanan yoktu)
+verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache? }): Promise<{ ok, tokenId?, amt?: bigint, ownerPkh?, depth, reason? }>
+reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint, beef }>   // signListing'den önce
+signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
+buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
+cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · reclaimReserved(wallet, kit, outpoint, basket)
+// hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
+// parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
+//   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
+//   verifySettlementPlan(plan, offer, myOutpoint, { expectedCredits, expectedCreditPkh?, maxFeeSats?, verifyLineage? })
 ```
 
 ### 3.5 Koordinatör / yan API (B) — `COOP_API_URL`
@@ -174,9 +196,10 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 |---|---|---|
 | `POST` | `/offers` | `Offer` kaydet (sağlayıcı CLI çağırır). Doğrular: outpoint harcanmamış, imza geçerli |
 | `GET` | `/offers/:poolId` | Offer getir |
-| `GET` | `/pools` · `/pools/:poolId` | Terms + ilerleme (`pledgedCredits`, `target`, `status: open\|locking\|settled\|failed`) |
+| `GET` | `/pools` · `/pools/:poolId` | Terms + ilerleme (`pledgedCredits`, `target`, `status: open\|locking\|settled\|failed\|cancelled`, `hasOffer`). `cancelled` = kredi UTXO'su settlement dışı bir tx'le harcandı. `failed` ve `locking` yan API'de türetilir (yükseklik / koordinatör turu); overlay yalnızca `open\|settled\|cancelled` bilir |
 | `GET` | `/pools/:poolId/pledges` | Harcanmamış pledge'ler (overlay'den) |
-| `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri |
+| (ek) | `/pools/:poolId` cevabında `coordinator` | Havuz turlandıysa: `{ round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome: 'settled'\|'failed', missing, txid? } }` (B.P2). `GET /healthz` → `engine: true\|false` |
+| `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri. `POST` zincire karşı doğrular (outpoint overlay'de admit edilmiş, harcanmamış kredi çıktısı; `tokenId`/`credits` eşleşiyor; imza `0xC3` ve girdi ↔ aynı index'teki çıktı = `askSats → payScriptHex`). `GET` yalnızca hâlâ harcanmamışları, en ucuz (`askSats/credits`) önce döndürür (B.P3) |
 | `WS` | `/ws` | Katılımcı oturumu ve canlı akış |
 
 **WS mesajları** (JSON, `type` alanı):
@@ -209,7 +232,21 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 
 ### 3.8 Overlay lookup (B) — `POST /lookup { service:'ls_agentcoop', query }`
 
-`{ op:'pools' }`, `{ op:'pool', poolId }`, `{ op:'pledges', poolId, includeSpent? }`, `{ op:'settlement', poolId }`, `{ op:'listings', tokenId? }`, `{ op:'vaults', owner? }` + kit'in token sorguları (`identity`, `utxos`, `token`, `outpoint`, `history`).
+`{ op:'pools', status? }`, `{ op:'pool', poolId }`, `{ op:'pledges', poolId, includeSpent?, includeInvalid? }`, `{ op:'settlement', poolId }`, `{ op:'listings', tokenId? }`, `{ op:'vaults', owner? }` + kit'in token sorguları (`identity`, `utxos`, `token`, `outpoint`, `history`).
+
+Cevaptaki her çıktının `context`'i (UTF-8 JSON, B.P1):
+- `pools`/`pool` → `{ poolId, txid, terms, status: open|settled|cancelled, pledgedCredits, pledgeCount, target, settledTxid?, spendingTxid?, createdHeight?, invalidReason? }` (çıktı = havuzun OP_RETURN kaydı)
+- `pledges` → `{ outpoint, txid, vout, poolId, participant, credits, tokenIndex, signer, coinSats, height?, spent, spendingTxid?, valid, invalidReason? }` (çıktı = pledge coin; sıra `height` asc, mine edilmemiş en sonda, sonra `txid`)
+- `settlement` → `{ poolId, txid, pledgeListHash, inputs: outpoint[] }`
+
+**Pledge geçerlilik kuralı** (sorgu anında; `buildPledge` buna uymalı): havuz var ve `open`; `minCredits ≤ credits ≤ credits(N)`; `out1.satoshis ≥ feeSats` ve `out1.lockingScript = payScriptHex`; `out0.satoshis ≥ ceil(credits × priceSats / N) + 1`. `pledgedCredits` = geçerli ve harcanmamış pledge'lerin `credits` toplamı.
+
+**Kayıt indeksleme:** `agentcoop` OP_RETURN kayıt çıktıları (0 sat) topic'e **admit edilir** (lookup cevapları depodaki çıktılara çözüldüğü için). Settle kaydı yalnızca `in0 = poolId` ise geçerli.
+
+**Vault'lar (B.P3):** `vault` kaydının çıktısı ve vault şablonuna uyan **her** çıktı (`OP_IF <33> OP_CHECKSIG OP_ELSE OP_2 <33> <33> OP_2 OP_CHECKMULTISIG OP_ENDIF`, kayıt taşımayan para üstleri dahil) admit edilir; script hex ile birleştirilir. `{ op:'vaults', owner?, includeUnverified? }` / `{ op:'vault', vaultId }` → `{ vaultId, owner, agent, guard, scriptHex, verified, balanceSats, utxos: [{ outpoint, satoshis }] }`. `verified` = kayıttaki script, `owner/agent/guard` kimliklerinden `[1,'agentcoop vault']`, keyID = `vaultId`, `'anyone'` ile türetilen anahtarlarla yeniden hesaplanan script'e eşit. Doğrulanmamış kayıtlar varsayılan olarak gösterilmez. **D:** fonlama tx'i bu kaydı taşımalı; script D 1.1'deki gibi.
+`{ op:'listings', tokenId? }` → zincirdeki opsiyonel `OP_RETURN list` kayıtları (ham). Esas liste defteri koordinatörün `GET /listings`'i.
+
+**Olay akışı (B.P3):** overlay `GET /agentcoop/events` (SSE) → her kabul/harcanmada `data: { type: 'admitted'|'spent', txid }`. Koordinatör ve UI anlık güncelleme için abone olabilir.
 
 ### 3.9 Ortam değişkenleri (`.env.example`, D yönetir)
 

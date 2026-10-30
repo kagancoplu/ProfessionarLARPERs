@@ -1,16 +1,16 @@
 /**
  * Server wallets (wallet-toolbox, SQLite) with Arcade as the primary
- * broadcaster: guide §14.2, as a function.
+ * broadcaster: guide §14.2, as a function. Node-only.
  *
  * Added by Track C for provider-api and agents. Track D's scripts/wallets.ts
  * (`openWallet(name)`, MASTER §6.2) can wrap this.
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { CachedKeyDeriver, PrivateKey } from '@bsv/sdk'
+import { CachedKeyDeriver, PrivateKey } from '../sdk'
 import { Monitor, Services, Setup, StorageKnex, Wallet, WalletStorageManager } from '@bsv/wallet-toolbox'
 
-export const DEFAULT_ARCADE_URL = 'https://arcade-v2-us-1.bsvblockchain.tech'
+import { ARCADE_URL } from '../types'
 
 export interface ServerWalletOptions {
   /** Wallet name: the SQLite file is `<dataDir>/wallets/<name>.sqlite`. */
@@ -36,7 +36,7 @@ export async function openServerWallet (opts: ServerWalletOptions): Promise<Serv
   const identityKey = rootKey.toPublicKey().toString()
 
   const options = Services.createDefaultOptions(chain)
-  options.arcadeUrl = opts.arcadeUrl ?? DEFAULT_ARCADE_URL
+  options.arcadeUrl = opts.arcadeUrl ?? ARCADE_URL
   const services = new Services(options) // broadcast order: Arcade, GorillaPool, TAAL, Bitails, WhatsOnChain
 
   mkdirSync(join(opts.dataDir, 'wallets'), { recursive: true })

@@ -1,17 +1,18 @@
-import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
     alias: {
-      // Kit's vitest.config.ts: wallet-toolbox is CommonJS and loads the CJS
-      // build of @bsv/sdk, so point our code at the same build (one copy of the
-      // SDK classes). require.resolve picks the "require" export = dist/cjs/mod.js.
-      '@bsv/sdk': createRequire(import.meta.url).resolve('@bsv/sdk')
+      // wallet-toolbox is CommonJS and loads the CJS build of @bsv/sdk. Point our
+      // code at the same build so SDK objects (Transaction, Script…) are one
+      // class instance across both. (Copied from the starter kit's vitest.config.ts;
+      // packages/core/src/sdk.ts re-exports the same file for tsx/Node runs.)
+      '@bsv/sdk': fileURLToPath(new URL('./node_modules/@bsv/sdk/dist/cjs/mod.js', import.meta.url))
     }
   },
   test: {
-    include: ['test/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'packages/*/test/**/*.test.ts', 'apps/*/test/**/*.test.ts'],
     testTimeout: 120_000,
     hookTimeout: 120_000,
     fileParallelism: false

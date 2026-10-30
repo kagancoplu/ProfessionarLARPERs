@@ -1,0 +1,10 @@
+{
+  "name": "@agentcoop/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ops and spike scripts (keygen, fund, skeleton, spikes)",
+  "dependencies": {
+    "@agentcoop/core": "0.1.0"
+  }
+}

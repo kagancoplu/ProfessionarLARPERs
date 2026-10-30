@@ -1,9 +1,9 @@
-/** Repo paths and `.env` loading shared by the apps (Node ≥ 22: process.loadEnvFile). */
+/** Repo paths and `.env` loading shared by the apps (Node ≥ 22: process.loadEnvFile). Added by Track C. */
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
+export const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 
 /** Load `<repo>/.env` once. Variables already set in the environment win. */
 export function loadDotEnv (file = join(REPO_ROOT, '.env')): void {

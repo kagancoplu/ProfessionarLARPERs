@@ -4,6 +4,7 @@
 npm run provider-cli -- whoami
 npm run provider-cli -- mint --sym GPUMIN --amt 100000 --dec 0
 npm run provider-cli -- open-pool --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" --min 10
+npm run provider-cli -- post-offer <poolId>
 npm run provider-cli -- list-pools
 npm run provider-cli -- cancel-pool <poolId>
 npm run provider-cli -- sync-revenue
@@ -15,8 +16,9 @@ BSV Desktop must be running and unlocked (mainnet). The CLI connects with `Walle
 | Command | On chain | Notes |
 |---|---|---|
 | `mint` | T1: BSV-21 deploy+mint | writes the token id into `apps/provider-api/products/<product>.json` |
-| `open-pool` | T2: reserve N credits in one UTXO and announce the pool, then sign the offer `SIGHASH_SINGLE\|ANYONECANPAY` and `POST /offers` | needs Track A's `buildReserveAndAnnounce` + `signOffer`; until then the pool is saved as a **draft** |
-| `cancel-pool` | spends the reserved credit UTXO back to you; the signed offer becomes void | |
+| `open-pool` | T2: reserve N credits in one UTXO and announce the pool, then sign the offer `SIGHASH_SINGLE\|ANYONECANPAY` and `POST /offers` | Track A's `buildReserveAndAnnounce` + `signOffer`. If the coordinator is down, the signed offer is kept locally |
+| `post-offer` | none | sends a saved offer to the coordinator again |
+| `cancel-pool` | spends the reserved offer UTXO back to you; the signed offer becomes void | Track A's `cancelPool` |
 | `list-pools` | none | coordinator `GET /pools` plus local records |
 | `sync-revenue` | none (wallet bookkeeping) | finds pledge fees and settlement payments of your pools on the overlay and tracks them in the `agentcoop revenue` basket |
 | `sweep-revenue` | one tx | moves the `agentcoop revenue` basket into your wallet balance |

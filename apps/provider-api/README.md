@@ -26,7 +26,7 @@ All routes except `/healthz` are mutually authenticated (BRC-103/104). Clients u
 - at most 20 credits per redeem and 20 credits (1,200 GPU-minutes) prepaid per agent. That is about one fine-tuning session;
 - the output must be a transfer of a product's token, locked to one of this server's token addresses;
 - the caller must have sent it (the transaction spends the caller's own token outputs), so nobody can claim a transfer they only saw on the overlay;
-- the lineage must be genuine: Track A's `verifyLineage` when it lands, until then the overlay must vouch for the output;
+- the lineage must be genuine: Track A's `verifyLineage` walks the output back to the token's deploy. Ancestors come from the posted BEEF first and from Arcade after that; txids are recomputed, so a forged BEEF fails. The overlay is only used for discovery;
 - each output can be redeemed only once.
 
 Returns are in whole credits. A remainder smaller than one credit (e.g. 20 minutes) stays prepaid.

@@ -9,10 +9,10 @@
  * revenue key [1,'agentcoop provider'] / keyID = pool nonce; 402 retail
  * revenue goes to the provider-api server wallet.
  */
-import { P2PKH, Random, Transaction, Utils, type LockingScript, type WalletInterface } from '@bsv/sdk'
+import { P2PKH, Random, Transaction, Utils, type LockingScript, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  anyonePkh, buildReserveAndAnnounce, NotImplementedError, P2PKH_UNLOCK_LENGTH, PROVIDER_PROTOCOL, REVENUE_BASKET,
-  signOffer, signWalletP2pkhInput, TokenKit, type CustomInstructions, type Offer, type OverlayClient, type PoolTerms
+  anyonePkh, buildReserveAndAnnounce, cancelPool as coreCancelPool, P2PKH_UNLOCK_LENGTH, PROVIDER_PROTOCOL, REVENUE_BASKET,
+  signOffer, signWalletP2pkhInput, TokenKit, type CustomInstructions, type KitQuery, type Offer, type OverlayClient, type PoolTerms, type TermsDraft
 } from '@agentcoop/core'
 import { loadProducts, setProductTokenId } from '../../provider-api/src/products'
 import type { PoolRecord, PoolRegistry } from './pools'
@@ -66,9 +66,23 @@ export interface OpenPoolArgs {
   label: string
 }
 
-export async function postOffer (coopApiUrl: string, offer: Offer): Promise<void> {
-  const res = await fetch(`${coopApiUrl}/offers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(offer) })
+async function sendOffer (coopApiUrl: string, offer: Offer): Promise<void> {
+  let res: Response
+  try {
+    res = await fetch(`${coopApiUrl}/offers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(offer) })
+  } catch (e) {
+    throw new Error(`coordinator at ${coopApiUrl} is unreachable (${(e as Error).message})`)
+  }
   if (!res.ok) throw new Error(`coordinator refused the offer: ${res.status} ${await res.text()}`)
+}
+
+/** Register a pool's signed offer with the coordinator (`POST /offers`); retried by `post-offer` if open-pool could not. */
+export async function postOffer (ctx: CliContext, poolId: string): Promise<PoolRecord> {
+  const record = ctx.pools.byPoolId(poolId)
+  if (record?.offer === undefined) throw new Error(`no signed offer for pool ${poolId} in the local records`)
+  await sendOffer(ctx.coopApiUrl, record.offer)
+  ctx.out(`Pool open: offer registered at ${ctx.coopApiUrl}`)
+  return ctx.pools.update(record.nonce, { status: 'open' })
 }
 
 export async function openPool (ctx: CliContext, args: OpenPoolArgs): Promise<PoolRecord> {
@@ -91,7 +105,7 @@ export async function openPool (ctx: CliContext, args: OpenPoolArgs): Promise<Po
   if (!Number.isSafeInteger(deadlineHeight) || deadlineHeight <= height) throw new Error(`--deadline must be in the future (current height ${height})`)
 
   const nonce = Utils.toHex(Random(16))
-  const terms: Omit<PoolTerms, 'poolId'> = {
+  const terms: TermsDraft & Pick<PoolTerms, 'provider' | 'payScriptHex'> = {
     v: '1',
     provider: me,
     providerApi: ctx.providerApiUrl,
@@ -110,39 +124,34 @@ export async function openPool (ctx: CliContext, args: OpenPoolArgs): Promise<Po
     `(retail ${product.retailSatsPerCredit}, ${Math.round(100 * (1 - perCredit / product.retailSatsPerCredit))}% off · demo pricing), deadline height ${deadlineHeight}`)
 
   const record = ctx.pools.add({ nonce, terms, status: 'draft', createdAt: new Date().toISOString() })
+  ctx.out('Reserving the credits and announcing the pool (T2). Approve in BSV Desktop…')
+  // Track A: N credits into one offer UTXO (output 0) + OP_RETURN pool, revenue key = this nonce.
+  const announced = await buildReserveAndAnnounce(ctx.wallet, kit, terms, { poolNonce: nonce })
+  if (announced.terms.payScriptHex !== terms.payScriptHex) throw new Error('pool revenue script differs from the one derived for this nonce')
+  ctx.pools.update(nonce, { poolId: announced.poolId, announceTxid: announced.txid, status: 'announced' })
+  ctx.out(`  announced: poolId ${announced.poolId}  https://whatsonchain.com/tx/${announced.txid}`)
+  ctx.out('Signing the offer (SIGHASH_SINGLE|ANYONECANPAY). Approve in BSV Desktop…')
+  const offer = await signOffer(ctx.wallet, announced.poolId, announced.terms)
+  ctx.pools.update(nonce, { offer })
   try {
-    ctx.out('Reserving the credits and announcing the pool. Approve in BSV Desktop…')
-    const { txid, poolId } = await buildReserveAndAnnounce(ctx.wallet, kit, terms)
-    ctx.pools.update(record.nonce, { poolId, announceTxid: txid, status: 'announced' })
-    ctx.out(`  announced: poolId ${poolId}  https://whatsonchain.com/tx/${txid}`)
-    ctx.out('Signing the offer (SIGHASH_SINGLE|ANYONECANPAY). Approve in BSV Desktop…')
-    const offer = await signOffer(ctx.wallet, poolId, { ...terms, poolId })
-    await postOffer(ctx.coopApiUrl, offer)
-    ctx.pools.update(record.nonce, { status: 'open' })
-    ctx.out(`Pool open: offer registered at ${ctx.coopApiUrl}`)
+    return await postOffer(ctx, announced.poolId)
   } catch (e) {
-    if (!(e instanceof NotImplementedError)) throw e
-    ctx.out(`Pool saved as a draft: ${e.message}. Re-run open-pool once Track A lands.`)
+    ctx.out(`Offer signed and saved, but not registered: ${(e as Error).message}. Retry with: provider-cli post-offer ${announced.poolId}`)
+    return ctx.pools.get(nonce)!
   }
-  return ctx.pools.get(record.nonce)!
 }
 
 // ── cancel-pool ─────────────────────────────────────────────────────────────
 
-/** Spends the reserved credit UTXO back to a fresh address of the operator: the signed offer becomes void. */
+/** Spends the reserved offer UTXO back to the operator's token balance (Track A `cancelPool`): the signed offer becomes void. */
 export async function cancelPool (ctx: CliContext, poolId: string): Promise<{ txid: string }> {
   const record = ctx.pools.byPoolId(poolId)
   if (record === undefined) throw new Error(`no local record of pool ${poolId} (data/provider-cli/pools.json)`)
-  const [txid, vout] = poolId.split('_')
-  const kit = kitOf(ctx)
-  const { entries, beef } = await kit.spendable(record.terms.tokenId)
-  const entry = entries.find(e => e.outpoint === `${txid}.${vout}`)
-  if (entry === undefined) throw new Error(`pool credit UTXO ${poolId} is not spendable by this wallet (already settled or cancelled?)`)
-  ctx.out(`Cancelling pool "${record.terms.label}": moving ${entry.amount} credits back to you. Approve in BSV Desktop…`)
-  const res = await kit.spendInputs([entry], beef, record.terms.tokenId, [{ to: 'self', amount: entry.amount }], `Cancel pool ${record.terms.label}`)
-  ctx.pools.update(record.nonce, { status: 'cancelled', cancelTxid: res.txid })
-  ctx.out(`Cancelled. https://whatsonchain.com/tx/${res.txid}`)
-  return { txid: res.txid }
+  ctx.out(`Cancelling pool "${record.terms.label}": moving its ${record.terms.credits} credits back to you. Approve in BSV Desktop…`)
+  const txid = await coreCancelPool(ctx.wallet, kitOf(ctx), poolId)
+  ctx.pools.update(record.nonce, { status: 'cancelled', cancelTxid: txid })
+  ctx.out(`Cancelled. https://whatsonchain.com/tx/${txid}`)
+  return { txid }
 }
 
 // ── list-pools ──────────────────────────────────────────────────────────────
@@ -200,7 +209,8 @@ export async function syncRevenue (ctx: CliContext): Promise<string[]> {
     for (const query of [{ op: 'pledges' as const, poolId: pool.poolId!, includeSpent: true }, { op: 'settlement' as const, poolId: pool.poolId! }]) {
       let outputs
       try {
-        outputs = await ctx.overlay.lookup(query)
+        // §3.8 AgentCoop queries (ls_agentcoop); the kit client types only its token queries.
+        outputs = await ctx.overlay.lookup(query as unknown as KitQuery)
       } catch (e) {
         ctx.out(`  ${query.op} lookup for ${pool.poolId} failed: ${(e as Error).message}`)
         continue

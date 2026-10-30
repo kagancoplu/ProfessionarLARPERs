@@ -4,7 +4,7 @@
  * kit's test/pay-per-request.e2e.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { AuthFetch, P2PKH, PublicKey, Random, Utils } from '@bsv/sdk'
+import { AuthFetch, P2PKH, PublicKey, Random, Utils } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { createProviderApp } from '../apps/provider-api/src/app'
 import { JobRunner, resultHash, type Job } from '../apps/provider-api/src/runner'

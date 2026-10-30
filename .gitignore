@@ -1,8 +1,12 @@
 node_modules/
 .env
+.env.*
+!.env.example
 data/
 *.sqlite
-*.sqlite-journal
+*.sqlite3
 *.db
 dist/
+coverage/
+graft/
 .DS_Store

@@ -15,7 +15,7 @@
  * The result is that every admitted UTXO descends, input by input, from the
  * genuine deploy.
  */
-import type { Transaction } from '@bsv/sdk'
+import type { Transaction } from '../sdk'
 import { decodeBsv21, MAX_U64, tokenIdFromOutpoint } from './inscription'
 
 export interface Admission {

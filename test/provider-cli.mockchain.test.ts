@@ -41,10 +41,12 @@ afterAll(async () => {
 })
 
 describe('open-pool', () => {
-  it('builds the pool terms (revenue script, deadline, prices) and keeps a draft until Track A lands', async () => {
+  it('reserves the credits, announces the pool and signs the offer (Track A builders); keeps the offer when the coordinator is down', async () => {
     const { height } = await operator.getHeight({})
     const rec = await openPool(ctx, { product: 'gpu-h100', credits: 1000, priceSats: 25_000, deadline: '+144', feeSats: 300, minCredits: 10, label: '8×H100 · 1 week' })
-    expect(rec.status).toBe('draft')
+    expect(rec.status).toBe('announced')
+    expect(rec.poolId).toBe(`${rec.announceTxid!}_0`)
+    expect(rec.offer).toMatchObject({ poolId: rec.poolId, satoshis: 1, terms: { poolId: rec.poolId, payScriptHex: rec.terms.payScriptHex } })
     expect(rec.terms).toMatchObject({
       v: '1', provider: operator.identityKey, providerApi: 'https://provider.example', tokenId,
       credits: '1000', priceSats: '25000', feeSats: '300', minCredits: '10',
@@ -53,12 +55,15 @@ describe('open-pool', () => {
     // Output 0 and the pledge fees pay the operator's revenue key for this pool (MASTER §3.2).
     expect(rec.terms.payScriptHex).toBe(`76a914${anyonePkh(operator.identityKey, rec.nonce, PROVIDER_PROTOCOL)}88ac`)
     expect(lines.some(l => l.includes('25.0 sat/credit (retail 50, 50% off · demo pricing)'))).toBe(true)
-    expect(lines.at(-1)).toMatch(/draft: buildReserveAndAnnounce \(A\.P1\)/)
+    expect(lines.at(-1)).toMatch(/not registered: coordinator at http:\/\/localhost:1 is unreachable.*post-offer/)
+    // The pool's credits left the operator's spendable token balance.
+    const [b] = await new TokenKit(operator, overlay.client()).balances()
+    expect(b.overlay).toBe(99_000n)
   })
 
   it('refuses a pool the operator cannot fill', async () => {
     await expect(openPool(ctx, { product: 'gpu-h100', credits: 200_000, priceSats: 1, deadline: '+10', feeSats: 0, minCredits: 1, label: 'too big' }))
-      .rejects.toThrow(/you hold 100000 credits/)
+      .rejects.toThrow(/you hold 99000 credits/)
   })
 })
 
@@ -91,20 +96,14 @@ describe('revenue: Desktop-side pool income', () => {
 })
 
 describe('cancel-pool', () => {
-  it('spends the reserved credit UTXO back to the operator, voiding the offer', async () => {
-    // Until A's buildReserveAndAnnounce exists, reserve the pool's credits with a plain self-send.
-    const kit = new TokenKit(operator, overlay.client())
-    const { txid } = await kit.send(tokenId, 1000n, 'self')
-    const reserved = (await kit.utxos(tokenId)).find(u => u.txid === txid && u.amount === 1000n)!
-    const poolId = `${reserved.txid}_${reserved.vout}`
-    const draft = ctx.pools.all()[0]
-    ctx.pools.update(draft.nonce, { poolId, status: 'open' })
-
+  it('spends the offer UTXO back to the operator (Track A cancelPool), voiding the offer', async () => {
+    const pool = ctx.pools.all()[0]
+    const poolId = pool.poolId!
     const res = await cancelPool(ctx, poolId)
     expect(ctx.pools.byPoolId(poolId)).toMatchObject({ status: 'cancelled', cancelTxid: res.txid })
-    const [spent] = await overlay.client().lookup({ op: 'outpoint', txid: reserved.txid, vout: reserved.vout })
-    expect(spent.ctx).toMatchObject({ spent: true, spendingTxid: res.txid })
-    await expect(cancelPool(ctx, poolId)).rejects.toThrow(/not spendable/)
+    const [b] = await new TokenKit(operator, overlay.client()).balances()
+    expect(b.overlay).toBe(100_000n) // the 1000 reserved credits are back
+    await expect(cancelPool(ctx, poolId)).rejects.toThrow(/not in the 'agentcoop offers' basket/)
   })
 
   it('lists the local pools when the coordinator is down', async () => {

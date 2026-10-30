@@ -10,10 +10,10 @@
  * at retail via 402. A gpu-h100 credit is one GPU-hour, used by the minute, so
  * what a job leaves over pays for the next one.
  */
-import type { WalletInterface } from '@bsv/sdk'
+import type { WalletInterface } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
-import { dataDir, network, requireEnv } from '@agentcoop/core/env'
-import { openServerWallet } from '@agentcoop/core/wallet'
+import { dataDir, network, requireEnv } from '@agentcoop/core/node/env'
+import { openServerWallet } from '@agentcoop/core/node/serverWallet'
 import { AgentLog } from './log'
 import type { AgentProfile } from './profile'
 import { ProviderClient, type Catalog, type CatalogProduct, type JobView } from './providerClient'
