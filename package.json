@@ -1,0 +1,35 @@
+{
+  "name": "agentcoop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentCoop: non-custodial group buying and capacity market for AI agents on BSV",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "provider": "tsx --import @agentcoop/core/register-sdk apps/provider-api/src/server.ts",
+    "provider-cli": "tsx --import @agentcoop/core/register-sdk apps/provider-cli/src/cli.ts",
+    "agent": "tsx --import @agentcoop/core/register-sdk apps/agents/src/run.ts"
+  },
+  "devDependencies": {
+    "@bsv/overlay": "2.6.4",
+    "@bsv/overlay-express": "2.7.4",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": false,
+    "esbuild@0.28.2": true
+  }
+}

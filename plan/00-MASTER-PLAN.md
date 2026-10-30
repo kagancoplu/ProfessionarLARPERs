@@ -20,7 +20,7 @@
 
 | Karar | Sonuç |
 |---|---|
-| Ana senaryo | **Simüle GPU sağlayıcısı.** Ürün: "H100 GPU-dakika kredisi". Havuz: bir GPU bloğu. İşler (fine-tune, eval, inference) simüle edilir, ama ödeme, kredi ve settlement gerçek ve zincir üstünde |
+| Ana senaryo | **Simüle GPU sağlayıcısı.** Ürün: "H100 GPU-saat kredisi" (1 kredi = 1 GPU-saat, dakika bazında tüketilir; C, 30.10). Havuz: bir GPU bloğu. İşler (fine-tune, eval, inference) simüle edilir, ama ödeme, kredi ve settlement gerçek ve zincir üstünde |
 | SmartRoute | İlk etapta **yok**. Sağlayıcı katmanı "ürün = konfigürasyon" olacak şekilde yazılır; SmartRoute sonradan ikinci sağlayıcı olarak takılabilir |
 | Mandate Vault | **Tam kapsam** (K2) |
 | Coop Rail | **Zaman kutulu PoC**: Base Sepolia, en fazla 4 saat, canlı demoda değil, kayıtla belgelenir. Başarılı olursa README'de "deneysel" |
@@ -63,7 +63,7 @@
 └─ test/                  uçtan uca mockchain senaryoları (herkes ekler)
 ```
 
-**ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) `@bsv/sdk`'yı **tek bir yerden** import eder: `packages/core/src/sdk.ts` → `export * from '@bsv/sdk'` ve tsconfig `paths` ile CJS build'e yönlendirilir. A bunu P0'da kurar; herkes `@agentcoop/core/sdk` üzerinden import eder. Hata belirtisi: `script[serializedBytes] is not a function`.
+**ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) **`tsx --import @agentcoop/core/register-sdk <dosya>`** ile başlatılır: bu senkron Node hook'u (`packages/core/register-sdk.mjs`, `module.registerHooks`) her ESM `import … from '@bsv/sdk'`'yı wallet-toolbox'ın `require` ettiği CJS kopyaya yönlendirir. tsconfig `paths` yalnızca tip denetimi içindir (`@bsv/sdk` → `dist/cjs/mod.d.ts`). *(C, 30.10: "paths ile CJS build'e yönlendir" çalışma zamanında çalışmıyor; Node, CJS build'in named export'larını göremiyor: `does not provide an export named 'Transaction'`. Hook ile tek kopya doğrulandı.)* Hata belirtisi: `script[serializedBytes] is not a function`.
 
 ### 3.2 Sabitler
 
@@ -78,7 +78,7 @@
 | Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | |
 | Liste (market) sighash | satıcı `SINGLE \| ANYONECANPAY \| FORKID`; alıcı `ALL \| FORKID` | Sağlayıcı teklifiyle aynı primitif |
 | Arcade | `https://arcade-v2-us-1.bsvblockchain.tech` | Yayın (EF), tx durumu, header'lar `/chaintracks/v2` |
-| Redeem sınırı | tek seferde ≤ 20 kredi, ajan başına bekleyen ≤ 20 kredi | §4.7 |
+| Redeem sınırı | tek seferde ≤ 20 kredi, ajan başına bekleyen ≤ 20 kredi | §4.7. gpu-h100'de 1 kredi = 1 GPU-saat, yani bekleyen ≤ 20 GPU-saat (≈ bir fine-tune oturumu). Bekleyen bakiye dakika olarak tutulur |
 | Koordinatör sıralaması | `(blockHeight asc, txid asc)`; mine edilmemişler en sonda `txid asc` | OP_RETURN `settle.pledgeListHash = sha256(join(outpoints sorted))` |
 | Fazla dolum / tur | hedefin %120'sine kadar pledge kabul; en fazla 3 imza turu; tur zaman aşımı 60 sn | İmzalamayan outpoint kara listeye |
 
@@ -190,14 +190,15 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 
 | Yöntem | Yol | Ücret | Ne yapar |
 |---|---|---|---|
-| `GET` | `/v1/catalog` | 0 | ürün, `retailSatsPerCredit`, açık havuzlar (COOP_API'den) |
-| `POST` | `/v1/jobs` `{ kind, minutes }` | `minutes × retail`, ön ödemeli bakiye yetiyorsa **0** | simüle işi kuyruğa al; `{ jobId }` |
+| `GET` | `/healthz` | 0 (auth yok) | canlılık |
+| `GET` | `/v1/catalog` | 0 | `provider.server`, ürünler (`retailSatsPerCredit`, `minutesPerCredit`, `tokenId`), `credits: { maxRedeem, maxPending, redeemTo }` (`redeemTo` = provider-api kimliği, kredilerin gönderileceği yer), açık havuzlar (COOP_API'den) |
+| `POST` | `/v1/jobs` `{ kind, minutes, product? }` | `ceil(minutes × retailSatsPerCredit / minutesPerCredit)` sat (dakika bazında); ön ödemeli bakiye `minutes`'ı karşılıyorsa **0** (bakiyeden dakika düşülür) | simüle işi kuyruğa al; `{ jobId }` |
 | `GET` | `/v1/jobs/:id` | 0 | durum, "GPU log", sonuç hash'i |
-| `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | 0 (auth zorunlu) | BSV-21 transferini doğrula (`verifyLineage` + çıktı sağlayıcının token adresine mi), ≤ 20 kredi, bakiyeye yaz |
-| `POST` | `/v1/credits/return` `{ credits }` | 0 (auth) | kullanılmayan krediyi token olarak geri gönder (kit `TokenKit.send`) |
-| `GET` | `/v1/credits/balance` | 0 (auth) | ön ödemeli bakiye |
+| `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | 0 (auth zorunlu) | BSV-21 transferini doğrula: ürünün token'ı, çıktı provider-api'nin token adreslerinden birine kilitli, ≤ 20 kredi ve bekleyen ≤ 20, **gönderen = çağıran** (tx çağıranın kendi token çıktılarını harcıyor; overlay'de gördüğü transferi başkası sahiplenemez), soy (`verifyLineage`; A.P2'ye kadar overlay), tek kullanım. `bsv21` basket'ine al, bakiyeye yaz. Hata kodları: `ERR_WRONG_TOKEN`, `ERR_NOT_OURS`, `ERR_REDEEM_LIMIT`, `ERR_NOT_SENDER` (403), `ERR_BAD_LINEAGE`, `ERR_REDEEM_REPLAYED` (409) |
+| `POST` | `/v1/credits/return` `{ credits, product? }` | 0 (auth) | kullanılmayan **tam** krediyi token olarak geri gönder (kit `TokenKit.send`); bir krediden küçük artık ön ödemeli kalır. `{ txid, credits, prepaidMinutes }` |
+| `GET` | `/v1/credits/balance` | 0 (auth) | ön ödemeli bakiye: ürün başına `{ minutesPerCredit, prepaidMinutes, returnableCredits }` |
 
-Ürün konfigürasyonu `apps/provider-api/products/<id>.json`: `{ id, label, unit, retailSatsPerCredit, tokenId, simulate: { minutesPerSecond } }`. SmartRoute ileride ayrı bir `products/` kaydı ve ayrı bir "runner" olur.
+Ürün konfigürasyonu `apps/provider-api/products/<id>.json`: `{ id, label, unit, retailSatsPerCredit, minutesPerCredit?, tokenId, simulate: { minutesPerSecond, gpus? } }` (`minutesPerCredit` = bir kredinin kaç GPU-dakika olduğu, varsayılan 1; **gpu-h100: 60**. Redeem edilen kredi bakiyeye `credits × minutesPerCredit` dakika ekler, işler dakika düşer. `gpus` = aynı anda koşan iş sayısı, varsayılan 8). SmartRoute ileride ayrı bir `products/` kaydı ve ayrı bir "runner" olur.
 
 ### 3.7 Guard API (D) — `GUARD_URL`
 
