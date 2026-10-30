@@ -10,7 +10,7 @@
  *  - retries failed requests with exponential backoff.
  * Set WOC_API_KEY for higher limits.
  */
-import { WhatsOnChain, type ChainTracker } from '@bsv/sdk'
+import { WhatsOnChain, type ChainTracker } from '@agentcoop/core/sdk'
 
 export class ResilientChainTracker implements ChainTracker {
   private readonly inner: WhatsOnChain

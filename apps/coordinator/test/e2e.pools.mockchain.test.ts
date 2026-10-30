@@ -8,14 +8,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LockingScript, Transaction, UnlockingScript } from '@bsv/sdk'
+import { LockingScript, Transaction, UnlockingScript } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { WebSocket } from 'ws'
 import { startOverlay, type RunningOverlay } from '../../../packages/overlay/src/server'
-import { createMockChain, type MockChain } from '../../../packages/overlay/test/helpers/mockchain'
+import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
 import { broadcastMock, buildSettlement, SCOPE_ALL, SCOPE_SINGLE_ACP, signInput, submitToOverlay } from '../../../packages/overlay/test/helpers/settlement'
 import { beefOf, openPool, pledge, type OpenedPool } from '../../../packages/overlay/test/helpers/pool'
-import type { Offer } from '../../../packages/overlay/src/stub/types'
+import type { Offer } from '@agentcoop/core'
 import { ManualHeight } from '../src/chain'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
 
@@ -103,7 +103,7 @@ describe('coordinator side API + WS feed', () => {
 
   it('POST /offers rejects an ALL-signed offer, mismatched terms and a bad hello', async () => {
     const all = await postOffer(await signOffer(p, SCOPE_ALL))
-    expect(all).toMatchObject({ status: 400, body: { code: 'SIGHASH_NOT_SINGLE_ACP' } })
+    expect(all).toMatchObject({ status: 400, body: { code: 'BAD_OFFER' } })
     const good = await signOffer(p, SCOPE_SINGLE_ACP)
     expect(await postOffer({ ...good, terms: { ...good.terms, priceSats: '1' } })).toMatchObject({ status: 400, body: { code: 'TERMS_MISMATCH' } })
     expect(await postOffer({ ...good, poolId: `${'00'.repeat(32)}_0` })).toMatchObject({ status: 404, body: { code: 'POOL_NOT_FOUND' } })

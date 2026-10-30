@@ -7,13 +7,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LockingScript, Random, Transaction, UnlockingScript, Utils } from '@bsv/sdk'
+import { LockingScript, Random, Transaction, UnlockingScript, Utils } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { startOverlay, type RunningOverlay } from '../../../packages/overlay/src/server'
-import { buildBsv21Script } from '../../../packages/overlay/src/kit/inscription'
-import { instructionsFor, receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL } from '../../../packages/overlay/src/kit/addresses'
-import type { Listing, Offer } from '../../../packages/overlay/src/stub/types'
-import { createMockChain, type MockChain } from '../../../packages/overlay/test/helpers/mockchain'
+import { buildBsv21Script } from '@agentcoop/core'
+import { instructionsFor, receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL } from '@agentcoop/core'
+import type { Listing, Offer } from '@agentcoop/core'
+import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
 import {
   broadcastMock, coinFrom, deployCredits, lookup, makePledgeCoin, p2pkhFor, SCOPE_ALL, SCOPE_SINGLE_ACP, signInput, submitToOverlay, type Coin
 } from '../../../packages/overlay/test/helpers/settlement'
@@ -22,7 +22,7 @@ import { ManualHeight } from '../src/chain'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
 import type { CoordinatorConfig } from '../src/config'
-import { devProtocol } from './helpers/devProtocol'
+import { coreProtocol } from '../src/protocol'
 import { startBot, type Bot } from './helpers/participant'
 
 let chain: MockChain
@@ -34,10 +34,17 @@ const logs: any[] = []
 let provider: Wallet, seller: Wallet, buyer: Wallet, silent: Wallet, signer: Wallet
 
 const startCoop = async (): Promise<RunningCoordinator> => await startCoordinator(config, {
-  height, protocol: devProtocol(chain.services), spent: noSpentChecker, log: (event, f) => { logs.push({ event, ...f }) }
+  height, protocol: coreProtocol({ arcadeUrl: 'http://unused.invalid', policy: async () => ({ height: 500, satsPerKb: 100 }), broadcast: async tx => { await broadcastMock(chain.services, tx); return tx.id('hex') } }), spent: noSpentChecker, log: (event, f) => { logs.push({ event, ...f }) }
 })
 const submit = async (atomicBeef: number[]): Promise<void> => { expect((await submitToOverlay(overlay.url, beefOf(atomicBeef))).status).toBe(200) }
-const get = async (path: string): Promise<any> => await (await fetch(`${coop.url}${path}`)).json()
+/** GET with one retry: right after a coordinator restart a pooled keep-alive socket can still be the old server's. */
+const get = async (path: string): Promise<any> => {
+  try {
+    return await (await fetch(`${coop.url}${path}`)).json()
+  } catch {
+    return await (await fetch(`${coop.url}${path}`)).json()
+  }
+}
 const post = async (path: string, body: unknown): Promise<{ status: number, body: any }> => {
   const res = await fetch(`${coop.url}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   return { status: res.status, body: await res.json() }
@@ -102,12 +109,12 @@ describe('market listings', () => {
 
     l600 = await signListing(c600, tokenId, 600n, 700) // 1.17 sat/credit
     l400 = await signListing(c400, tokenId, 400n, 400) // 1.00 sat/credit
-    expect(await post('/listings', { ...l600, credits: '500' })).toMatchObject({ status: 400, body: { code: 'LISTING_MISMATCH' } })
+    expect(await post('/listings', { ...l600, credits: '500' })).toMatchObject({ status: 400, body: { code: 'BAD_LISTING' } })
     const tx = new Transaction()
     tx.addInput({ sourceTransaction: c400.sourceTransaction, sourceOutputIndex: c400.vout, unlockingScript: new UnlockingScript([]), sequence: 0xffffffff })
     tx.addOutput({ lockingScript: LockingScript.fromHex(l400.payScriptHex), satoshis: 400 })
     const all = await signInput(seller, tx, 0, c400.key, SCOPE_ALL)
-    expect(await post('/listings', { ...l400, unlockingScriptHex: all.toHex() })).toMatchObject({ status: 400, body: { code: 'SIGHASH_NOT_SINGLE_ACP' } })
+    expect(await post('/listings', { ...l400, unlockingScriptHex: all.toHex() })).toMatchObject({ status: 400, body: { code: 'BAD_LISTING' } })
     expect(await post('/listings', { ...l400, outpoint: `${'00'.repeat(32)}_0` })).toMatchObject({ status: 404, body: { code: 'LISTING_NOT_ON_OVERLAY' } })
     expect((await post('/listings', l600)).status).toBe(201)
     expect((await post('/listings', l400)).status).toBe(201)

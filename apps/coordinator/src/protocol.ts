@@ -1,11 +1,11 @@
 /**
  * What the coordinator needs from Track A's core (MASTER §3.4), injected so
- * the coordinator does not re-implement the protocol. When @agentcoop/core
- * lands, an adapter maps these onto A's planSettlement(offer, pledges, chain),
+ * the coordinator does not re-implement the protocol: `coreProtocol` below
+ * maps it onto A's planSettlement(offer, pledges, chain),
  * assembleSettlement(plan, unlockingScripts) and broadcastEF(tx, arcadeUrl).
  */
-import type { Transaction } from '@bsv/sdk'
-import type { Offer, SettlementPlan } from '../../../packages/overlay/src/stub/types'
+import { UnlockingScript, type Transaction } from '@agentcoop/core/sdk'
+import { assembleSettlement, broadcastEF, fetchChainPolicy, planSettlement, type Offer, type PledgeCandidate as CorePledgeCandidate, type SettlementPlan } from '@agentcoop/core'
 import type { PledgeView } from '../../../packages/overlay/src/views'
 
 /** A valid, unspent pledge from the overlay, in coordinator order, with its source transaction (BEEF ancestry). */
@@ -29,4 +29,44 @@ export interface SettlementProtocol {
   assembleSettlement: (plan: SettlementPlan, offer: Offer, unlockingScripts: Map<number, string>) => Transaction
   /** Broadcast (Arcade, EF); resolves to the txid or throws. */
   broadcast: (tx: Transaction) => Promise<string>
+}
+
+/**
+ * Track A's protocol (@agentcoop/core): planSettlement, assembleSettlement,
+ * broadcastEF. The default for `npm run coordinator`. Tests override
+ * `broadcast` (mock chain) and `policy` (fixed height and fee rate).
+ */
+export function coreProtocol (opts: {
+  arcadeUrl: string
+  /** fixed chain policy instead of Arcade /health (tests) */
+  policy?: () => Promise<{ height: number, satsPerKb: number }>
+  broadcast?: (tx: Transaction) => Promise<string>
+}): SettlementProtocol {
+  let cached: { at: number, value: { height: number, satsPerKb: number } } | undefined
+  const policy = opts.policy ?? (async () => {
+    if (cached === undefined || Date.now() - cached.at > 60_000) {
+      const p = await fetchChainPolicy(opts.arcadeUrl)
+      cached = { at: Date.now(), value: { height: p.height, satsPerKb: p.satsPerKb } }
+    }
+    return cached.value
+  })
+  return {
+    async planSettlement (req) {
+      const { height, satsPerKb } = await policy()
+      const pledges: CorePledgeCandidate[] = req.pledges.map(({ view, sourceTx }) => ({
+        outpoint: view.outpoint,
+        satoshis: view.coinSats,
+        lockingScriptHex: sourceTx.outputs[view.vout].lockingScript.toHex(),
+        record: { v: '1', poolId: view.poolId, credits: view.credits, participant: view.participant, tokenIndex: view.tokenIndex, signer: view.signer },
+        sourceTx,
+        ...(view.height !== undefined ? { blockHeight: view.height } : {})
+      }))
+      return planSettlement(req.offer, pledges, { height: req.height ?? height, satsPerKb, offerSourceTx: req.creditSourceTx }, { round: req.round, exclude: req.exclude })
+    },
+    assembleSettlement (plan, _offer, scripts) {
+      // The template already carries the offer's unlocking script at input 0.
+      return assembleSettlement(plan, Object.fromEntries([...scripts].map(([i, hex]) => [i, UnlockingScript.fromHex(hex)])))
+    },
+    broadcast: opts.broadcast ?? (async tx => await broadcastEF(tx, opts.arcadeUrl))
+  }
 }

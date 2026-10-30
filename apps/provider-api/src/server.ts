@@ -1,0 +1,59 @@
+/**
+ * `npm run provider`: the simulated GPU provider API.
+ *
+ * Env (.env, MASTER §3.9): WALLET_PROVIDER_API_KEY (64 hex, required),
+ * PROVIDER_API_URL (port taken from it; default http://localhost:8092),
+ * OVERLAY_URL (credit tokens), NETWORK, ARCADE_URL, COOP_API_URL, DATA_DIR.
+ *
+ * State in <DATA_DIR>: wallets/provider-api.sqlite, provider/jobs.json,
+ * provider/balances.json (prepaid credits), provider/outbox.json (overlay queue).
+ */
+import { join } from 'node:path'
+import { dataDir, loadDotEnv, network, requireEnv } from '@agentcoop/core/node/env'
+import { openServerWallet } from '@agentcoop/core/node/serverWallet'
+import { COOP_SERVICE, COOP_TOPIC, OverlayClient, type OutboxItem } from '@agentcoop/core'
+import { createProviderApp } from './app'
+import { CreditLedger } from './credits'
+import { JsonFile } from './jsonFile'
+import { loadProducts } from './products'
+import { JobRunner } from './runner'
+
+loadDotEnv()
+const data = dataDir()
+const apiUrl = new URL(process.env.PROVIDER_API_URL ?? 'http://localhost:8092')
+const port = Number(process.env.PORT ?? (apiUrl.port || 8092))
+
+const { wallet, identityKey, close } = await openServerWallet({
+  name: 'provider-api',
+  rootKeyHex: requireEnv('WALLET_PROVIDER_API_KEY'),
+  dataDir: data,
+  chain: network(),
+  arcadeUrl: process.env.ARCADE_URL
+})
+const products = loadProducts()
+const runner = new JobRunner({ products, file: join(data, 'provider', 'jobs.json') })
+const ledger = new CreditLedger(join(data, 'provider', 'balances.json'))
+const outbox = new JsonFile<OutboxItem[]>(join(data, 'provider', 'outbox.json'), () => [])
+const overlay = new OverlayClient(
+  process.env.OVERLAY_URL ?? 'http://localhost:8080',
+  { load: () => outbox.read(), save: items => { outbox.write(items) } },
+  network(),
+  process.env.ARCADE_URL,
+  COOP_TOPIC,
+  COOP_SERVICE
+)
+const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL })
+
+const server = app.listen(port, () => {
+  console.log(`provider-api on http://localhost:${port}  (server identity ${identityKey}, ${network()}net, overlay ${overlay.url})`)
+  for (const p of products) console.log(`  ${p.id}: ${p.label}, ${p.retailSatsPerCredit} sat/${p.unit} retail, token ${p.tokenId ?? '(not minted yet)'}`)
+})
+
+const shutdown = async (): Promise<void> => {
+  runner.stop()
+  server.close()
+  await close()
+  process.exit(0)
+}
+process.on('SIGINT', () => { void shutdown() })
+process.on('SIGTERM', () => { void shutdown() })

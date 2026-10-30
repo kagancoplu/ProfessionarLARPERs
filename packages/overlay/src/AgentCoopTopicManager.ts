@@ -1,9 +1,9 @@
 import type { TopicManager } from '@bsv/overlay'
-import { Transaction, type AdmittanceInstructions } from '@bsv/sdk'
-import { identifyAdmissible, type RuleOptions } from './kit/rules'
-import { parseOpReturn } from './stub/opreturn'
+import { Transaction, type AdmittanceInstructions } from '@agentcoop/core/sdk'
+import { identifyAdmissible, type RuleOptions } from '@agentcoop/core'
+import { parseOpReturn } from '@agentcoop/core'
 import { isP2pkhHex, PLEDGE_COIN_VOUT, validatePledgeRecord, validatePoolRecord, validateSettleRecord, validateVaultRecord } from './records'
-import { isVaultScriptHex } from './stub/vault'
+import { isVaultScriptHex } from './vault'
 
 export const TOPIC = 'tm_agentcoop'
 

@@ -10,6 +10,8 @@
     "./types": "./src/types.ts",
     "./kit/*": "./src/kit/*.ts",
     "./scripts/*": "./src/scripts/*.ts",
-    "./signers/*": "./src/signers/*.ts"
+    "./signers/*": "./src/signers/*.ts",
+    "./node/*": "./src/node/*.ts",
+    "./register-sdk": "./register-sdk.mjs"
   }
 }

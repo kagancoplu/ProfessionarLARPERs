@@ -7,8 +7,8 @@
  * a fully signed settlement. Participants that do not sign are blacklisted
  * and replaced from the waiting list; at most `maxRounds` rounds per attempt.
  */
-import { Transaction, UnlockingScript } from '@bsv/sdk'
-import type { Offer, SettlementPlan } from '../../../packages/overlay/src/stub/types'
+import { Transaction, UnlockingScript } from '@agentcoop/core/sdk'
+import type { Offer, SettlementPlan } from '@agentcoop/core'
 import type { PoolView } from '../../../packages/overlay/src/views'
 import type { HeightSource } from './chain'
 import type { Logger } from './log'

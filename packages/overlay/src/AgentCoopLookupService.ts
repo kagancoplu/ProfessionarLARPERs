@@ -1,15 +1,15 @@
 import type { LookupFormula, LookupService, OutputAdmittedByTopic, OutputSpent } from '@bsv/overlay'
-import { Transaction, Utils, type LookupQuestion } from '@bsv/sdk'
+import { Transaction, Utils, type LookupQuestion } from '@agentcoop/core/sdk'
 import type { Knex } from 'knex'
-import { decodeBsv21, tokenIdFromOutpoint } from './kit/inscription'
-import { GAP_LIMIT, receivePkh } from './kit/addresses'
+import { decodeBsv21, tokenIdFromOutpoint } from '@agentcoop/core'
+import { GAP_LIMIT, receivePkh } from '@agentcoop/core'
 import { TOPIC } from './AgentCoopTopicManager'
-import { parseOpReturn } from './stub/opreturn'
-import type { PoolTerms } from './stub/types'
+import { parseOpReturn } from '@agentcoop/core'
+import type { PoolTerms } from '@agentcoop/core'
 import type { PledgeView, PoolStatus, PoolView, SettlementView, VaultView } from './views'
 export type { PledgeView, PoolStatus, PoolView, SettlementView, VaultView } from './views'
 import type { OverlayEvents } from './events'
-import { expectedVaultScript, isVaultScriptHex } from './stub/vault'
+import { expectedVaultScript, isVaultScriptHex } from './vault'
 import {
   PLEDGE_COIN_VOUT,
   PLEDGE_FEE_VOUT,

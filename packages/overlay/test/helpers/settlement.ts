@@ -21,9 +21,9 @@ import {
   type LockingScript,
   type WalletInterface,
   type WalletProtocol
-} from '@bsv/sdk'
-import { buildBsv21Script } from '../../src/kit/inscription'
-import { receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL, instructionsFor } from '../../src/kit/addresses'
+} from '@agentcoop/core/sdk'
+import { buildBsv21Script } from '@agentcoop/core'
+import { receivePkh, TOKEN_BASKET, TOKEN_PROTOCOL, instructionsFor } from '@agentcoop/core'
 import { agentcoopOpReturn } from '../../scripts/settlementSize'
 
 export const SCOPE_ALL = TransactionSignature.SIGHASH_ALL | TransactionSignature.SIGHASH_FORKID

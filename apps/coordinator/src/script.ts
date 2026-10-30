@@ -1,4 +1,4 @@
-import { Spend, type Transaction } from '@bsv/sdk'
+import { Spend, type Transaction } from '@agentcoop/core/sdk'
 
 /** Run the script interpreter on one input of a transaction whose inputs carry sourceTransaction (true = valid). */
 export function inputIsValid (tx: Transaction, inputIndex: number): boolean {

@@ -1,0 +1,16 @@
+{
+  "name": "@agentcoop/provider-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Simulated GPU provider: BRC-105 paid job API, credit redeem/return, job runner",
+  "scripts": {
+    "start": "tsx --import @agentcoop/core/register-sdk src/server.ts"
+  },
+  "dependencies": {
+    "@agentcoop/core": "*",
+    "@bsv/auth-express-middleware": "2.2.9",
+    "@bsv/payment-express-middleware": "2.1.9",
+    "express": "5.3.0"
+  }
+}
