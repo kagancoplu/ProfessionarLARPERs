@@ -12,7 +12,7 @@
  */
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,7 +32,17 @@ if (existsSync(envFile)) {
   }
 }
 
-const dataDir = resolve(root, process.env.DATA_DIR ?? 'data')
+// An empty DATA_DIR= (as in .env.example) means the default, not the repo root (D's 23:05 finding).
+const dataDir = resolve(root, process.env.DATA_DIR?.trim() || 'data')
+// Earlier runs with DATA_DIR= kept their state in <repo>/overlay and <repo>/coordinator: refuse to
+// start on a missing or older database (the overlay would forget the pools) and say how to move it.
+for (const d of ['overlay', 'coordinator']) {
+  const [old, db] = [join(root, d, `${d}.db`), join(dataDir, d, `${d}.db`)]
+  if (old !== db && existsSync(old) && (!existsSync(db) || statSync(old).mtimeMs > statSync(db).mtimeMs)) {
+    console.error(`[infra] ${old} is newer than ${db} (or that is missing): state from a run with an empty DATA_DIR. Stop the services, then:\n  mkdir -p ${join(dataDir, d)} && mv ${join(root, d)}/* ${join(dataDir, d)}/\nor run with DATA_DIR=${root}.`)
+    process.exit(1)
+  }
+}
 for (const d of ['overlay', 'coordinator', 'coordinator2']) mkdirSync(join(dataDir, d), { recursive: true })
 const keyFile = join(dataDir, 'overlay', 'overlay.key')
 if (process.env.OVERLAY_PRIVATE_KEY === undefined || process.env.OVERLAY_PRIVATE_KEY === '') {

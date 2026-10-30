@@ -31,6 +31,12 @@ export interface PledgeView {
   credits: string
   tokenIndex: string
   signer: 'p2pkh' | 'vault'
+  /** A-P5 5.3: the credits settle onto the coin's vault script. */
+  creditLock?: 'vault'
+  /** A-P5 5.5: offline human; its guard co-signs at settlement. */
+  mode?: 'lighthouse'
+  guard?: string
+  lhId?: string
   coinSats: number
   height?: number
   spent: boolean

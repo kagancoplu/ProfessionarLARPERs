@@ -10,6 +10,8 @@
  *
  * SCALE_CASES=50,100,50v10 (default; "50v10" = 50 participants, 10 of them vault
  * agents) picks the cases; SCALE_OUT=<file> also appends the JSON lines there.
+ *
+ * Runs only with SCALE=1 (`npm run test:scale`, ~6 min): root `npm test` stays short.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { appendFileSync, mkdtempSync } from 'node:fs'
@@ -83,7 +85,10 @@ async function vaultAgent (w: Wallet, owner: Wallet, provider: Wallet, terms: Po
   return { ...bot, beef: p.beef }
 }
 
+const RUN = process.env.SCALE === '1'
+
 beforeAll(async () => {
+  if (!RUN) return
   chain = await createMockChain()
   const dir = mkdtempSync(join(tmpdir(), 'agentcoop-scale-'))
   overlay = await startOverlay({ port: 18990, dbFile: join(dir, 'overlay.db'), chainTracker: chain.chainTracker, quiet: true })
@@ -106,7 +111,7 @@ afterAll(async () => {
   await chain?.close()
 }, 120_000)
 
-describe('scale: one settlement, many participants', () => {
+describe.skipIf(!RUN)('scale: one settlement, many participants', () => {
   for (const { n, vaults } of CASES) {
     it(`${n} participants${vaults > 0 ? ` (${vaults} of them vault agents)` : ''} settle in one transaction`, async () => {
       const t0 = Date.now()

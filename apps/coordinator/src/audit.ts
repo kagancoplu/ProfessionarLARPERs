@@ -5,18 +5,20 @@
  * Chain facts (anyone can recompute them): the settle record's
  * pledgeListHash equals the hash of the inputs actually included, the
  * provider got exactly P at output 0, every included pledge got its credits
- * at its own receive address. The selection check re-runs Track A's
+ * at its own receive address (or, for a vault-locked pledge, on its own vault
+ * script: A's creditScriptFor). The selection check re-runs Track A's
  * planSettlement on the pool's pledges with the coordinator's *declared*
  * blacklist: the reasons in it (timeout, bad signature, …) are the
  * coordinator's word, not chain facts. Censorship is detectable, not
  * prevented (FINAL-IDEA §8).
  */
 import {
-  decodeBsv21, orderPledges, parseOpReturn, planSettlement, pledgeListHash, receivePkh, termsHash,
+  creditScriptFor, decodeBsv21Owned, orderPledges, parseOpReturn, planSettlement, pledgeListHash, termsHash,
   type PledgeCandidate, type PoolTerms
 } from '@agentcoop/core'
 import type { Transaction } from '@agentcoop/core/sdk'
 import type { PledgeView } from '../../../packages/overlay/src/views'
+import { coreCandidate } from './candidates'
 import type { CoordinatorStatus } from './engine'
 import type { OverlayLookup } from './overlay'
 import type { OfferSource } from './offers'
@@ -85,9 +87,12 @@ export async function auditPool (deps: AuditDeps, poolId: string): Promise<Audit
   const out0 = tx.outputs[0]
   const providerPaid = out0 !== undefined && out0.satoshis === Number(terms.priceSats) && out0.lockingScript.toHex() === terms.payScriptHex
   const allIncludedValid = included.every(v => v !== undefined && (v.valid || v.spendingTxid === tx.id('hex')))
-  const creditOutputs = tx.outputs.map(o => decodeBsv21(o.lockingScript)).filter(d => d !== null && d.op === 'transfer' && d.id === terms.tokenId)
-  const delivered = included.every(v => v !== undefined &&
-    creditOutputs.some(d => d!.ownerPkh === receivePkh(v.participant, Number(v.tokenIndex)) && d!.amt === v.credits))
+  const creditOutputs = tx.outputs.map(o => decodeBsv21Owned(o.lockingScript)).filter(d => d !== null && d.op === 'transfer' && d.id === terms.tokenId)
+  const outputScripts = new Set(tx.outputs.map(o => o.lockingScript.toHex()))
+  const delivered = includedOutpoints.every(o => {
+    const c = byOutpoint.get(o)
+    return c !== undefined && outputScripts.has(creditScriptFor(terms.tokenId, coreCandidate(c.view, c.sourceTx)).toHex())
+  })
   const creditsDelivered = delivered && creditOutputs.reduce((sum, d) => sum + d!.amount, 0n) === BigInt(terms.credits)
 
   // ── selection rule, with the coordinator's declared blacklist ──
@@ -95,14 +100,7 @@ export async function auditPool (deps: AuditDeps, poolId: string): Promise<Audit
   const cancelled = (v: PledgeView): boolean => v.spent && v.spendingTxid !== tx.id('hex')
   const candidates: PledgeCandidate[] = all
     .filter(c => !cancelled(c.view) && (c.view.valid || c.view.spendingTxid === tx.id('hex') || c.view.invalidReason === 'pool settled'))
-    .map(c => ({
-      outpoint: c.view.outpoint,
-      satoshis: c.view.coinSats,
-      lockingScriptHex: c.sourceTx.outputs[c.view.vout].lockingScript.toHex(),
-      record: { v: '1', poolId, credits: c.view.credits, participant: c.view.participant, tokenIndex: c.view.tokenIndex, signer: c.view.signer },
-      sourceTx: c.sourceTx,
-      ...(c.view.height !== undefined ? { blockHeight: c.view.height } : {})
-    }))
+    .map(c => coreCandidate(c.view, c.sourceTx))
   let selectionMatches: boolean | null = null
   let expected: string[] | undefined
   if (offer === undefined) {

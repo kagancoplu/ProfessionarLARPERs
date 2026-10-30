@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "test": "vitest run",
+    "test:scale": "SCALE=1 vitest run apps/coordinator/test/e2e.scale.mockchain.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "provider": "tsx --import @agentcoop/core/register-sdk apps/provider-api/src/server.ts",
     "provider-cli": "tsx --import @agentcoop/core/register-sdk apps/provider-cli/src/cli.ts",

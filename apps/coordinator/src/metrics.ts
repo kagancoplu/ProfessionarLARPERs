@@ -5,28 +5,28 @@
  *
  * custodiedSats: every output of every settlement must be one of
  *   provider payment (out0 = priceSats → payScriptHex),
- *   a participant's credits (BSV-21 to receivePkh(participant, tokenIndex)),
+ *   a participant's credits (A's creditScriptFor: BSV-21 to receivePkh(participant,
+ *   tokenIndex), or onto its own vault script for a vault-locked pledge),
  *   a participant's change (back to its own pledge coin script),
  *   the OP_RETURN record.
  * Satoshis in any other output are counted as custodied, i.e. sent somewhere
  * no participant or the provider controls. Zero is a computed result.
  */
-import { decodeBsv21, parseOpReturn, receivePkh, type PoolTerms } from '@agentcoop/core'
+import { creditScriptFor, parseOpReturn, type PledgeCandidate, type PoolTerms } from '@agentcoop/core'
 import type { Transaction } from '@agentcoop/core/sdk'
-import type { PledgeView } from '../../../packages/overlay/src/views'
 import { derivePools, type ApiDeps } from './api'
+import { coreCandidate } from './candidates'
 
 export type OutputClass = 'provider' | 'credits' | 'change' | 'record' | 'unaccounted'
 
 /** Classify each output of a settlement (MASTER §3.3 layout). */
-export function classifySettlement (tx: Transaction, terms: Pick<PoolTerms, 'priceSats' | 'payScriptHex' | 'tokenId'>, included: Array<Pick<PledgeView, 'participant' | 'tokenIndex' | 'credits'> & { lockingScriptHex: string }>): OutputClass[] {
-  const creditPkhs = new Set(included.map(p => `${receivePkh(p.participant, Number(p.tokenIndex))}:${p.credits}`))
+export function classifySettlement (tx: Transaction, terms: Pick<PoolTerms, 'priceSats' | 'payScriptHex' | 'tokenId'>, included: Array<Pick<PledgeCandidate, 'record' | 'lockingScriptHex'>>): OutputClass[] {
+  const creditScripts = new Set(included.map(p => creditScriptFor(terms.tokenId, p).toHex()))
   const changeScripts = new Set(included.map(p => p.lockingScriptHex))
   return tx.outputs.map((o, i) => {
     const hex = o.lockingScript.toHex()
     if (i === 0 && hex === terms.payScriptHex && o.satoshis === Number(terms.priceSats)) return 'provider'
-    const d = decodeBsv21(o.lockingScript)
-    if (d !== null && d.op === 'transfer' && d.id === terms.tokenId && creditPkhs.has(`${d.ownerPkh}:${d.amt}`)) return 'credits'
+    if (creditScripts.has(hex)) return 'credits'
     if (changeScripts.has(hex)) return 'change'
     if (parseOpReturn(o.lockingScript) !== null && (o.satoshis ?? 0) === 0) return 'record'
     return 'unaccounted'
@@ -79,7 +79,7 @@ export async function computeMetrics (deps: ApiDeps): Promise<Metrics> {
     const byOutpoint = new Map(all.map(c => [c.view.outpoint, c]))
     const included = tx.inputs.slice(1).map(inp => byOutpoint.get(`${inp.sourceTXID ?? inp.sourceTransaction!.id('hex')}_${inp.sourceOutputIndex}`))
       .filter(c => c !== undefined)
-      .map(c => ({ ...c!.view, lockingScriptHex: c!.sourceTx.outputs[c!.view.vout].lockingScript.toHex() }))
+      .map(c => coreCandidate(c!.view, c!.sourceTx))
     classifySettlement(tx, pool.terms, included).forEach((cls, vout) => {
       outputsClassified++
       if (cls === 'unaccounted') unaccounted.push({ txid: tx.id('hex'), vout, satoshis: tx.outputs[vout].satoshis ?? 0 })

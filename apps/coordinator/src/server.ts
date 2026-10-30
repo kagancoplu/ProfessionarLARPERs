@@ -1,7 +1,7 @@
 /**
  * AgentCoop coordinator + side API: `npm run coordinator` → http://localhost:8090
  *
- * POST/GET /offers, GET /pools, /pools/:id, /pools/:id/pledges, /healthz,
+ * POST/GET /offers, POST /pledges/lighthouse, GET /pools, /pools/:id, /pools/:id/pledges, /healthz,
  * WS /ws (hello, pool_update; with a settlement protocol also the signing
  * rounds: sign_request/response/reject, round_failed, settled, pool_failed).
  * The coordinator holds no funds and no keys; anyone can run one (FINAL-IDEA §4.5).
@@ -9,6 +9,7 @@
  * Env: PORT (8090), OVERLAY_URL (http://localhost:8080), ARCADE_URL (block
  * height for `failed`), COORDINATOR_DB (./data/coordinator.db), COORDINATOR_POLL_MS (5000),
  * ROUND_TIMEOUT_MS (60000), MAX_ROUNDS (3), SPENT_CHECK (woc|none), NETWORK (main|test),
+ * LIGHTHOUSE_GUARDS (comma-separated guard URLs; default GUARD_URL or http://localhost:8091),
  * public edge (B-P5a): RATE_LIMIT (on|off), RATE_GET_PER_MIN (120), RATE_POST_PER_MIN (10),
  * WS_MAX_PER_IP (20), WS_MAX_CLIENTS (1000), WS_MAX_MSGS_PER_10S (40).
  */
@@ -27,6 +28,7 @@ import { coreProtocol, type SettlementProtocol } from './protocol'
 import { noSpentChecker, WocSpentChecker, type SpentChecker } from './spent'
 import { OverlayLookup } from './overlay'
 import { OfferSource } from './offers'
+import { GuardDirectory, lighthouseDesk } from './lighthouse'
 import { CoordinatorStore } from './store'
 import { Feed } from './ws'
 
@@ -52,6 +54,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
   let engine: CoordinatorEngine | undefined
   const overlay = new OverlayLookup(config.overlayUrl)
   const offers = new OfferSource(overlay, store)
+  const lighthouse = lighthouseDesk(store, new GuardDirectory(config.lighthouseGuards ?? []))
   const deps: ApiDeps = {
     overlay,
     store,
@@ -59,6 +62,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
     height: opts.height ?? new ArcadeHeight(config.arcadeUrl),
     locking: () => engine?.locking() ?? new Set<string>(),
     feedCounts: () => feed.counts(),
+    lighthouse,
     ...(opts.protocol !== undefined ? { coordinatorStatus: (poolId: string) => engine?.status(poolId) } : {})
   }
   const app = express()
@@ -89,7 +93,8 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
       protocol: opts.protocol,
       spent: opts.spent ?? (config.spentCheck === 'woc' ? new WocSpentChecker(config.network) : noSpentChecker),
       feed,
-      log: opts.log ?? jsonLogger
+      log: opts.log ?? jsonLogger,
+      lighthouse
     }, { roundTimeoutMs: config.roundTimeoutMs, maxRounds: config.maxRounds, tickMs: config.pollMs })
     feed.onParticipantMessage = (identity, msg) => engine!.onParticipantMessage(identity, msg)
   }

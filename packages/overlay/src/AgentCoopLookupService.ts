@@ -1,7 +1,7 @@
 import type { LookupFormula, LookupService, OutputAdmittedByTopic, OutputSpent } from '@bsv/overlay'
 import { Transaction, Utils, type LookupQuestion } from '@agentcoop/core/sdk'
 import type { Knex } from 'knex'
-import { decodeBsv21, tokenIdFromOutpoint } from '@agentcoop/core'
+import { decodeBsv21, decodeBsv21Owned, tokenIdFromOutpoint } from '@agentcoop/core'
 import { GAP_LIMIT, receivePkh } from '@agentcoop/core'
 import { TOPIC } from './AgentCoopTopicManager'
 import { parseOpReturn } from '@agentcoop/core'
@@ -51,13 +51,17 @@ export type AgentCoopQuery =
   | { op: 'vault', vaultId: string }
   | { op: 'listings', tokenId?: string }
   | { op: 'offers', poolId: string }
+  | { op: 'vaultCredits', vaultHash: string, tokenId?: string, includeSpent?: boolean }
 
 /** Per-output metadata returned in each lookup answer's `context` (UTF-8 JSON). */
 export interface OutputContext {
   tokenId: string
   op: string
   amt: string
+  /** '' when the owner is a vault script (then ownerVaultHash is set). */
   ownerPkh: string
+  /** sha256 of the Mandate Vault script owning a vault-locked credit (A-P5 5.3, `vaultScriptHash`). */
+  ownerVaultHash?: string
   spent: boolean
   spendingTxid?: string
   /** Receive-key index, only for `identity` queries. */
@@ -73,6 +77,7 @@ interface OutputRow {
   op: string
   amt: string
   owner_pkh: string
+  owner_vault_hash: string | null
   spent: number
   spending_txid: string | null
 }
@@ -96,6 +101,10 @@ interface PledgeRow {
   credits: string
   token_index: string
   signer: 'p2pkh' | 'vault'
+  credit_lock: 'vault' | null
+  mode: 'lighthouse' | null
+  guard: string | null
+  lh_id: string | null
   coin_sats: number
   fee_out_sats: number | null
   fee_out_script_hex: string | null
@@ -231,6 +240,24 @@ export const migrations = [{
   async down (knex: Knex): Promise<void> {
     for (const t of [VAULTS, VAULT_OUTPUTS]) await knex.schema.dropTableIfExists(t)
   }
+}, {
+  // A-P5: vault-locked credits (owner = a vault script) and the pledge record's creditLock / lighthouse fields.
+  name: '2026-10-31-004-agentcoop-credit-locks',
+  async up (knex: Knex): Promise<void> {
+    await knex.schema.alterTable(OUTPUTS, t => {
+      t.string('owner_vault_hash', 64).index()
+    })
+    await knex.schema.alterTable(PLEDGES, t => {
+      t.string('credit_lock', 8)
+      t.string('mode', 16)
+      t.string('guard', 66)
+      t.string('lh_id', 64)
+    })
+  },
+  async down (knex: Knex): Promise<void> {
+    await knex.schema.alterTable(OUTPUTS, t => { t.dropColumn('owner_vault_hash') })
+    await knex.schema.alterTable(PLEDGES, t => { for (const c of ['credit_lock', 'mode', 'guard', 'lh_id']) t.dropColumn(c) })
+  }
 }]
 
 const isHex = (s: unknown, len: number): s is string => typeof s === 'string' && s.length === len && /^[0-9a-f]+$/.test(s)
@@ -263,7 +290,7 @@ export class AgentCoopLookupService implements LookupService {
       return
     }
 
-    const d = decodeBsv21(output.lockingScript)
+    const d = decodeBsv21Owned(output.lockingScript)
     if (d !== null) {
       const tokenId = d.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, outputIndex) : d.id!
       await this.knex(OUTPUTS).insert({
@@ -272,7 +299,8 @@ export class AgentCoopLookupService implements LookupService {
         token_id: tokenId,
         op: d.op,
         amt: d.amt,
-        owner_pkh: d.ownerPkh,
+        owner_pkh: d.owner.kind === 'p2pkh' ? d.owner.pkh : '',
+        owner_vault_hash: d.owner.kind === 'vault' ? d.owner.vaultHash : null,
         satoshis: output.satoshis ?? 0
       }).onConflict(['txid', 'vout']).ignore()
       if (d.op === 'deploy+mint') {
@@ -316,6 +344,10 @@ export class AgentCoopLookupService implements LookupService {
           credits: pledge.credits,
           token_index: pledge.tokenIndex,
           signer: pledge.signer,
+          credit_lock: pledge.creditLock ?? null,
+          mode: pledge.mode ?? null,
+          guard: pledge.guard ?? null,
+          lh_id: pledge.lhId ?? null,
           coin_sats: coin.satoshis ?? 0,
           fee_out_sats: fee?.satoshis ?? null,
           fee_out_script_hex: fee?.lockingScript.toHex() ?? null,
@@ -408,6 +440,13 @@ export class AgentCoopLookupService implements LookupService {
       }
       case 'outpoint':
         return await this.formula(await this.knex<OutputRow>(OUTPUTS).where({ txid: q.txid, vout: q.vout }))
+      case 'vaultCredits': {
+        if (!isHex(q.vaultHash, 64)) throw new Error('vaultHash must be sha256(vault script) hex')
+        const rows = this.knex<OutputRow>(OUTPUTS).where({ owner_vault_hash: q.vaultHash })
+        if (q.includeSpent !== true) rows.andWhere('spent', false)
+        if (q.tokenId !== undefined) rows.andWhere({ token_id: q.tokenId })
+        return await this.formula(await rows.limit(MAX_RESULTS))
+      }
       case 'history': {
         const limit = Math.min(Math.max(q.limit ?? 100, 1), MAX_RESULTS)
         return await this.formula(await this.knex<OutputRow>(OUTPUTS).where({ token_id: q.tokenId }).orderBy('created_at', 'desc').limit(limit))
@@ -545,6 +584,10 @@ export class AgentCoopLookupService implements LookupService {
       credits: r.credits,
       tokenIndex: r.token_index,
       signer: r.signer,
+      ...(r.credit_lock != null ? { creditLock: r.credit_lock } : {}),
+      ...(r.mode != null ? { mode: r.mode } : {}),
+      ...(r.guard != null ? { guard: r.guard } : {}),
+      ...(r.lh_id != null ? { lhId: r.lh_id } : {}),
       coinSats: Number(r.coin_sats),
       ...(r.height !== null ? { height: r.height } : {}),
       spent: Boolean(r.spent),
@@ -601,6 +644,7 @@ export class AgentCoopLookupService implements LookupService {
         op: r.op,
         amt: r.amt,
         ownerPkh: r.owner_pkh,
+        ...(r.owner_vault_hash != null ? { ownerVaultHash: r.owner_vault_hash } : {}),
         spent: Boolean(r.spent),
         ...(r.spending_txid !== null ? { spendingTxid: r.spending_txid } : {}),
         ...(indexOf?.has(r.owner_pkh) === true ? { index: indexOf.get(r.owner_pkh) } : {}),
@@ -612,7 +656,7 @@ export class AgentCoopLookupService implements LookupService {
   }
 
   async getDocumentation (): Promise<string> {
-    return '# ls_agentcoop\nQueries: pools, pool, pledges, settlement (AgentCoop records) and token, tokens, utxos (ownerPkhs), identity (identityKey), outpoint, history (BSV-21 credits). See plan/00-MASTER-PLAN.md §3.8.'
+    return '# ls_agentcoop\nQueries: pools, pool, pledges, settlement (AgentCoop records) and token, tokens, utxos (ownerPkhs), vaultCredits (vaultHash), identity (identityKey), outpoint, history (BSV-21 credits). See plan/00-MASTER-PLAN.md §3.8.'
   }
 
   async getMetaData (): Promise<{ name: string, shortDescription: string }> {

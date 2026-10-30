@@ -10,8 +10,9 @@ export const TOPIC = 'tm_agentcoop'
 /**
  * Topic manager for AgentCoop.
  *
- * Credits: the kit's BSV-21 rules (kit/rules.ts), unchanged. A transaction
- * spending a credit output this overlay never admitted is refused (the rules
+ * Credits: the kit's BSV-21 rules (kit/rules.ts) with `ownerKinds: ['p2pkh','vault']`:
+ * an inscription on a Mandate Vault script (A-P5 vault-locked credits) is a
+ * token like a P2PKH-owned one. A transaction spending a credit output this overlay never admitted is refused (the rules
  * throw): submit token transactions in order.
  *
  * Records: the first well-formed `OP_FALSE OP_RETURN "agentcoop" <op> <json>`
@@ -27,7 +28,12 @@ export const TOPIC = 'tm_agentcoop'
  * erase pledge and settlement history.
  */
 export class AgentCoopTopicManager implements TopicManager {
-  constructor (private readonly opts: RuleOptions = {}) {}
+  private readonly opts: RuleOptions
+
+  /** Vault-owned credits (A-P5 5.3/5.4) are tokens here by default; pass `ownerKinds: ['p2pkh']` for the kit's rules. */
+  constructor (opts: RuleOptions = {}) {
+    this.opts = { ownerKinds: ['p2pkh', 'vault'], ...opts }
+  }
 
   async identifyAdmissibleOutputs (beef: number[], previousCoins: number[]): Promise<AdmittanceInstructions> {
     const tx = Transaction.fromBEEF(beef)
@@ -67,7 +73,7 @@ export class AgentCoopTopicManager implements TopicManager {
   async getDocumentation (): Promise<string> {
     return [
       '# tm_agentcoop',
-      'BSV-21 credits (kit rules) and AgentCoop records:',
+      'BSV-21 credits (kit rules; owner P2PKH or a Mandate Vault script) and AgentCoop records:',
       '- deploy+mint: always (token id = its own outpoint)',
       '- transfer/burn: only when admitted token inputs cover the outputs',
       '- OP_FALSE OP_RETURN "agentcoop" <pool|pledge|settle|list|vault|offer> <json>: the record output; for a pledge also out0 (the pledge coin)',

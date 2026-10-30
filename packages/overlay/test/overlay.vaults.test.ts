@@ -1,6 +1,7 @@
 /**
  * B.P3: vault indexing with on-chain ownership verification, and the SSE
- * event stream (plan/phases/B-P3.md §5, scenarios 1–4). Mock chain.
+ * event stream (plan/phases/B-P3.md §5, scenarios 1–4). B-A5: vault-locked
+ * credits and the A-P5 pledge record fields (plan/phases/B-A5.md). Mock chain.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
@@ -9,12 +10,12 @@ import { join } from 'node:path'
 import { OP, Random, Transaction, UnlockingScript, Utils, type LockingScript } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { startOverlay, type RunningOverlay } from '../src/server'
-import { buildOpReturn } from '@agentcoop/core'
+import { buildOpReturn, buildBsv21Script, buildVaultCreditScript, receivePkh, vaultScriptHash, TOKEN_BASKET } from '@agentcoop/core'
 import { VAULT_PROTOCOL } from '@agentcoop/core'
 import { expectedVaultScript } from '../src/vault'
 import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
-import { checksigFor, coinFrom, lookup, SCOPE_ALL, submitToOverlay, type Coin } from './helpers/settlement'
-import { beefOf } from './helpers/pool'
+import { checksigFor, coinFrom, deployCredits, lookup, SCOPE_ALL, submitToOverlay, type Coin } from './helpers/settlement'
+import { beefOf, openPool, pledge, spendCoin } from './helpers/pool'
 
 let chain: MockChain
 let overlay: RunningOverlay
@@ -129,6 +130,78 @@ describe('ls_agentcoop: Mandate Vaults', () => {
       expect(at - acceptedAt).toBeLessThan(1_000)
     } finally {
       controller.abort()
+    }
+  })
+})
+
+describe('ls_agentcoop: vault-locked credits and A-P5 pledge fields (B-A5)', () => {
+  const vaultId = Utils.toHex(Random(8))
+  let vaultScript: LockingScript
+  let tokenId: string
+  let locked: Coin
+
+  it('5. credits on a vault script are admitted, found by vault hash, and spent by the owner alone', async () => {
+    vaultScript = expectedVaultScript(ids.owner, ids.agent, ids.guard, vaultId)
+    const d = await deployCredits(owner, 1000n)
+    tokenId = d.tokenId
+    expect((await submit(Array.from(d.coin.sourceTransaction.toAtomicBEEF()))).outputsToAdmit).toEqual([0])
+
+    const lockedScript = buildVaultCreditScript({ op: 'transfer', id: tokenId, amt: '400' }, vaultScript)
+    const back = buildBsv21Script({ op: 'transfer', id: tokenId, amt: '600' }, receivePkh(ids.owner, 0))
+    const tx = await spendCoin(owner, d.coin, [
+      { lockingScript: lockedScript.toHex(), satoshis: 1, outputDescription: 'vault-locked credits' },
+      { lockingScript: back.toHex(), satoshis: 1, outputDescription: 'credits back', basket: TOKEN_BASKET }
+    ], 'Lock credits to a vault')
+    expect((await submit(tx)).outputsToAdmit).toEqual([0, 1])
+    locked = coinFrom(tx, lockedScript, { protocolID: VAULT_PROTOCOL, keyID: vaultId })
+
+    const vaultHash = vaultScriptHash(vaultScript.toHex())
+    const found = await lookup(overlay.url, { op: 'vaultCredits', vaultHash })
+    expect(found.map(f => f.ctx)).toEqual([expect.objectContaining({ tokenId, amt: '400', ownerPkh: '', ownerVaultHash: vaultHash, spent: false })])
+    expect((await lookup(overlay.url, { op: 'outpoint', txid: found[0].txid, vout: 0 }))[0].ctx.ownerVaultHash).toBe(vaultHash)
+    // Not a vault (sats) output: the vault's balance is unchanged by its credits.
+    expect((await vaultsOf({ owner: ids.owner })).find(v => v.vaultId === vaultId)).toBeUndefined()
+
+    // Owner branch (<sig> OP_TRUE) back to a P2PKH: a transfer with an admitted vault-owned input.
+    const created = await owner.createAction({
+      description: 'Owner takes vault-locked credits',
+      inputBEEF: locked.sourceTransaction.toBEEF(),
+      inputs: [{ outpoint: `${locked.sourceTransaction.id('hex')}.${locked.vout}`, unlockingScriptLength: 75, inputDescription: 'vault-locked credits' }],
+      outputs: [{ lockingScript: buildBsv21Script({ op: 'transfer', id: tokenId, amt: '400' }, receivePkh(ids.owner, 1)).toHex(), satoshis: 1, outputDescription: 'credits', basket: TOKEN_BASKET }],
+      options: { randomizeOutputs: false, acceptDelayedBroadcast: false }
+    })
+    const signable = created.signableTransaction!
+    const spend = Transaction.fromAtomicBEEF(signable.tx)
+    const i = spend.inputs.findIndex(inp => inp.sourceTXID === locked.sourceTransaction.id('hex'))
+    spend.inputs[i].sourceTransaction ??= locked.sourceTransaction
+    const sig = await checksigFor(owner, spend, i, locked.key, SCOPE_ALL)
+    const signed = await owner.signAction({ reference: signable.reference, spends: { [i]: { unlockingScript: new UnlockingScript([{ op: sig.length, data: sig }, { op: OP.OP_1 }]).toHex() } }, options: { acceptDelayedBroadcast: false } })
+    expect((await submit(Array.from(signed.tx!))).outputsToAdmit).toEqual([0])
+    expect(await lookup(overlay.url, { op: 'vaultCredits', vaultHash })).toEqual([])
+    expect((await lookup(overlay.url, { op: 'vaultCredits', vaultHash, includeSpent: true }))[0].ctx).toMatchObject({ spent: true })
+  })
+
+  it('6. pledge records keep creditLock / lighthouse fields; malformed ones are not admitted', async () => {
+    const pool = await openPool(owner)
+    await submit(pool.deployTx)
+    await submit(pool.poolTx)
+    const guardKey = ids.guard
+    const lhId = Utils.toHex(Random(16))
+    const vaultLocked = await pledge(mallory, pool, 100n, { record: { signer: 'vault', creditLock: 'vault' } })
+    const lighthouse = await pledge(mallory, pool, 100n, { record: { signer: 'vault', mode: 'lighthouse', guard: guardKey, lhId } })
+    for (const p of [vaultLocked, lighthouse]) expect((await submit(p.tx)).outputsToAdmit).toEqual([0, 2])
+    const views = (await lookup(overlay.url, { op: 'pledges', poolId: pool.poolId })).map(o => o.ctx)
+    expect(views.find(v => v.txid === vaultLocked.txid)).toMatchObject({ signer: 'vault', creditLock: 'vault', valid: true })
+    expect(views.find(v => v.txid === lighthouse.txid)).toMatchObject({ signer: 'vault', mode: 'lighthouse', guard: guardKey, lhId, valid: true })
+
+    const malformed: Array<Record<string, string>> = [
+      { signer: 'p2pkh', creditLock: 'vault' }, // creditLock needs a vault signer
+      { signer: 'vault', mode: 'lighthouse', lhId }, // no guard
+      { signer: 'vault', mode: 'lighthouse', guard: guardKey, lhId: 'zz' }, // bad lhId
+      { signer: 'vault', guard: guardKey } // guard without lighthouse
+    ]
+    for (const record of malformed) {
+      expect((await submit((await pledge(mallory, pool, 100n, { record })).tx)).outputsToAdmit).toEqual([])
     }
   })
 })

@@ -51,7 +51,12 @@ export function validatePledgeRecord (json: Record<string, unknown>): PledgeReco
     isUint(json.credits) && BigInt(json.credits) > 0n &&
     isIdentityKey(json.participant) &&
     isUint(json.tokenIndex) &&
-    (json.signer === 'p2pkh' || json.signer === 'vault')
+    (json.signer === 'p2pkh' || json.signer === 'vault') &&
+    // A-P5 5.3: credits locked to the coin's vault script (vault signer only).
+    (json.creditLock === undefined || (json.creditLock === 'vault' && json.signer === 'vault' && json.mode === undefined)) &&
+    // A-P5 5.5: a lighthouse coin sits on lighthouseLockingScript(participant, guard, lhId).
+    (json.mode === undefined || (json.mode === 'lighthouse' && json.signer === 'vault' && isIdentityKey(json.guard) && isHex(json.lhId, 32))) &&
+    (json.mode !== undefined || (json.guard === undefined && json.lhId === undefined))
   return ok ? json as unknown as PledgeRecord : null
 }
 

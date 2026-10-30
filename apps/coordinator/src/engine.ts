@@ -6,11 +6,15 @@
  * over WS, checks every signature against the template, and broadcasts only
  * a fully signed settlement. Participants that do not sign are blacklisted
  * and replaced from the waiting list; at most `maxRounds` rounds per attempt.
+ * A lighthouse participant (A-P5 5.5, offline human) is not asked over WS:
+ * the guard its record names co-signs instead (./lighthouse.ts), checked the same way.
  */
 import { Transaction, UnlockingScript } from '@agentcoop/core/sdk'
-import type { Offer, SettlementPlan } from '@agentcoop/core'
+import { isLighthouseRecord, type Offer, type SettlementPlan } from '@agentcoop/core'
 import type { PoolView } from '../../../packages/overlay/src/views'
+import { recordOf } from './candidates'
 import type { HeightSource } from './chain'
+import type { LighthouseDesk } from './lighthouse'
 import type { Logger } from './log'
 import type { OverlayLookup } from './overlay'
 import type { SettlementProtocol } from './protocol'
@@ -28,6 +32,8 @@ export interface EngineDeps {
   spent: SpentChecker
   feed: { sendTo: (identity: string, msg: object | string) => number, broadcast: (poolId: string, msg: object) => void }
   log: Logger
+  /** Lighthouse pledges and their guards; without it lighthouse pledges are left out of plans. */
+  lighthouse?: LighthouseDesk
 }
 
 export interface EngineOptions {
@@ -53,7 +59,7 @@ interface RoundState {
   offer: Offer
   template: Transaction
   /** input index → pledge */
-  inputs: Map<number, { outpoint: string, participant: string }>
+  inputs: Map<number, { outpoint: string, participant: string, lighthouse?: true }>
   signed: Map<number, string>
   failed: Map<number, string>
   timer?: NodeJS.Timeout
@@ -191,7 +197,10 @@ export class CoordinatorEngine {
         if (spent.get(c.view.outpoint) === true) prog.blacklist.set(c.view.outpoint, 'spent on chain')
       }
       if (fresh.some(c => spent.get(c.view.outpoint) === true)) this.persist(poolId)
-      const eligible = fresh.filter(c => !prog.blacklist.has(c.view.outpoint))
+      // A lighthouse pledge can only be signed by its guard, with the human's signature this coordinator holds.
+      const signable = await Promise.all(fresh.map(async c =>
+        !isLighthouseRecord(recordOf(c.view, c.sourceTx)) || (await this.deps.lighthouse?.pledge(c.view.outpoint)) !== undefined))
+      const eligible = fresh.filter((c, i) => !prog.blacklist.has(c.view.outpoint) && signable[i])
       const key = eligible.map(c => c.view.outpoint).join(',')
       if (prog.gaveUp !== undefined) {
         if (prog.gaveUp.key === undefined) { prog.gaveUp.key = key; this.persist(poolId) }
@@ -218,14 +227,14 @@ export class CoordinatorEngine {
         this.deps.log('offer_invalid_for_plan', { poolId, round })
         return
       }
-      const inputs = new Map<number, { outpoint: string, participant: string }>()
+      const inputs = new Map<number, { outpoint: string, participant: string, lighthouse?: true }>()
       for (const p of plan.participants) {
         const idx = template.inputs.findIndex((_, i) => i > 0 && outpointOfInput(template, i) === p.outpoint)
         if (idx < 1) {
           this.deps.log('plan_mismatch', { poolId, round, outpoint: p.outpoint })
           return
         }
-        inputs.set(idx, { outpoint: p.outpoint, participant: p.participant })
+        inputs.set(idx, { outpoint: p.outpoint, participant: p.participant, ...(p.mode === 'lighthouse' ? { lighthouse: true as const } : {}) })
       }
 
       const state: RoundState = { poolId, round, plan, offer, template, inputs, signed: new Map(), failed: new Map(), done: false }
@@ -234,6 +243,7 @@ export class CoordinatorEngine {
       // The plan (template BEEF, ~3.5 kB per participant) is serialized once, not once per participant (B.P6b, 6.6).
       const head = `{"type":"sign_request","poolId":${JSON.stringify(poolId)},"round":${round},"plan":${JSON.stringify(plan)},"yourInputIndex":`
       for (const [idx, inp] of inputs) {
+        if (inp.lighthouse === true) { void this.askGuard(state, idx, inp.outpoint); continue }
         const sent = this.deps.feed.sendTo(inp.participant, `${head}${idx}}`)
         if (sent === 0) state.failed.set(idx, 'offline')
       }
@@ -260,26 +270,51 @@ export class CoordinatorEngine {
       const idx = msg.inputIndex
       const inp = state.inputs.get(idx)
       if (inp === undefined) return 'not a participant input'
+      if (inp.lighthouse === true) return 'a lighthouse input is signed by its guard'
       if (inp.participant !== identity) {
         this.deps.log('sign_wrong_session', { poolId: state.poolId, round: state.round, inputIndex: idx, from: identity })
         return 'input belongs to another participant'
       }
       if (state.signed.has(idx) || state.failed.has(idx)) return 'input already resolved'
-      let unlock: UnlockingScript | undefined
-      try { unlock = UnlockingScript.fromHex(String(msg.unlockingScriptHex)) } catch { unlock = undefined }
-      if (unlock !== undefined) state.template.inputs[idx].unlockingScript = unlock
-      // SIGHASH_ALL covers every input outpoint and output, not other inputs' unlocking scripts: check in place.
-      if (unlock !== undefined && inputIsValid(state.template, idx)) {
-        state.signed.set(idx, unlock.toHex())
-        this.deps.log('sign_ok', { poolId: state.poolId, round: state.round, inputIndex: idx })
-      } else {
-        state.template.inputs[idx].unlockingScript = new UnlockingScript([])
-        state.failed.set(idx, 'bad signature')
-        this.deps.log('sign_bad', { poolId: state.poolId, round: state.round, inputIndex: idx })
-      }
+      this.resolveInput(state, idx, msg.unlockingScriptHex)
     }
     if (state.signed.size + state.failed.size === state.inputs.size) void this.finish(state.poolId, state.round)
     return undefined
+  }
+
+  /** Check an unlocking script in place: SIGHASH_ALL covers every input outpoint and output, not other inputs' unlocking scripts. */
+  private resolveInput (state: RoundState, idx: number, hex: unknown, by = 'participant'): void {
+    let unlock: UnlockingScript | undefined
+    try { unlock = UnlockingScript.fromHex(String(hex)) } catch { unlock = undefined }
+    if (unlock !== undefined) state.template.inputs[idx].unlockingScript = unlock
+    if (unlock !== undefined && inputIsValid(state.template, idx)) {
+      state.signed.set(idx, unlock.toHex())
+      this.deps.log('sign_ok', { poolId: state.poolId, round: state.round, inputIndex: idx, ...(by !== 'participant' ? { by } : {}) })
+    } else {
+      state.template.inputs[idx].unlockingScript = new UnlockingScript([])
+      state.failed.set(idx, by === 'participant' ? 'bad signature' : `bad signature (${by})`)
+      this.deps.log('sign_bad', { poolId: state.poolId, round: state.round, inputIndex: idx, ...(by !== 'participant' ? { by } : {}) })
+    }
+  }
+
+  /** Lighthouse input: the guard named in the pledge record co-signs (it checks the plan itself, as the human would). */
+  private async askGuard (state: RoundState, idx: number, outpoint: string): Promise<void> {
+    let hex: string | undefined
+    let reason: string | undefined
+    try {
+      const pledge = await this.deps.lighthouse?.pledge(outpoint)
+      if (pledge === undefined) throw new Error('no lighthouse pledge stored')
+      hex = await this.deps.lighthouse!.cosign(pledge.record.guard, { plan: state.plan, inputIndex: idx, pledge })
+    } catch (e) {
+      reason = `guard: ${String((e as Error).message ?? e).slice(0, 200)}`
+    }
+    if (state.done || this.rounds.get(state.poolId) !== state || state.signed.has(idx) || state.failed.has(idx)) return
+    if (hex !== undefined) this.resolveInput(state, idx, hex, 'guard')
+    else {
+      state.failed.set(idx, reason!)
+      this.deps.log('guard_refused', { poolId: state.poolId, round: state.round, inputIndex: idx, outpoint, reason })
+    }
+    if (state.signed.size + state.failed.size === state.inputs.size) void this.finish(state.poolId, state.round)
   }
 
   private async finish (poolId: string, round: number): Promise<void> {

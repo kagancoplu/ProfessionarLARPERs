@@ -18,6 +18,7 @@ import { createMockChain, type MockChain } from '../../../test/helpers/mockchain
 import { broadcastMock, submitToOverlay } from '../../../packages/overlay/test/helpers/settlement'
 import { ManualHeight } from '../src/chain'
 import { classifySettlement } from '../src/metrics'
+import { coreCandidate } from '../src/candidates'
 import { coreProtocol } from '../src/protocol'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
@@ -165,7 +166,7 @@ describe('audit and metrics', () => {
   it('4. an output paying anyone else is counted as custodied', async () => {
     const s = await coop.deps.overlay.settlementWithTx(p1.poolId)
     const all = await coop.deps.overlay.pledgeCandidatesAll(p1.poolId)
-    const included = all.filter(c => c.view.spendingTxid === s!.tx.id('hex')).map(c => ({ ...c.view, lockingScriptHex: c.sourceTx.outputs[c.view.vout].lockingScript.toHex() }))
+    const included = all.filter(c => c.view.spendingTxid === s!.tx.id('hex')).map(c => coreCandidate(c.view, c.sourceTx))
     expect(classifySettlement(s!.tx, p1, included)).not.toContain('unaccounted')
     const tampered = Transaction.fromBinary(s!.tx.toBinary())
     tampered.addOutput({ lockingScript: new P2PKH().lock(PrivateKey.fromRandom().toAddress()), satoshis: 500 })

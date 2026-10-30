@@ -74,7 +74,7 @@ export async function openPool (provider: WalletInterface, opts: { credits?: big
 export interface Pledge { coin: Coin, tx: number[], txid: string, identityKey: string, credits: bigint }
 
 /** MASTER §3.3 pledge tx: out0 pledge coin, out1 feeSats → payScript, out2 OP_RETURN pledge. */
-export async function pledge (wallet: WalletInterface, pool: { poolId: string, terms: PoolTerms }, credits: bigint, opts: { feeSats?: number, coinSats?: number } = {}): Promise<Pledge> {
+export async function pledge (wallet: WalletInterface, pool: { poolId: string, terms: PoolTerms }, credits: bigint, opts: { feeSats?: number, coinSats?: number, record?: Record<string, string> } = {}): Promise<Pledge> {
   const { publicKey: me } = await wallet.getPublicKey({ identityKey: true })
   const key: KeyRef = { protocolID: PLEDGE_PROTOCOL, keyID: Utils.toHex(Random(16)) }
   const coinScript = await p2pkhFor(wallet, key)
@@ -87,7 +87,7 @@ export async function pledge (wallet: WalletInterface, pool: { poolId: string, t
       { lockingScript: coinScript.toHex(), satoshis: coinSats, outputDescription: 'pledge coin', basket: 'agentcoop', customInstructions: JSON.stringify({ ...key, counterparty: 'anyone' }) },
       { lockingScript: pool.terms.payScriptHex, satoshis: opts.feeSats ?? Number(pool.terms.feeSats), outputDescription: 'registration fee' },
       {
-        lockingScript: buildOpReturn('pledge', { v: '1', poolId: pool.poolId, credits: credits.toString(), participant: me, tokenIndex: '0', signer: 'p2pkh' }).toHex(),
+        lockingScript: buildOpReturn('pledge', { v: '1', poolId: pool.poolId, credits: credits.toString(), participant: me, tokenIndex: '0', signer: 'p2pkh', ...opts.record }).toHex(),
         satoshis: 0,
         outputDescription: 'pledge record'
       }

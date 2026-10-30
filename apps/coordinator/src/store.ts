@@ -3,12 +3,13 @@
  * pre-signed SINGLE|ACP inputs that can only ever pay their signer its price,
  * FINAL-IDEA §4.4/§4.8), and per-pool round progress (blacklist, attempts,
  * last round) so a restart does not reset the griefing protection.
- * No funds.
+ * Lighthouse pledges (A-P5 5.5): the human's SINGLE|ACP signature, kept
+ * until the guard co-signs it in a round. No funds.
  */
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import knexFactory, { type Knex } from 'knex'
-import type { Listing, Offer } from '@agentcoop/core'
+import type { LighthousePledge, Listing, Offer } from '@agentcoop/core'
 
 export class CoordinatorStore {
   private constructor (readonly knex: Knex) {}
@@ -36,6 +37,14 @@ export class CoordinatorStore {
         t.string('pool_id', 80).primary()
         t.text('json').notNullable()
         t.timestamp('updated_at').defaultTo(knex.fn.now())
+      })
+    }
+    if (!(await knex.schema.hasTable('lighthouse_pledges'))) {
+      await knex.schema.createTable('lighthouse_pledges', t => {
+        t.string('outpoint', 80).primary()
+        t.string('pool_id', 80).notNullable().index()
+        t.text('pledge').notNullable()
+        t.timestamp('created_at').defaultTo(knex.fn.now())
       })
     }
     return new CoordinatorStore(knex)
@@ -67,6 +76,15 @@ export class CoordinatorStore {
 
   async deleteListing (outpoint: string): Promise<void> {
     await this.knex('listings').where({ outpoint }).delete()
+  }
+
+  async saveLighthouse (poolId: string, pledge: LighthousePledge): Promise<void> {
+    await this.knex('lighthouse_pledges').insert({ outpoint: pledge.outpoint, pool_id: poolId, pledge: JSON.stringify(pledge) }).onConflict('outpoint').merge()
+  }
+
+  async getLighthouse (outpoint: string): Promise<LighthousePledge | undefined> {
+    const row = await this.knex('lighthouse_pledges').where({ outpoint }).first()
+    return row === undefined ? undefined : JSON.parse(row.pledge) as LighthousePledge
   }
 
   async saveProgress (poolId: string, json: unknown): Promise<void> {

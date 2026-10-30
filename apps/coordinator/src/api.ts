@@ -16,6 +16,7 @@ import { normalizeOutpoint, verifyListing } from './verifyListing'
 import { auditPool } from './audit'
 import { computeMetrics, toProm, type Metrics } from './metrics'
 import type { OfferSource } from './offers'
+import { acceptLighthousePledge, type LighthouseDesk } from './lighthouse'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
 export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
@@ -32,6 +33,8 @@ export interface ApiDeps {
   feedCounts?: () => { clients: number, proven: number }
   /** Round state for a pool, when the engine runs. */
   coordinatorStatus?: (poolId: string) => CoordinatorStatus | undefined
+  /** Lighthouse pledges (A-P5 5.5) and the guards that co-sign them. */
+  lighthouse?: LighthouseDesk
 }
 
 const POOL_ID_RE = /^[0-9a-f]{64}_\d+$/
@@ -81,6 +84,13 @@ export function createApiRouter (deps: ApiDeps): Router {
     const verified = verifyOffer(offer, pool, credit, credit?.tx)
     await deps.store.saveOffer(verified)
     res.status(201).json({ poolId, accepted: true })
+  }))
+
+  /** A-P5 5.5 (MASTER §3.5): an offline human's pledge; its guard co-signs in the round. */
+  r.post('/pledges/lighthouse', wrap(async (req, res) => {
+    if (deps.lighthouse === undefined) throw new OfferError('LIGHTHOUSE_DISABLED', 'this coordinator takes no lighthouse pledges', 501)
+    const accepted = await acceptLighthousePledge({ overlay: deps.overlay, store: deps.store, lighthouse: deps.lighthouse }, req.body)
+    res.status(201).json({ ...accepted, accepted: true })
   }))
 
   r.get('/offers/:poolId', wrap(async (req, res) => {

@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const Database = createRequire(join(root, 'package.json'))('better-sqlite3')
-const dataDir = resolve(root, process.env.DATA_DIR ?? 'data')
+const dataDir = resolve(root, process.env.DATA_DIR?.trim() || 'data') // empty DATA_DIR= = default
 const backupDir = resolve(root, process.env.BACKUP_DIR ?? 'backups')
 const keepDays = Number(process.env.BACKUP_KEEP_DAYS ?? 7)
 

@@ -5,8 +5,9 @@
  * assembleSettlement(plan, unlockingScripts) and broadcastEF(tx, arcadeUrl).
  */
 import { UnlockingScript, type Transaction } from '@agentcoop/core/sdk'
-import { assembleSettlement, broadcastEF, fetchChainPolicy, planSettlement, type Offer, type PledgeCandidate as CorePledgeCandidate, type SettlementPlan } from '@agentcoop/core'
+import { assembleSettlement, broadcastEF, fetchChainPolicy, planSettlement, type Offer, type SettlementPlan } from '@agentcoop/core'
 import type { PledgeView } from '../../../packages/overlay/src/views'
+import { coreCandidate } from './candidates'
 
 /** A valid, unspent pledge from the overlay, in coordinator order, with its source transaction (BEEF ancestry). */
 export interface PledgeCandidate { view: PledgeView, sourceTx: Transaction }
@@ -53,14 +54,7 @@ export function coreProtocol (opts: {
   return {
     async planSettlement (req) {
       const { height, satsPerKb } = await policy()
-      const pledges: CorePledgeCandidate[] = req.pledges.map(({ view, sourceTx }) => ({
-        outpoint: view.outpoint,
-        satoshis: view.coinSats,
-        lockingScriptHex: sourceTx.outputs[view.vout].lockingScript.toHex(),
-        record: { v: '1', poolId: view.poolId, credits: view.credits, participant: view.participant, tokenIndex: view.tokenIndex, signer: view.signer },
-        sourceTx,
-        ...(view.height !== undefined ? { blockHeight: view.height } : {})
-      }))
+      const pledges = req.pledges.map(({ view, sourceTx }) => coreCandidate(view, sourceTx))
       return planSettlement(req.offer, pledges, { height: req.height ?? height, satsPerKb, offerSourceTx: req.creditSourceTx }, { round: req.round, exclude: req.exclude })
     },
     assembleSettlement (plan, _offer, scripts) {

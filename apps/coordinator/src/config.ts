@@ -19,6 +19,8 @@ export interface CoordinatorConfig {
   rateLimit?: { getPerMin: number, postPerMin: number }
   /** WS connection and message caps (B-P5a); default DEFAULT_FEED_LIMITS. */
   feedLimits?: FeedLimits
+  /** Guards that co-sign lighthouse pledges (A-P5 5.5), by URL; identity keys from their /healthz. */
+  lighthouseGuards?: string[]
 }
 
 export function configFromEnv (env: NodeJS.ProcessEnv = process.env): CoordinatorConfig {
@@ -32,6 +34,7 @@ export function configFromEnv (env: NodeJS.ProcessEnv = process.env): Coordinato
     maxRounds: Number(env.MAX_ROUNDS ?? 3),
     spentCheck: env.SPENT_CHECK === 'none' ? 'none' : 'woc',
     network: env.NETWORK === 'test' ? 'test' : 'main',
+    lighthouseGuards: (env.LIGHTHOUSE_GUARDS ?? env.GUARD_URL ?? 'http://localhost:8091').split(',').map(s => s.trim()).filter(s => s !== ''),
     ...(env.RATE_LIMIT === 'off' ? {} : { rateLimit: { getPerMin: envInt(env.RATE_GET_PER_MIN, 120), postPerMin: envInt(env.RATE_POST_PER_MIN, 10) } }),
     feedLimits: {
       maxPerIp: envInt(env.WS_MAX_PER_IP, DEFAULT_FEED_LIMITS.maxPerIp),
