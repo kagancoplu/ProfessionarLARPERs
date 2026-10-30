@@ -128,12 +128,13 @@ The provider publishes its offer on chain (`publishOffer` from `@agentcoop/core`
 
 ## Scale (Faz 6.5)
 
-`test/e2e.scale.mockchain.test.ts` settles one pool with 50 and one with 100 participants, each a separate wallet-toolbox wallet that verifies the plan (lineage included) and signs over a proven session (`SCALE_SIZES=50,100`, `SCALE_OUT=<file>` for the numbers). Mock chain, one machine, 30.10:
+`test/e2e.scale.mockchain.test.ts` settles one pool with 50 and one with 100 participants, each a separate wallet-toolbox wallet that verifies the plan (lineage included) and signs over a proven session (`SCALE_CASES=50,100,50v10`, `SCALE_OUT=<file>` for the numbers; `50v10` = 10 of the 50 pledge from a vault through Track D's guard). Mock chain, one machine, 30.10:
 
 | Participants | Settlement | Fee | `sign_request` | First signature | Last signature | Broadcast → overlay `settled` |
 |---|---|---|---|---|---|---|
 | 50 | 18.5 kB | 1,860 sat (100 sat/kB) | 178 kB | 0.2 s | 2.5 s | 2.2 s |
 | 100 | 36.5 kB | 3,670 sat (100 sat/kB) | 347 kB | 0.4 s | 9.7 s | 8.0 s |
+| 50, 10 of them Mandate Vault agents (guard co-signs) | 19.75 kB | 1,986 sat (100 sat/kB) | 217 kB | 0.3 s | 3.7 s | 3.0 s |
 
 All agents run in the test's one process, so the spread up to the last signature is mostly their own plan and lineage checks; on separate machines they run in parallel. The plan is serialized once per round.
 

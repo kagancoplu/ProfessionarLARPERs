@@ -165,6 +165,9 @@
     |---|---|---|---|---|---|---|
     | 50 | 18,5 kB | 1.860 sat (100 sat/kB) | 178 kB | 0,2 sn | 2,5 sn | 2,2 sn |
     | 100 | 36,5 kB | 3.670 sat (100 sat/kB) | 347 kB | 0,4 sn | 9,7 sn | 8,0 sn |
+    | 50, **10'u vault'lu** (D'nin isteği, 30.10 20:20) | 19,75 kB | 1.986 sat (100 sat/kB) | 217 kB | 0,3 sn | 3,7 sn | 3,0 sn |
+
+    Vault'lu ajanlar D'nin akışıyla: sahip `createVault` + `registerVault` + `putPolicy` + `fundVault`, ajan `pledgeFromVault` (guard 2.1b) ve turda `VaultSigner` (guard settle 2.1). Guard 10 `ALLOW settle`, `custodiedSats: 0` (vault para üstü vault script'ine dönüyor). Ajan botu `signer` seçeneği aldı; guard reddederse `sign_reject` gönderiyor.
 
     Ajanların hepsi test sürecinde koştuğu için son imzaya kadarki süre çoğunlukla onların kendi doğrulaması; ayrı makinelerde paralel. Doğrulama testi 8'deki tahminle (50 ≈ 17–18 kB, ≈ 1.800 sat) uyumlu. **D (README/video):** "100 ajan, tek işlem, 36,5 kB, 3.670 sat ücret, emanette 0 sat".
   - **6.6:** plan tur başına bir kez serileştiriliyor. **Bulunan hata, düzeltildi:** 100 katılımcıda overlay-express keep-alive soketini (1000 istek / 5 sn boşta) kapatırken yarışan lookup'lar `ECONNRESET` alıyordu; `OverlayLookup.lookup` soket hatasında 2 kez yeniden deniyor.
