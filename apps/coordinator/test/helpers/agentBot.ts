@@ -10,6 +10,7 @@ import { P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPla
 import type { Transaction, WalletInterface } from '@agentcoop/core/sdk'
 import type { WebSocket } from 'ws'
 import { connectCoordinator } from '../../src/client'
+import { retrySocket } from './coopPool'
 
 export interface AgentBot { ws: WebSocket, messages: any[], plans: SettlementPlan[] }
 
@@ -26,7 +27,7 @@ export async function startAgentBot (
     if (msg.type !== 'sign_request' || opts.silent === true) return
     void (async () => {
       if (opts.delayMs !== undefined) await new Promise(resolve => setTimeout(resolve, opts.delayMs))
-      const offer = await (await fetch(`${coopUrl}/offers/${msg.poolId}`)).json() as Offer
+      const offer = await retrySocket(async () => await (await fetch(`${coopUrl}/offers/${msg.poolId}`)).json()) as Offer
       try {
         await verifySettlementPlan(msg.plan, offer, pledge.outpoint, {
           expectedCredits: pledge.record.credits,
