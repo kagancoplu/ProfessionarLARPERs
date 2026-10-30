@@ -7,9 +7,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { Utils } from '@bsv/sdk'
-import { isVaultId } from '../../../packages/core/src/scripts/vault'
-import { adoptVaultOutput, listVaultUtxos } from '../../../packages/core/src/signers/VaultSigner'
+import { Utils } from '@agentcoop/core/sdk'
+import { isVaultId } from '@agentcoop/core/scripts/vault'
+import { adoptVaultOutput, listVaultUtxos } from '@agentcoop/core/signers/VaultSigner'
 import { run } from '../../../scripts/lib/cli'
 import { DATA_DIR } from '../../../scripts/lib/env'
 import { openWallet } from '../../../scripts/wallets'

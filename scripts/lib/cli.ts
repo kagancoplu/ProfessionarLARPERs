@@ -1,7 +1,7 @@
 /** Small helpers shared by the ops CLIs. */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { WalletClient } from '@bsv/sdk'
+import { WalletClient } from '@agentcoop/core/sdk'
 import { DATA_DIR, REPO_ROOT, appOriginator, walletNetwork } from './env'
 
 export const IDENTITIES_FILE = join(REPO_ROOT, 'config', 'identities.json')

@@ -15,13 +15,13 @@ Plan and design: [`plan/phases/D-P1.md`](../../plan/phases/D-P1.md). Script and 
 ## Run
 
 ```bash
-cd apps/guard && npm ci
-npm test                 # script, policy engine, and the full vault flow on the mock chain
-npm run typecheck        # guard + packages/core vault files + owner-cli
-npm run guard            # GUARD_URL port (default 8091); wallet WALLET_GUARD_KEY; state data/guard/
+npm install                                  # at the repo root (workspace)
+npm test                                     # root: includes test/vault.mockchain.test.ts and apps/guard/test/*
+npm run typecheck                            # root
+npm run guard -w @agentcoop/guard            # GUARD_URL port (default 8091); wallet WALLET_GUARD_KEY; state data/guard/
 ```
 
-CommonJS package on purpose (wallet-toolbox is CJS, MASTER §3.1). Until the root workspace exists, `tsconfig.json` `paths` makes `packages/core/src` and `scripts/` load this package's `@bsv/sdk` and wallet-toolbox, so the process has one copy of each.
+Workspace member of the root monorepo; the SDK comes from `@agentcoop/core/sdk` (MASTER §3.1). **Run-time caveat (2026-10-30 17:45):** until Track A fixes the SDK bridge in `packages/core/src/sdk.ts`, tsx cannot load `@agentcoop/core` (see `plan/STATUS.md` → Blokajlar); tests are unaffected.
 
 ## API (MASTER §3.7)
 
@@ -73,11 +73,11 @@ Still open: if the guard is down the agent cannot spend (the owner can still wit
 
 ## Other scripts
 
-- `npm run adopt -- <agent-name> <vaultId>`: takes the owner's fundings (`data/vaults/<vaultId>/fund-*.json`) into the agent's `agentcoop vault` basket.
-- `npm run validation5`: mainnet validation test 5 (≤ 1,000 sats; Desktop as owner, `agent-1`, guard in-process, `provider-api`). See D-P1 §9.3.
+- `npm run adopt -w @agentcoop/guard -- <agent-name> <vaultId>`: takes the owner's fundings (`data/vaults/<vaultId>/fund-*.json`) into the agent's `agentcoop vault` basket.
+- `npm run validation5 -w @agentcoop/guard`: mainnet validation test 5 (≤ 1,000 sats; Desktop as owner, `agent-1`, guard in-process, `provider-api`). See D-P1 §9.3.
 
 ## For other tracks
 
-- **A** (`signSettlementInput`, `buildPledge(…,'vault')`): `new VaultSigner(wallet, { vaultId, cosign, context })` implements `InputSigner`; `unlockingScriptLength` is `VAULT_COSIGN_UNLOCK_LENGTH = 150` (owner path 75). In tests use `inProcessCosigner(guard)` from `src/guard.ts`; the policy engine is `src/policy.ts` (pure).
+- **A** (`signSettlementInput`, `buildPledge(…,'vault')`): `new VaultSigner(wallet, { vaultId, cosign, context })` implements `InputSigner`; `unlockingScriptLength` is `VAULT_COSIGN_UNLOCK_LENGTH = 150` (owner path 75). Import from `@agentcoop/core/signers/VaultSigner` and `@agentcoop/core/scripts/vault`. In tests use `inProcessCosigner(guard)` from `apps/guard/src/guard.ts` (example: `test/vault.mockchain.test.ts`); the policy engine is `src/policy.ts` (pure).
 - **B** (overlay): vault record and template in D-P1 §6.4 — `validateVaultRecord`, `vaultScriptForRecord`, `isVaultLockingScriptHex` in `vault.ts`.
 - **C** (vault agent): `adoptVaultOutput`, `listVaultUtxos`, `spendFromVault` in `VaultSigner.ts`; `httpCosigner(GUARD_URL)`; a refusal throws `CosignRejected` with `reason`.

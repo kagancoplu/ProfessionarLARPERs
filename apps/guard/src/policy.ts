@@ -6,15 +6,15 @@
  * over it, classifies every output and applies the owner's policy. Each check
  * is tagged with its row in D-P1 §7.2 (G1…G12) and the FINAL-IDEA §8 threat it closes.
  */
-import { Transaction, Utils } from '@bsv/sdk'
+import { Transaction, Utils } from '@agentcoop/core/sdk'
 import {
   providerPayScript,
   vaultSighash,
   verifyVaultSignature,
   type VaultKeys,
   type VaultRecord
-} from '../../../packages/core/src/scripts/vault'
-import type { CosignContext, PayeeProof } from '../../../packages/core/src/signers/VaultSigner'
+} from '@agentcoop/core/scripts/vault'
+import type { CosignContext, PayeeProof } from '@agentcoop/core/signers/VaultSigner'
 
 export interface GuardPolicy {
   /** Provider identity keys the agent may pay. */

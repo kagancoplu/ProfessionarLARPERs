@@ -8,8 +8,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import type { ChainTracker, WalletInterface } from '@bsv/sdk'
-import { acceptBrc29Payment, createBrc29Payment, type Brc29Payment } from './kit/payments'
+import type { ChainTracker, WalletInterface } from '@agentcoop/core/sdk'
+import { acceptBrc29Payment, createBrc29Payment, type Brc29Payment } from '@agentcoop/core/kit/payments'
 
 export interface FundingTarget {
   name: string

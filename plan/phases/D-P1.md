@@ -26,7 +26,7 @@ Sahip (BSV Desktop) bir vault kurup fonlayabilsin ve politikasını guard'a yaza
 | H3 | Desktop onay pencereleri: (1) `agentcoop.local` bağlantısı, (2) BRC-103 kimlik doğrulama (guard'a `PUT /vaults`, `PUT /policies`), (3) `agentcoop vault` protokolü için anahtar izni, (4) fonlama `createAction`, (5) çekim `createSignature` + `signAction` | treasury sahibi | test 5 | Hepsi tek koşuda; her pencerede açıklama metni AgentCoop'tur |
 | H4 | Bu Desktop'un (`03e8836800…94a45a`) treasury olduğu teyidi | insan | test 5'ten önce | STATUS'taki açık blokaj (D-P0) |
 
-Bu bulut oturumunda `.env`, `data/` ve Desktop **yok**; test 5 treasury laptopunda koşar: `cd apps/guard && npm ci && npm run validation5`.
+Bu bulut oturumunda `.env`, `data/` ve Desktop **yok**; test 5 treasury laptopunda koşar: kökte `npm install`, sonra `npm run validation5 -w @agentcoop/guard` (17:45 notu: A'nın SDK köprüsü düzelene kadar; §11.1).
 
 ---
 
@@ -36,7 +36,7 @@ Bu bulut oturumunda `.env`, `data/` ve Desktop **yok**; test 5 treasury laptopun
 |---|---|---|
 | A.P0 kök workspace + `packages/core` iskeleti (`package.json`, `types.ts`, `index.ts`, `scripts/opreturn.ts`) | **Yok** (A başlamadı) | Yalnızca D'ye ayrılmış iki dosya yazılır: `packages/core/src/scripts/vault.ts`, `packages/core/src/signers/VaultSigner.ts`. `InputSigner` MASTER §3.3'ten **yapısal kopya** (VaultSigner.ts içinde, `TEMP` işaretli); vault OP_RETURN zarfı `vault.ts` içinde B'nin `stub/opreturn.ts`'iyle **aynı baytlarla** (A'nın `buildOpReturn`'ü gelince ona geçer). `packages/core`'un `node_modules`'ü yok: `apps/guard/tsconfig.json` `paths` (tsx ve tsc) ve vitest `alias`+`dedupe` ile guard'ın kopyalarına çözülür (§4.6) |
 | A.P1/P2 `verifySettlementPlan`, `verifyLineage` | Yok | Faz 1'de guard yalnızca `kind:'pay'`; `settle`/`rail` → `403 kind not enabled` (D-P2/D-P3) |
-| A `PoolTerms` gelir anahtarının keyID'si | §3.3'te yok | Guard'ın alıcıyı **zincir dışı güvene dayanmadan** doğrulaması için gerekir (§7 G8). Faz 1'de `context.payees` ile istekte gelir; MASTER §3.3'e isteğe bağlı `payKeyID` eklendi, A `buildReserveAndAnnounce`'ta doldurur (D-P2 `settle` yolu bunu kullanır) |
+| A gelir anahtarının keyID'si | (17:45) A-P1'in `pool` kaydında `nonce` olarak var | Guard'ın alıcıyı **zincir dışı güvene dayanmadan** doğrulaması için gerekir (§7 G8). Faz 1'de `context.payees` ile istekte gelir; D-P2 pledge/settle yolunda `nonce` kullanılır (önce önerilen `PoolTerms.payKeyID` geri alındı) |
 | B.P3 `vaults` lookup | Yok | Gerekmiyor: sahip vault UTXO'larını WhatsOnChain script-hash sorgusuyla bulur (guard'a ve overlay'e bağımsız). B için kayıt biçimi ve şablon §6.4'te |
 | Sats | **Yok** | Mockchain ile devam; test 5 bekler (STATUS Blokajlar) |
 | npm (bu konteyner, npm 10.9.4) | Taze `npm install` arborist hatası (`reading 'edgesOut'`) | `apps/guard/package-lock.json` `scripts/`'in lock'undan tohumlandı, sonra eksikler eklendi; `npm ci` çalışıyor |
@@ -72,7 +72,7 @@ Bu bulut oturumunda `.env`, `data/` ve Desktop **yok**; test 5 treasury laptopun
 | `apps/guard/src/main.ts` | `npm run guard`: `openWallet('guard')`, port `GUARD_URL`'den | D |
 | `apps/guard/src/validation5.ts` | `npm run validation5`: mainnet doğrulama testi 5 (Desktop = sahip, `agent-1`, guard süreç içinde HTTP) | D |
 | `apps/guard/test/vault.script.test.ts` | Script/anahtar/kayıt birim testleri | D |
-| `apps/guard/test/vault.mockchain.test.ts` | §9 senaryoları (A'nın kök `test/`'i gelince oraya taşınır) | D |
+| `test/vault.mockchain.test.ts` | §9.2 senaryoları (17:45'te `apps/guard/test/`'ten kök `test/`'e taşındı) | D |
 | `apps/guard/test/compat.overlay.test.ts` | B'nin overlay'i (B.P3 `stub/vault.ts`, `records.ts`) aynı kayıttan aynı script'i türetiyor. B'nin ESM paketi olduğu için guard'ın tip denetiminden hariç | D |
 | `apps/guard/src/adopt.ts` | `npm run adopt -- <ajan> <vaultId>`: sahibin fonlamalarını ajanın basket'ine alır | D |
 | `apps/guard/README.md` | Çalıştırma, API, politika alanları, kontrol → tehdit tablosu (D-P2'de genişler) | D |
@@ -211,7 +211,7 @@ withdraw <id>  (Desktop)
 4. Unlock uzunlukları: en uzun imzalarla bile ≤ 75 / ≤ 150.
 5. `evaluateCosign` saf testleri: kaynak txid uyuşmazlığı (G1), non-final (G4), OP_RETURN'de sat (G7), ücret tavanı (G10).
 
-### 9.2 Mockchain (`apps/guard/test/vault.mockchain.test.ts`; guard HTTP sunucusu süreç içinde, sahip `AuthFetch` ile gerçek BRC-103)
+### 9.2 Mockchain (`test/vault.mockchain.test.ts`; guard HTTP sunucusu süreç içinde, sahip `AuthFetch` ile gerçek BRC-103)
 1. **Kayıt:** sahip `create-vault` → guard'ın script'i eşit. Kimliksiz `PUT` → 401; başka sahip aynı vaultId → 409; sahibin vault'u olmayan ajana politika → 404.
 2. **Fonla** 10.000 → out0 vault, out1 kayıt (`validateVaultRecord` + `vaultScriptForRecord` eşit) → ajan `adoptVaultOutput` → ajanın basket'inde.
 3. **2-of-2 ödeme:** izinli sağlayıcıya 1.000 + vault'a 9.000 para üstü → guard imzalar → mockchain script'leri doğrular, kabul. Ledger 1.000.
@@ -253,3 +253,9 @@ Başarısızlık olursa Arcade `/tx` hata metni STATUS'a yazılır, A ile konuş
 | **Diğer track'ler?** (17:20 fetch) | **A:** dal yok, P0 başlamadı → `verifyLineage`/`verifySettlementPlan`/`buildPledge('vault')` yok. **B:** P3 ✅ mockchain: vault indeksi D'nin kayıt biçimiyle **uyumlu** (aynı alanlar, aynı `'anyone'` türetmesi; `compat.overlay.test.ts` kanıtlıyor), koordinatör planlamayı A'ya bırakıyor ve imzaları `Spend` ile genel doğruluyor (vault girdisi özel işlem istemiyor). B'nin `.env.example` istekleri eklendi. **C:** dal yok, P0 başlamadı (`mode:'vault'` yok) |
 | **Sonraki faz bağımlı mı?** | D-P2 `settle` yolu A.P2 (`verifySettlementPlan`, `verifyLineage`) ve A.P3 (`buildPledge(…,'vault')`) ister; yoksa track kuralı: mock plan ile test (B'nin `apps/coordinator/test/helpers/devProtocol.ts` planlayıcısı referans). 2.2 sıcak cüzdan ve 2.1b pledge farkındalığı A'dan bağımsız başlayabilir |
 | **Arayüz değişikliği?** | MASTER §3.2 (vault script'i + kayıt satırı), §3.3 (`PoolTerms.payKeyID?`, `VaultSigner` notu), §3.4 (`vaultLockingScript` yeri), §3.7 (`PUT/GET /vaults`, `agentSignatureHex`, `payees`, (sahip, ajan) politikası, `/healthz`), §3.9 (B'nin değişkenleri). STATUS "Arayüz değişiklikleri"nde |
+
+### 11.1 Ek: A.P0–P2 (`main`) ile birleştirme (17:45)
+
+A, kök workspace'i ve `packages/core`'u D-P0'dan habersiz bir tabandan `main`'e push'ladı (ESM + `src/sdk.ts` köprüsü, vault.ts iskeleti). Bu dala birleştirildi: `vault.ts` A'nın imzasıyla D'nin gövdesi (`'../sdk'`, `types.ts` sabitleri, `buildOpReturn`), `VaultSigner` A'nın `InputSigner`'ı; `scripts/`, `apps/guard`, `apps/owner-cli` kök workspace üyesi (ESM, `@agentcoop/core/sdk`), kit kopyaları ve paket başına `node_modules`/lock/tsconfig kaldırıldı; akış testi kök `test/vault.mockchain.test.ts`, ops testleri `test/ops.*.test.ts`. Kök `npm test` 114/115 (düşen B'nin, ortamdan), A ve D tip denetimi temiz.
+
+**Açık blokaj:** A'nın köprüsü tsx/Node'da SDK export'larının 58/186'sını kaybediyor; vitest'te görünmüyor, çalışma zamanında her `@agentcoop/core` kullanıcısı çöküyor. CJS'ye dönüş (`"type":"module"` kaldırma) denendi ve çalıştı; karar A'nın (STATUS Blokajlar, MASTER §3.1 Ek). Test 5 bu düzeltmeyi (veya birleştirme öncesi `66aac1f`'i) bekliyor.

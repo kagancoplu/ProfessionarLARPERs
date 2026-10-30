@@ -3,11 +3,11 @@
  * hand-built transactions (no chain needed).
  */
 import { describe, expect, it } from 'vitest'
-import { BigNumber, ECDSA, KeyDeriver, LockingScript, P2PKH, PrivateKey, Script, Transaction, TransactionSignature, Utils } from '@bsv/sdk'
+import { BigNumber, ECDSA, KeyDeriver, LockingScript, P2PKH, PrivateKey, Script, Transaction, TransactionSignature, Utils } from '@agentcoop/core/sdk'
+import { VAULT_PROTOCOL } from '@agentcoop/core'
 import {
   VAULT_COSIGN_UNLOCK_LENGTH,
   VAULT_OWNER_UNLOCK_LENGTH,
-  VAULT_PROTOCOL,
   VAULT_SCRIPT_LENGTH,
   VAULT_SIGHASH,
   deriveVaultPub,
@@ -25,8 +25,8 @@ import {
   vaultSighash,
   verifyVaultSignature,
   type VaultRecord
-} from '../../../packages/core/src/scripts/vault'
-import { parseOpReturn } from '../../../packages/overlay/src/stub/opreturn'
+} from '@agentcoop/core/scripts/vault'
+import { parseOpReturn } from '@agentcoop/core'
 import { evaluateCosign, type GuardPolicy, type RegisteredVault } from '../src/policy'
 
 const owner = PrivateKey.fromRandom()

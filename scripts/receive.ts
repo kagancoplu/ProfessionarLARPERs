@@ -10,11 +10,11 @@
  * Accepting the same payment twice is harmless (it is not counted twice).
  */
 import { resolve } from 'node:path'
-import type { WalletInterface } from '@bsv/sdk'
+import type { WalletInterface } from '@agentcoop/core/sdk'
 import { arcadeUrl, hasKey } from './lib/env'
 import { PAYMENTS_DIR, connectDesktop, flag, run } from './lib/cli'
 import { acceptPayment, loadPaymentFile, markAccepted, pendingPaymentFiles } from './lib/funding'
-import { ArcadeChainTracker } from './lib/kit/arcadeChainTracker'
+import { ArcadeChainTracker } from '@agentcoop/core/kit/arcadeChainTracker'
 import { openWallet } from './wallets'
 
 run(async () => {

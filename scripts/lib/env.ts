@@ -6,9 +6,9 @@
  */
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { ARCADE_MAINNET, ARCADE_TESTNET } from './kit/arcadeChainTracker'
+import { ARCADE_MAINNET, ARCADE_TESTNET } from '@agentcoop/core/kit/arcadeChainTracker'
 
-export const REPO_ROOT = resolve(__dirname, '..', '..')
+export const REPO_ROOT = resolve(import.meta.dirname, '..', '..')
 export const ENV_FILE = join(REPO_ROOT, '.env')
 export const DATA_DIR = join(REPO_ROOT, 'data')
 

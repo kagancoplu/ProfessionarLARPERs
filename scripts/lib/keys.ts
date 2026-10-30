@@ -2,7 +2,7 @@
  * Server wallet key generation. Pure: returns `.env` lines, writes nothing.
  * keygen.ts prints them to stdout, which the operator redirects into .env.
  */
-import { PrivateKey } from '@bsv/sdk'
+import { PrivateKey } from '@agentcoop/core/sdk'
 import { keyVar } from './env'
 
 export interface KeyLines {

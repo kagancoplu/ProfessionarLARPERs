@@ -10,7 +10,7 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { CachedKeyDeriver, PrivateKey } from '@bsv/sdk'
+import { CachedKeyDeriver, PrivateKey } from '@agentcoop/core/sdk'
 import { Monitor, Services, Setup, StorageKnex, Wallet, WalletStorageManager } from '@bsv/wallet-toolbox'
 import { DATA_DIR, WALLET_NAMES, arcadeUrl, chain, requireKey } from './lib/env'
 

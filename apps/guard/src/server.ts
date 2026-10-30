@@ -5,7 +5,7 @@
  * (@bsv/auth-express-middleware); the owner CLI calls them with AuthFetch.
  */
 import { createAuthMiddleware, type AuthRequest } from '@bsv/auth-express-middleware'
-import type { WalletInterface } from '@bsv/sdk'
+import type { WalletInterface } from '@agentcoop/core/sdk'
 import express, { type Express, type Response } from 'express'
 import type { Guard, GuardResult } from './guard'
 

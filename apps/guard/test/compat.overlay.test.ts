@@ -5,8 +5,8 @@
  * typechecked by its own tsconfig.
  */
 import { describe, expect, it } from 'vitest'
-import { PrivateKey } from '@bsv/sdk'
-import { newVaultId, vaultRecordScript, vaultScriptForRecord, type VaultRecord } from '../../../packages/core/src/scripts/vault'
+import { PrivateKey } from '@agentcoop/core/sdk'
+import { newVaultId, vaultRecordScript, vaultScriptForRecord, type VaultRecord } from '@agentcoop/core/scripts/vault'
 import { parseOpReturn } from '../../../packages/overlay/src/stub/opreturn'
 import { expectedVaultScript, isVaultScriptHex } from '../../../packages/overlay/src/stub/vault'
 import { validateVaultRecord } from '../../../packages/overlay/src/records'
@@ -18,7 +18,7 @@ describe("Track B's overlay and D's vault agree", () => {
   it('same script from the same record, same template, same record validation', () => {
     expect(expectedVaultScript(record.owner, record.agent, record.guard, record.vaultId).toHex()).toBe(vaultScriptForRecord(record).toHex())
     expect(isVaultScriptHex(vaultScriptForRecord(record).toHex())).toBe(true)
-    const parsed = parseOpReturn(vaultRecordScript(record))
+    const parsed = parseOpReturn(vaultRecordScript(record).toHex()) // hex: B's stub takes its own @bsv/sdk types
     expect(validateVaultRecord(parsed!.json)).toEqual(record)
   })
 })

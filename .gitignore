@@ -1,9 +1,11 @@
-# Created early by Track D (ops) so server wallet keys are protected before A.P0.
-# Track A: extend this file, do not drop the secret/data rules below.
+# Created early by Track D (ops) so server wallet keys are protected before A.P0;
+# merged with Track A's root .gitignore. Extend this file, do not drop the secret/data rules.
 
 # dependencies and build output
 node_modules/
 dist/
+coverage/
+graft/
 
 # secrets: server wallet keys, API keys (.env.example is committed)
 .env
@@ -14,6 +16,7 @@ dist/
 data/
 *.sqlite
 *.sqlite-*
+*.sqlite3
 *.db
 *.db-*
 

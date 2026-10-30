@@ -14,12 +14,11 @@
  *   adoptVaultOutput  take a vault output the owner funded into the agent's basket
  *   spendFromVault    pay from one vault UTXO; change goes back to the vault script
  */
-import { Transaction, Utils, type CreateActionOutput, type SignActionResult, type UnlockingScript, type WalletInterface } from '@bsv/sdk'
+import { Transaction, Utils, type CreateActionOutput, type SignActionResult, type UnlockingScript, type WalletInterface } from '../sdk'
+import { VAULT_BASKET, VAULT_PROTOCOL, type InputSigner } from '../types'
 import {
-  VAULT_BASKET,
   VAULT_COSIGN_UNLOCK_LENGTH,
   VAULT_OWNER_UNLOCK_LENGTH,
-  VAULT_PROTOCOL,
   parseVaultLockingScript,
   toChecksigSignature,
   vaultCosignUnlock,
@@ -28,12 +27,6 @@ import {
   verifyVaultSignature,
   type VaultKeys
 } from '../scripts/vault'
-
-/** TEMP structural copy of MASTER §3.3 until A.P0's types.ts; A's interface is identical. */
-export interface InputSigner {
-  unlockingScriptLength: number
-  sign: (tx: Transaction, inputIndex: number) => Promise<UnlockingScript>
-}
 
 // ── guard protocol (MASTER §3.7) ─────────────────────────────────────────────
 

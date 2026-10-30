@@ -6,8 +6,8 @@
  *   wocUnspentByScript  WhatsOnChain GET /v1/bsv/{main|test}/script/{scriptHash}/unspent
  *   findVaultUtxos      chain ∪ the owner's basket ∪ explicit outpoints, each checked against the vault script
  */
-import { Hash, MerklePath, Transaction, Utils, type WalletInterface } from '@bsv/sdk'
-import type { VaultUtxo } from '../../../packages/core/src/signers/VaultSigner'
+import { Hash, MerklePath, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
+import type { VaultUtxo } from '@agentcoop/core/signers/VaultSigner'
 import { ownerBasketUtxos, type VaultInfo } from './vault-ops'
 
 export async function beefFromArcade (txid: string, arcadeUrl = 'https://arcade-v2-us-1.bsvblockchain.tech'): Promise<number[]> {

@@ -21,7 +21,7 @@ Sunucu cüzdanlarının verisi `data/wallets/<ad>.sqlite` (gitignore'lu). Public
 ## 2. Kurulum (bir kez)
 
 ```bash
-cd scripts && npm install && npm test && cd ..       # 9 test, mockchain, sats gerekmez
+npm install && npm test                              # kökte (A.P0 workspace); ops testleri test/ops.*.test.ts, mockchain, sats gerekmez
 git check-ignore -v .env data/                        # iki satır görmelisiniz
 grep -v '^WALLET_.*_KEY=$' .env.example > .env        # .env yoksa
 npx tsx scripts/keygen.ts --only-missing >> .env      # anahtarlar YALNIZCA .env'e
@@ -30,7 +30,7 @@ npx tsx scripts/identities.ts                         # cüzdanları açar → c
 
 - `keygen.ts` terminale anahtar basmayı reddeder (yönlendirme yoksa); `--show` yalnızca bilerek kullanılır.
 - `.env`'deki 7 `WALLET_*_KEY` satırını **ortak kasaya** (Bitwarden) kopyalayın. Kayıpta aynı anahtarla cüzdan yeniden açılır ve zincirden senkronlanır.
-- Kök workspace (A.P0) kurulunca: `rm -rf scripts/node_modules scripts/package-lock.json && npm install` (kökte). Yoksa iki `@bsv/sdk` kopyası olur.
+- `scripts/` artık kök workspace üyesi (`@agentcoop/scripts`): ayrı `node_modules` yok. Eski bir klonda `scripts/node_modules` kaldıysa silin (iki `@bsv/sdk` kopyası). Çalışma zamanı uyarısı: A'nın SDK köprüsü düzelene kadar tsx betikleri çalışmaz (STATUS → Blokajlar, 2026-10-30 17:45).
 
 ## 3. Fonlama (treasury Desktop'ın açık olduğu makinede)
 

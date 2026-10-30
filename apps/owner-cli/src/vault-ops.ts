@@ -9,11 +9,10 @@
  *   withdrawVault  the OP_IF branch: every given vault UTXO back to the owner's wallet,
  *                  without the guard or the agent
  */
-import { Beef, Transaction, type WalletInterface } from '@bsv/sdk'
+import { Beef, Transaction, type WalletInterface } from '@agentcoop/core/sdk'
+import { VAULT_BASKET, VAULT_PROTOCOL } from '@agentcoop/core'
 import {
-  VAULT_BASKET,
   VAULT_OWNER_UNLOCK_LENGTH,
-  VAULT_PROTOCOL,
   deriveVaultPub,
   newVaultId,
   validateVaultRecord,
@@ -22,8 +21,8 @@ import {
   vaultRecordScript,
   type VaultKeys,
   type VaultRecord
-} from '../../../packages/core/src/scripts/vault'
-import { VaultOwnerSigner, broadcastResult, vaultTag, type VaultUtxo } from '../../../packages/core/src/signers/VaultSigner'
+} from '@agentcoop/core/scripts/vault'
+import { VaultOwnerSigner, broadcastResult, vaultTag, type VaultUtxo } from '@agentcoop/core/signers/VaultSigner'
 
 export interface VaultInfo {
   record: VaultRecord

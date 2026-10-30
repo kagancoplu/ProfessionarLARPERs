@@ -1,5 +1,7 @@
 /**
- * Mandate Vault script (FINAL-IDEA §4.9, plan/phases/D-P1.md §6). Track D.
+ * Mandate Vault script (FINAL-IDEA §4.9, plan/phases/D-P1.md §6). Skeleton and
+ * signature by Track A (MASTER-PLAN §3.4); body, helpers and mainnet validation
+ * (test 5) by Track D.
  *
  *   OP_IF <ownerPub> OP_CHECKSIG OP_ELSE OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMULTISIG OP_ENDIF
  *
@@ -27,22 +29,18 @@ import {
   TransactionSignature,
   UnlockingScript,
   Utils,
-  type Transaction,
-  type WalletProtocol
-} from '@bsv/sdk'
+  type Transaction
+} from '../sdk'
+import { PROVIDER_PROTOCOL, SIGHASH_ALL_FORKID, VAULT_PROTOCOL } from '../types'
+import { buildOpReturn } from './opreturn'
 
-export const VAULT_PROTOCOL: WalletProtocol = [1, 'agentcoop vault']
-export const VAULT_BASKET = 'agentcoop vault'
 /** Sighash for every vault signature: SIGHASH_ALL | SIGHASH_FORKID (0x41). */
-export const VAULT_SIGHASH = TransactionSignature.SIGHASH_ALL | TransactionSignature.SIGHASH_FORKID
+export const VAULT_SIGHASH = SIGHASH_ALL_FORKID
 /** <sig ≤73> push (≤74) + OP_1. Measured: 74. */
 export const VAULT_OWNER_UNLOCK_LENGTH = 75
 /** OP_0 + 2 × <sig ≤73> push (≤148) + OP_0. Measured: 147. */
 export const VAULT_COSIGN_UNLOCK_LENGTH = 150
 export const VAULT_SCRIPT_LENGTH = 109
-
-/** Provider revenue key (MASTER §3.2): keyID = pool nonce, counterparty 'anyone'. */
-export const PROVIDER_PROTOCOL: WalletProtocol = [1, 'agentcoop provider']
 
 export interface VaultKeys {
   ownerPub: string
@@ -128,20 +126,11 @@ export function validateVaultRecord (json: unknown): VaultRecord | null {
   return { v: '1', vaultId: j.vaultId, owner: j.owner as string, agent: j.agent as string, guard: j.guard as string }
 }
 
-/**
- * `OP_FALSE OP_RETURN "agentcoop" "vault" <json>` (MASTER §3.2 envelope).
- * TEMP: same bytes as A's buildOpReturn('vault', record); switch to it when A.P0 lands.
- */
+/** `OP_FALSE OP_RETURN "agentcoop" "vault" <json>` (MASTER §3.2 envelope). */
 export function vaultRecordScript (r: VaultRecord): LockingScript {
   const record: VaultRecord = { v: '1', vaultId: r.vaultId, owner: r.owner, agent: r.agent, guard: r.guard }
   if (validateVaultRecord(record) === null) throw new Error('invalid vault record')
-  return LockingScript.fromHex(new Script()
-    .writeOpCode(OP.OP_FALSE)
-    .writeOpCode(OP.OP_RETURN)
-    .writeBin(Utils.toArray('agentcoop', 'utf8'))
-    .writeBin(Utils.toArray('vault', 'utf8'))
-    .writeBin(Utils.toArray(JSON.stringify(record), 'utf8'))
-    .toHex())
+  return buildOpReturn('vault', record)
 }
 
 // ── signing ──────────────────────────────────────────────────────────────────
@@ -198,6 +187,9 @@ export const vaultCosignUnlock = (sigAgent: number[], sigGuard: number[]): Unloc
 
 // ── payees ───────────────────────────────────────────────────────────────────
 
-/** P2PKH to a provider's revenue key: anyone can recompute it from the provider's identity key and the keyID. */
+/**
+ * P2PKH to a provider's revenue key (MASTER §3.2: [1,'agentcoop provider'], keyID = the pool
+ * nonce, 'anyone'): anyone can recompute it from the provider's identity key and the keyID.
+ */
 export const providerPayScript = (provider: string, keyID: string): LockingScript =>
   new P2PKH().lock(new KeyDeriver('anyone').derivePublicKey(PROVIDER_PROTOCOL, keyID, pubHex(provider)).toAddress())

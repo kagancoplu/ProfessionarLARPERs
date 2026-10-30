@@ -17,11 +17,11 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PrivateKey } from '@bsv/sdk'
+import { PrivateKey } from '@agentcoop/core/sdk'
 import { arcadeUrl, chain, hasKey, requireKey, wocTxUrl } from './lib/env'
 import { PAYMENTS_DIR, PROBE_FILE, connectDesktop, flag, loadIdentities, option, run, short } from './lib/cli'
 import { acceptPayment, markAccepted, payTarget, savePaymentFile } from './lib/funding'
-import { ArcadeChainTracker } from './lib/kit/arcadeChainTracker'
+import { ArcadeChainTracker } from '@agentcoop/core/kit/arcadeChainTracker'
 import { openWallet } from './wallets'
 
 const PROBE_MAX = 1_000

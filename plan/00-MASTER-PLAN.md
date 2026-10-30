@@ -66,6 +66,8 @@
 **ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) `@bsv/sdk`'yı **tek bir yerden** import eder: `packages/core/src/sdk.ts` → `export * from '@bsv/sdk'` ve tsconfig `paths` ile CJS build'e yönlendirilir. A bunu P0'da kurar; herkes `@agentcoop/core/sdk` üzerinden import eder. Hata belirtisi: `script[serializedBytes] is not a function`.
 
 > **Doğrulama notu (D, 2026-10-30 16:20; tsx 4.23 + Node 24, `@bsv/sdk` 3.2.1, wallet-toolbox 2.14.9).** (a) `"type":"module"` bir pakette tsx altında `import { PrivateKey } from '@bsv/sdk'` ESM build'i yüklüyor, wallet-toolbox ise CJS build'i: `PrivateKey === require('@bsv/sdk').PrivateKey` → **false** (iki kopya). (b) tsconfig `paths` ile `@bsv/sdk` → `dist/cjs/mod.js` tsx'te uygulanıyor, ama ESM'den **isimli** import başarısız oluyor (`does not provide an export named 'PrivateKey'`). Yani yukarıdaki yöntem tsx çalışma zamanında olduğu gibi çalışmıyor. (c) **Çalışan yol:** wallet-toolbox kullanan paket **CommonJS** olarak çalışır (`package.json`'da `"type"` yok; tsx import'ları `require`'a çevirir → tek kopya, **true**). Tip denetimi için tsconfig `"module": "NodeNext", "moduleResolution": "NodeNext"` (bizim kod da wallet-toolbox da `dist/cjs` tiplerini görür). Top-level await yerine `main().catch(…)`. Örnek: `scripts/package.json`, `scripts/tsconfig.json`. Testlerde kit'in vitest alias'ı aynen çalışıyor. A, `@agentcoop/core` için hangi yolu seçtiğini STATUS'a yazar.
+>
+> **Ek (D, 2026-10-30 17:45, A.P0 `main`'e geldikten sonra; Node 22.22, tsx 4.23).** A'nın köprüsü `packages/core/src/sdk.ts` → `export * from '…/@bsv/sdk/dist/cjs/mod.js'` **vitest'te çalışıyor** (alias), ama **tsx/Node çalışma zamanında çalışmıyor**: Node'un ESM→CJS köprüsü (cjs-module-lexer) SDK CJS build'inin 186 export'undan **58'ini göremiyor** (`PrivateKey`, `PublicKey`, `Transaction`, `Script`, `LockingScript`, `P2PKH`, `WalletClient`, `CachedKeyDeriver`…). Belirti: `SyntaxError: The requested module '../sdk' does not provide an export named 'LockingScript'` (A'nın `scripts/lineage-check.ts`'i dahil her `@agentcoop/core` kullanıcısı). **Denenen çözüm:** kök, `packages/core`, `scripts`, `apps/*` `package.json`'larından `"type": "module"` kaldırılınca (CJS; tsx import'ları `require`'a çevirir) core + guard + `verifyLineage` yükleniyor ve süreçte **tek** SDK kopyası var (`PrivateKey === require('@bsv/sdk').PrivateKey`); yalnızca top-level `await` kullanan betikler (`lineage-check.ts`) `main().catch(…)`'a çevrilmeli. Karar A'nın (STATUS → Blokajlar).
 
 ### 3.2 Sabitler
 
@@ -78,6 +80,11 @@
 | Vault script'i ve kaydı (D.P1) | `OP_IF <ownerPub> OP_CHECKSIG OP_ELSE OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMULTISIG OP_ENDIF` (109 B, hex `6321{o}ac675221{a}21{g}52ae68`). Unlock: sahip `<sig> OP_1` (**75**), 2-of-2 `OP_0 <sigA> <sigG> OP_0` (**150**); sighash ALL\|FORKID, subscript = tüm script. Kayıt: `OP_RETURN agentcoop vault {v:'1', vaultId (32 hex), owner, agent, guard}` (**identity key**'ler, üçü farklı) | Fonlama tx'i: `out0` vault coin, `out1` kayıt (`randomizeOutputs:false`). Overlay için geçerlilik: kayıt geçerli **ve** `out0` script'i = kayıttan türetilen script. Kayıtsız vault coin'leri (para üstü, vault'lu pledge coin) script eşitliğiyle tanınır. Ayrıntı: `plan/phases/D-P1.md` §6, kod `packages/core/src/scripts/vault.ts` |
 | Sağlayıcı gelir anahtarı | protocol `[1,'agentcoop provider']`, keyID = poolNonce, counterparty `'anyone'`, basket `agentcoop revenue` | Settlement çıktısı 0 ve kayıt bedelleri buraya; `sweep-revenue` ile default'a taşınır |
 | Overlay isimleri | topic `tm_agentcoop`, service `ls_agentcoop` (BRC-87: rakam yok) | Kredi token'ları için kit'in kuralları aynı topic içinde |
+| Teklif UTXO'su (A-P1) | kredi UTXO'su `[1,'agentcoop provider']`, keyID `offer <poolNonce>`, `'anyone'` P2PKH'ye taşınır; basket `agentcoop offers`; customInstructions `{ protocolID, keyID, counterparty, payKeyID: poolNonce, tokenId, credits }` | Token receive adresinde kalmaz → `TokenKit.sync/send` dokunmaz. `payScriptHex` = P2PKH(`[1,'agentcoop provider']`, keyID = poolNonce). Pool OP_RETURN json = terms − `poolId` + `nonce` |
+| Market anahtarları (A-P2) | listelenen kredi `[1,'agentcoop market']` keyID `list <nonce>` P2PKH, basket `agentcoop listings`; satış bedeli keyID `pay <nonce>`; aynı tx'te `OP_RETURN list { v, tokenId, credits, askSats, seller }` | Teklif UTXO'suyla aynı neden: TokenKit dokunmaz |
+| Outpoint biçimi (A-P1) | AgentCoop verisinde her yerde `txid_vout`; yalnız cüzdan çağrılarında `txid.vout` (`toWalletOutpoint`) | |
+| `pledgeListHash` (A-P1) | `sha256_hex(join(',', sort_lex(dahil outpoint'ler)))` | Seçim sırası ayrı kural (blockHeight, txid); hash zincir bilgisi gerektirmez |
+| Settlement para üstü (A-P1) | Katılımcı yayından sonra `internalizeSettlement` ile para üstünü `agentcoop` basket'ine `change:true` işaretiyle alır, harcanan pledge coin'ini `relinquishOutput` eder | "Tek aktif pledge" kontrolü `change:true` çıktıları saymaz |
 | Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | BIP-143 ön görüntüsü SINGLE\|ACP'de de tx `version`, `lockTime` ve girdinin `sequence`'ını içerir: teklif `version=1`, `lockTime=0`, in0 `sequence=0xffffffff` ile imzalanır ve **settlement bu değerlerle kurulmalı**, yoksa teklif geçersiz olur (B.P1). Koordinatörün `verifyOffer`'ı bu değerlerle doğrular |
 | Liste (market) sighash | satıcı `SINGLE \| ANYONECANPAY \| FORKID`; alıcı `ALL \| FORKID` | Sağlayıcı teklifiyle aynı primitif |
 | Arcade | `https://arcade-v2-us-1.bsvblockchain.tech` | Yayın (EF), tx durumu, header'lar `/chaintracks/v2` |
@@ -104,8 +111,6 @@ export interface PoolTerms {
   backstopMax?: string        // Y (K3; şimdilik bilgi)
   label: string               // "8×H100 · 1 week"
   retailSatsPerCredit: string // bilgi: perakende fiyat
-  payKeyID?: string           // (D.P1 eki) payScript'in keyID'si (= poolNonce): payScriptHex == P2PKH(derive([1,'agentcoop provider'],
-                              // payKeyID, provider, 'anyone')) herkesçe doğrulanabilsin. Guard alıcıyı overlay'e güvenmeden kanıtlar (D-P1 §7 G8)
 }
 
 export interface PledgeRecord {       // OP_RETURN op=pledge
@@ -174,6 +179,22 @@ verifyLineage(outpoint, { arcadeUrl, wocUrl }): Promise<{ ok, tokenId, amt, owne
 
 // signers
 new P2pkhWalletSigner(wallet, { protocolID, keyID })
+
+// A-P1 eklemeleri (kırıcı değil; tam imzalar packages/core/src/pool/*.ts)
+verifyOffer(offer, { sourceTx }): void                                             // çevrimdışı: kredi miktarı/token, SINGLE|ACP imzası Spend ile
+planTransaction(plan): Transaction                                                  // templateBEEF → tx
+internalizeSettlement(wallet, tx, plan, myOutpoint, pledgeInstructions): Promise<void>
+fetchChainPolicy(arcadeUrl): Promise<{ height, satsPerKb, maxTxSize? }>            // Arcade /health; planSettlement'ın `chain`'i
+// A-P2: doğrulama ve market (MASTER'daki `buildSweep(wallet, listings[]): { plan }` bununla DEĞİŞTİ; henüz kullanan yoktu)
+verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache? }): Promise<{ ok, tokenId?, amt?: bigint, ownerPkh?, depth, reason? }>
+reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint, beef }>   // signListing'den önce
+signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
+buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
+cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · reclaimReserved(wallet, kit, outpoint, basket)
+// hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
+// parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
+//   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
+//   verifySettlementPlan(plan, offer, myOutpoint, { expectedCredits, expectedCreditPkh?, maxFeeSats?, verifyLineage? })
 ```
 
 ### 3.5 Koordinatör / yan API (B) — `COOP_API_URL`

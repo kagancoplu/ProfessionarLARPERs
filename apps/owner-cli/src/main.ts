@@ -14,8 +14,8 @@
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { AuthFetch, Utils } from '@bsv/sdk'
-import { isVaultId } from '../../../packages/core/src/scripts/vault'
+import { AuthFetch, Utils } from '@agentcoop/core/sdk'
+import { isVaultId } from '@agentcoop/core/scripts/vault'
 import { connectDesktop, flag, loadIdentities, option, run, short } from '../../../scripts/lib/cli'
 import { DATA_DIR, appOriginator, arcadeUrl, chain, wocTxUrl } from '../../../scripts/lib/env'
 import { findVaultUtxos } from './chain'

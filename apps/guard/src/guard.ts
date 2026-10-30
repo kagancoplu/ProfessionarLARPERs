@@ -7,16 +7,16 @@
  * /cosign requests are processed one at a time, so two concurrent requests
  * cannot both fit under the weekly cap.
  */
-import { Utils, type WalletInterface } from '@bsv/sdk'
+import { Utils, type WalletInterface } from '@agentcoop/core/sdk'
+import { VAULT_PROTOCOL } from '@agentcoop/core'
 import {
-  VAULT_PROTOCOL,
   isVaultId,
   toChecksigSignature,
   validateVaultRecord,
   vaultKeysForRecord,
   vaultLockingScript
-} from '../../../packages/core/src/scripts/vault'
-import { CosignRejected, type CosignRequest, type CosignResponse, type Cosigner } from '../../../packages/core/src/signers/VaultSigner'
+} from '@agentcoop/core/scripts/vault'
+import { CosignRejected, type CosignRequest, type CosignResponse, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
 import { decodeTxBEEF, evaluateCosign, validatePolicy, WEEK_MS } from './policy'
 import { GuardStore, type Decision } from './store'
 

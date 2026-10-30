@@ -1,0 +1,39 @@
+{
+  "name": "agentcoop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentCoop: non-custodial group buying for AI agents on BSV",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "scripts"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@bsv/402-pay": "0.3.3",
+    "@bsv/auth-express-middleware": "2.2.9",
+    "@bsv/overlay": "2.6.4",
+    "@bsv/overlay-express": "2.7.4",
+    "@bsv/payment-express-middleware": "2.1.9",
+    "@bsv/sdk": "3.2.1",
+    "@bsv/wallet-toolbox": "2.14.9",
+    "better-sqlite3": "13.0.3",
+    "express": "5.3.0",
+    "knex": "3.3.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "4.1.12"
+  }
+}
