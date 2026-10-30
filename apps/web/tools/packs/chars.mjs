@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { packAsync } from 'free-tex-packer-core'
 import { KENMI, blank, blit, crop, loadRaw, toPng } from './lib.mjs'
-import { NPCS, VILLAGERS } from './manifest.mjs'
+import { ANIMALS, NPCS, VILLAGERS } from './manifest.mjs'
 
 export const CELL = 64
 export const ANIMS = ['idle_down', 'idle_side', 'idle_up', 'walk_down', 'walk_side', 'walk_up']
@@ -25,10 +25,16 @@ export async function buildChars (outDir) {
     for (const layer of v.layers) { const l = await load(layer); blit(sheet, l, 0, 0, sheet.w, sheet.h, 0, 0) }
     await push(v.name, sheet)
   }
+  for (const a of ANIMALS) {
+    const sheet = await load(a.file)
+    for (const [anim, [row, count]] of Object.entries(a.anims)) for (let i = 0; i < count; i++) {
+      images.push({ path: `${a.name}_${anim}_${i}.png`, contents: await toPng(crop(sheet, i * 32, row * 32, 32, 32)) })
+    }
+  }
   const files = await packAsync(images, {
     textureName: 'chars', width: 2048, height: 2048, fixedSize: false, padding: 2, allowRotation: false,
     allowTrim: true, trimMode: 'trim', detectIdentical: true, exporter: 'Phaser3', removeFileExtension: true, prependFolderName: false
   })
   for (const f of files) await writeFile(resolve(outDir, f.name), f.buffer)
-  return { chars: NPCS.length + VILLAGERS.length, frames: images.length, files: files.map(f => f.name) }
+  return { chars: NPCS.length + VILLAGERS.length + ANIMALS.length, frames: images.length, files: files.map(f => f.name) }
 }

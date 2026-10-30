@@ -122,5 +122,27 @@
   .mono { font-family: var(--font-counter); font-size: 18px; line-height: 24px; }
   .notch { clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px); }
   .steps-in { animation: steps-in 160ms steps(4) both; }
+  .blink-steps { animation: blink-steps 900ms steps(2) infinite; }
+  @keyframes blink-steps { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.45; } }
+  /* 9-slice pixel frames (tools/ui.mjs → public/ui). Source slices are 8 px (frames) / 4 px (buttons), drawn at 2×. */
+  .frame-wood { border: 16px solid transparent; border-image: url(/ui/frame-wood.png) 8 / 16px repeat; image-rendering: pixelated; background-clip: padding-box; }
+  .frame-parchment { border: 16px solid transparent; border-image: url(/ui/frame-parchment.png) 8 fill / 16px repeat; image-rendering: pixelated; }
+  :root[data-theme="night"] .frame-parchment { border-image-source: url(/ui/frame-parchment-night.png); }
+  .btn9 { border: 8px solid transparent; border-image-slice: 4 fill; border-image-width: 8px; border-image-repeat: repeat; image-rendering: pixelated; }
+  .btn9-gold { border-image-source: url(/ui/btn-gold.png); }
+  .btn9-gold:enabled:active { border-image-source: url(/ui/btn-gold-pressed.png); }
+  .btn9-parchment { border-image-source: url(/ui/btn-parchment.png); }
+  .btn9-parchment:enabled:active { border-image-source: url(/ui/btn-parchment-pressed.png); }
+  :root[data-theme="night"] .btn9-parchment { border-image-source: url(/ui/btn-parchment-night.png); }
+  :root[data-theme="night"] .btn9-parchment:enabled:active { border-image-source: url(/ui/btn-parchment-night-pressed.png); }
+  .btn9-danger { border-image-source: url(/ui/btn-danger.png); }
+  .btn9-danger:enabled:active { border-image-source: url(/ui/btn-danger-pressed.png); }
+  /* Town labels live in Phaser's DOM layer in world pixels: 3 px slices at 1× */
+  .town-label { border: 3px solid transparent; border-image: url(/ui/label.png) 3 fill / 3px repeat; image-rendering: pixelated; font-family: var(--font-display); color: var(--ink); line-height: 1.2; white-space: nowrap; pointer-events: none; text-align: left; }
+  :root[data-theme="night"] .town-label { border-image-source: url(/ui/label-night.png); }
+  .town-label-gold { border-image-source: url(/ui/label-gold.png) !important; color: #3f2832; }
+  .town-label-danger { border-image-source: url(/ui/label-danger.png) !important; color: #f9e6cf; }
+  .town-label-grass { border-image-source: url(/ui/label-grass.png) !important; color: #1e3a1a; }
+  .town-label-wood { border-image-source: url(/ui/label-wood.png) !important; color: #f9e6cf; }
   @keyframes steps-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }

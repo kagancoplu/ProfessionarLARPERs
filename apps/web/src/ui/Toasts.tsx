@@ -26,7 +26,7 @@ function ToastItem ({ id, text, tone }: { id: string, text: string, tone: keyof 
     return () => { clearTimeout(timer); el?.removeEventListener('mouseenter', pause); el?.removeEventListener('mouseleave', resume) }
   }, [id])
   return (
-    <div id={id} className={cn('steps-in flex items-start justify-between gap-3 border-2 bg-surface-2 px-3 py-2 shadow-hard', TONE[tone])} role="status">
+    <div id={id} className={cn('steps-in frame-parchment flex items-start justify-between gap-3 bg-surface-2 px-1 py-0 shadow-hard', TONE[tone])} role="status">
       <span className="text-[14px] leading-5">{text}</span>
       <button type="button" onClick={() => store.getState().dismissToast(id)} aria-label="Dismiss" className="font-display leading-5 text-ink-muted hover:text-ink">×</button>
     </div>

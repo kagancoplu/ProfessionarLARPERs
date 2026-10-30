@@ -8,11 +8,11 @@ import { writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import sharp from 'sharp'
 import { MAP_H, MAP_W, TERRAIN, FARM, PLAZA, POND, tileIndexAt, hash } from '../src/town/map/terrain.ts'
-import { PLACES, TREES, POINTS, DECOR_TUFTS, FLOWER_IDS, PATH_DECOR, WATER_DECOR } from '../src/town/map/places.ts'
+import { PLACES, TREES, POINTS, SOIL, DECOR_TUFTS, FLOWER_IDS, PATH_DECOR, WATER_DECOR } from '../src/town/map/places.ts'
 
 const root = resolve(process.cwd())
 const terrainDir = resolve(root, 'public/game/terrain')
-const TILESETS = ['grass', 'dirt', 'sand', 'cobble', 'water', 'decor', 'flowers', 'fence', 'path_decor', 'water_decor']
+const TILESETS = ['grass', 'dirt', 'sand', 'cobble', 'water', 'decor', 'flowers', 'fence', 'path_decor', 'water_decor', 'farmland']
 
 let gid = 1
 const sets = []
@@ -45,6 +45,8 @@ for (let y = 0; y < MAP_H; y++) for (let x = 0; x < MAP_W; x++) {
   else if (t === 'water' && hash(x + 2, y + 2) < 120 && tileIndexAt(TERRAIN, x, y) === 46) d = first.water_decor + (hash(x, y + 3) % WATER_DECOR)
   decor.push(d)
 }
+// soil patches (farmland tileset: 4×5 block at columns 0-3, rows 0-4)
+for (const s of SOIL) for (let ty = 0; ty < 5; ty++) for (let tx = 0; tx < 4; tx++) decor[(s.y + ty) * MAP_W + s.x + tx] = first.farmland + ty * 7 + tx
 // farm fence: rectangle with a gap on the east side (toward the gate road)
 const F = first.fence
 const fence = (x, y, id) => { if (x >= 0 && x < MAP_W && y >= 0 && y < MAP_H) decor[y * MAP_W + x] = F + id }

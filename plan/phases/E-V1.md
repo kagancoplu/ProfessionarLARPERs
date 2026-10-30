@@ -1,6 +1,6 @@
 # E-V1 — Görsel yeniden yapım (ara faz, Faz 3'ten önce)
 
-Durum: **araştırma bitti, paket seçimi kullanıcıda.** Faz 3 bu faz bitmeden başlamaz.
+Durum: **uygulandı (30.10, `main`)** — checkpoint aşağıda. Karar (kullanıcı): karakterler ve binalar yalnız Kenmi; LimeZu yalnız eksik parça için; Kenmi Premium, mem_px, Sprout Lands alındı/indirildi (mem_px ve Sprout kullanılmadı, stil çakışması). Faz 3 bu checkpoint'in üstüne başlar.
 
 ## Neden
 
@@ -93,3 +93,33 @@ buraya çekildi.
 - [ ] mem_px 50 karakter ($3) alınacak mı, yoksa ücretsiz Moonforge 3 karakter yeter mi?
 - [ ] Aseprite ($20) mi Pixelorama (ücretsiz) mi?
 - [ ] Ham paketler yerel `apps/web/assets/packs/` (gitignore) — kabul?
+
+## Checkpoint (30.10, commit'ler `9a156c2` + E-V1 part 2)
+
+**Boru hattı** (`apps/web/tools/`): `packs/` (`npm run packs`) ham paketleri (`assets/packs/`, gitignore) `public/game/`
+atlaslarına çevirir — `terrain/` 47 parçalı blob tileset'leri (Kenmi 3×3+2×2 autotile bloklarından, 8×8 çeyrek
+birleştirme + 13 tam-tile eşleşmesi; su 8 kare), `town.{png,json}` 249 prop/bina karesi (trim'li), `chars.{png,json}`
+26 karakter (8 hazır NPC, 12 modüler köylü, at, 5 hayvan) 810 kare. `town-map.mjs` (`npm run map`) `src/town/map/
+{terrain,places}.ts`'ten Tiled uyumlu `public/game/map.json` yazar (ground + decor katmanı, çiftlik çiti/toprağı,
+nesne katmanı). `ui.mjs` (`npm run ui`) `public/ui/`: 30 ikonluk şerit (23 Kenmi + 7 çizim: kum saati, kalkan, pano,
+sandık, para, kese, köylü) ve 9-slice çerçeveler (ahşap, parşömen gün/gece, altın/parşömen/tehlike düğme + basılı,
+Kasaba etiketleri).
+
+**Kasaba** (`src/town/`): `TownScene` baştan — tilemap (11 tileset), her nesne `depth = y`, animasyonlu su (tileset
+görüntüsü döngüsü), çeşme, fener, flama, kamp ateşi, baca dumanı; gece: çarpma katmanı + fener ve pencere ışıkları
+(`glow` tuval dokusu); kamera 2×–4× tam sayı, sürükleme. `Villager` 3 yön idle/yürüyüş, `Animal` (tavuk ×3, koyun,
+inek, ördek ×3 yüzüyor), `Building/House/Workshop` (demirci), Coop binası, `Board` (asılı tabela + altın sandık doluluk
++ imza turunda fener), uzlaşma atla geçiyor, çan yerine çeşme. DOM etiketleri `town-label` 9-slice.
+
+**UI** (`src/ui/`): `Signboard` ahşap çerçeve, `Scroll`/`Toast`/`ErrorState` parşömen çerçeve, `Drawer` ahşap,
+`PixelButton` 9-slice düğmeler (basılı durum görseli), `PxIcon` (`<Sprite>` ve kodla çizilmiş sprite hattı emekli:
+`assets/sprites`, `palette.ts`, `tools/sprites.mjs`, `tools/px.mjs`, `public/game/atlas.*`, `ground.png`).
+
+**Doğrulama:** typecheck temiz, web vitest 50/50, Playwright 4/4 (smoke `atlas-status` yerine Kasaba canvas'ı),
+ekran görüntüleri gün/gece 2×/3× (plaza, çiftlik, gölet, evler), `/pools` ve `/_kit` gün/gece.
+
+**Bilinen eksikler / sonraki:** Kenmi'de madeni para yok → `coin` ikonu çizim (BSV işareti Pixelbolt ile iyileştirilecek);
+köylü "kese" ikonu altın cevheri; `/design-review` tam tarayıcı döngüsü koşulmadı (kontrol listesi elle); gece modunda
+ahşap çerçeve aynı (tasarım kararı); Tiled'da elle düzenleme için `map.json` üretilmiş dosya (kaynak `terrain.ts`/
+`places.ts`); P3'e taşınan Kasaba v2 işleri: bekçi NPC'si ve kasa animasyonu (Coop binası), yabancı/injection sahnesi,
+tezgâhlarda satıcı.

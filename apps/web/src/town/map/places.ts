@@ -7,7 +7,7 @@ import { HOUSE_X, MAP_H, MAP_W, PLAZA, PLAZA_COBBLE, POND, FARM, ROAD_Y, SOUTH_R
 
 export { HOUSE_X }
 
-export type PlaceKind = 'house' | 'coop' | 'workshop' | 'stall' | 'board' | 'fountain' | 'well' | 'lantern' | 'bench' | 'barrel' | 'tree' | 'prop' | 'windmill' | 'fisherman' | 'sign' | 'bunting' | 'scarecrow' | 'hay' | 'boat'
+export type PlaceKind = 'house' | 'coop' | 'workshop' | 'stall' | 'board' | 'fountain' | 'well' | 'lantern' | 'bench' | 'barrel' | 'tree' | 'prop' | 'windmill' | 'fisherman' | 'sign' | 'bunting' | 'scarecrow' | 'hay' | 'boat' | 'crop'
 export interface Place { kind: PlaceKind, frame: string, x: number, y: number, slot?: number, anim?: { frames: number, fps: number }, name?: string, door?: { dx: number, dy: number } }
 export interface Point { name: string, x: number, y: number }
 
@@ -38,9 +38,13 @@ export const PLACES: Place[] = [
   { kind: 'sign', frame: 'sign_0', ...px(2.5, ROAD_Y) },
   { kind: 'sign', frame: 'sign_2', ...px(36.5, SOUTH_ROAD_Y) },
   // farm
-  { kind: 'scarecrow', frame: 'scarecrow_0', ...px(FARM.x + 4.5, FARM.y + 4) },
-  { kind: 'hay', frame: 'hay_0', ...px(FARM.x + 1.5, FARM.y + 6) }, { kind: 'hay', frame: 'hay_1', ...px(FARM.x + 2.5, FARM.y + 6) },
-  { kind: 'prop', frame: 'trough_0', ...px(FARM.x + 7, FARM.y + 2) },
+  { kind: 'scarecrow', frame: 'scarecrow_0', ...px(FARM.x + 4.5, FARM.y + 6.6) },
+  { kind: 'hay', frame: 'hay_0', ...px(FARM.x + 0.5, FARM.y + 6.8) }, { kind: 'hay', frame: 'hay_1', ...px(FARM.x + 1.5, FARM.y + 6.8) },
+  { kind: 'prop', frame: 'trough_0', ...px(FARM.x + 8, FARM.y + 6.8) },
+  ...[0, 1, 2, 3].flatMap(i => [
+    { kind: 'crop' as const, frame: 'wheat_0', ...px(FARM.x + 1.5 + i, FARM.y + 2.3) }, { kind: 'crop' as const, frame: 'tomato_0', ...px(FARM.x + 5.5 + i, FARM.y + 2.3) },
+    { kind: 'crop' as const, frame: 'carrot_0', ...px(FARM.x + 1.5 + i, FARM.y + 4.3) }, { kind: 'crop' as const, frame: 'pumpkin_0', ...px(FARM.x + 5.5 + i, FARM.y + 4.3) }
+  ]),
   { kind: 'boat', frame: 'boat_0', ...px(POND.x + 5, POND.y + 4.5) },
   { kind: 'prop', frame: 'stump_0', ...px(2, 23) }, { kind: 'prop', frame: 'campfire_0', anim: { frames: 8, fps: 8 }, ...px(34, 33) }
 ]
@@ -68,6 +72,22 @@ export const TREES: Place[] = (() => {
   }
   return out
 })()
+
+/** Soil patches (farmland tileset block, 4×5 tiles) under the crops. */
+export const SOIL: Array<{ x: number, y: number }> = [{ x: FARM.x + 1, y: FARM.y + 1 }, { x: FARM.x + 5, y: FARM.y + 1 }]
+
+/** Wandering animals: `area` in tiles; ducks swim inside the pond. */
+export interface AnimalSpawn { char: string, x: number, y: number, area: { x: number, y: number, w: number, h: number }, swim?: boolean }
+export const ANIMALS: AnimalSpawn[] = [
+  { char: 'chicken', x: FARM.x + 0.6, y: FARM.y + 1.5, area: { x: FARM.x, y: FARM.y, w: 1, h: 6 } },
+  { char: 'chicken_b', x: FARM.x + 0.6, y: FARM.y + 4, area: { x: FARM.x, y: FARM.y, w: 1, h: 6 } },
+  { char: 'chicken', x: FARM.x + 3, y: FARM.y + 6.5, area: { x: FARM.x + 2, y: FARM.y + 6, w: 6, h: 1 } },
+  { char: 'sheep', x: 8, y: 23.5, area: { x: 5, y: 21, w: 8, h: 3 } },
+  { char: 'cow', x: 15, y: 9, area: { x: 13, y: 7.5, w: 5, h: 2.5 } },
+  { char: 'duck', x: POND.x + 2.5, y: POND.y + 2.5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
+  { char: 'duck', x: POND.x + 6, y: POND.y + 4, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
+  { char: 'duck', x: POND.x + 4, y: POND.y + 5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true }
+]
 
 export const POINTS: Record<string, Point> = {
   'square-centre': { name: 'square-centre', x: (PLAZA_COBBLE.x + PLAZA_COBBLE.w / 2) * TILE, y: (PLAZA_COBBLE.y + PLAZA_COBBLE.h / 2 + 1.5) * TILE },
