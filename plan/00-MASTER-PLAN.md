@@ -203,10 +203,12 @@ cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · recla
 | `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri. `POST` zincire karşı doğrular (outpoint overlay'de admit edilmiş, harcanmamış kredi çıktısı; `tokenId`/`credits` eşleşiyor; imza `0xC3` ve girdi ↔ aynı index'teki çıktı = `askSats → payScriptHex`). `GET` yalnızca hâlâ harcanmamışları, en ucuz (`askSats/credits`) önce döndürür (B.P3) |
 | `GET` | `/pools/:poolId/audit` | (B.P6a) Settle edilmiş havuzun denetimi, zincirden yeniden hesaplanır: `{ poolId, settlement: { txid, round, pledgeListHash, termsHash }, included[], checks: { hashMatches, termsHashMatches, providerPaid, creditsDelivered, allIncludedValid, selectionMatches }, skippedEarlier: [{ outpoint, participant, credits, reason }], verdict: 'consistent'\|'inconsistent'\|'unexplained-skips' }`. Kara liste nedenleri koordinatörün beyanıdır; seçim A'nın `planSettlement`'ı o beyanla yeniden çalıştırılarak kontrol edilir. Settle edilmemişse `409 NOT_SETTLED` |
 | `GET` | `/metrics` (`?format=prom`) | (B.P6a) Overlay'den hesaplanan sayılar: havuz/pledge durumları, settlement sayısı, katılımcı (toplam/ortalama/en büyük), ortalama ücret ve boyut, tur sayısı, **`custodiedSats`** (her settlement çıktısı sağlayıcı ödemesi / katılımcının kredisi / katılımcının para üstü / OP_RETURN sınıflarından birine girmeli; girmeyenlerin toplamı) ve `custodyCheck` |
+| `GET` | `/healthz` | (B.P5a) `{ ok, overlay, height, arcade, engine, openPools, ws: { clients, proven }, uptimeS }`. Overlay'de `GET /agentcoop/healthz` → `{ ok, db, lastEventAt, sseClients, uptimeS }`. Hız sınırı aşımı her yerde `429 { code: 'RATE_LIMITED' }` + `Retry-After` |
 | `WS` | `/ws` | Katılımcı oturumu ve canlı akış |
 
 **WS mesajları** (JSON, `type` alanı):
-- `hello { identity, poolIds[] }` → katılımcı kaydolur (imza turlarına çağrılmak için)
+- `challenge { nonce }` (sunucu, bağlantı açılınca; bağlantıya özel) (B.P5a)
+- `hello { identity, poolIds[], sig }` → katılımcı kaydolur (imza turlarına çağrılmak için). `sig` = `createSignature({ data: utf8("agentcoop hello\n" + host + "\n" + nonce), protocolID: [1,'agentcoop hello'], keyID: '1', counterparty: 'anyone' })` DER hex; `host` = bağlanılan URL'nin host'u. Cevap `hello_ack { identity, poolIds, proven }`. `sig`'siz hello yalnızca izler: `sign_request` almaz, `sign_response`/`sign_reject` reddedilir. İstemci: `connectCoordinator(url, wallet, { poolIds, onMessage })` (`@agentcoop/coordinator/client`) (B.P5a)
 - `pool_update { poolId, pledgedCredits, status }` (herkese)
 - `sign_request { poolId, round, plan: SettlementPlan, yourInputIndex }`
 - `sign_response { poolId, round, inputIndex, unlockingScriptHex }` | `sign_reject { poolId, round, reason }`

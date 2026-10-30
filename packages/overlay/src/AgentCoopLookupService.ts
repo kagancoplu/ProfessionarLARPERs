@@ -619,7 +619,7 @@ export const createAgentCoopLookupService = (knex: Knex): { service: LookupServi
 })
 
 /** Same, with an event emitter for GET /agentcoop/events. */
-export const makeAgentCoopLookupFactory = (events: OverlayEvents) => (knex: Knex): { service: LookupService, migrations: typeof migrations } => ({
-  service: new AgentCoopLookupService(knex, events),
-  migrations
-})
+export const makeAgentCoopLookupFactory = (events: OverlayEvents, onKnex?: (knex: Knex) => void) => (knex: Knex): { service: LookupService, migrations: typeof migrations } => {
+  onKnex?.(knex)
+  return { service: new AgentCoopLookupService(knex, events), migrations }
+}

@@ -1,4 +1,7 @@
 /** Coordinator settings (MASTER §3.9). */
+import { envInt } from '../../../packages/overlay/src/limits'
+import { DEFAULT_FEED_LIMITS, type FeedLimits } from './ws'
+
 export interface CoordinatorConfig {
   port: number
   overlayUrl: string
@@ -12,6 +15,10 @@ export interface CoordinatorConfig {
   /** Pre-round on-chain spent check of pledge coins: WhatsOnChain bulk, or none. */
   spentCheck: 'woc' | 'none'
   network: 'main' | 'test'
+  /** Per-IP HTTP limits (B-P5a); undefined = none (tests). Loopback is exempt. */
+  rateLimit?: { getPerMin: number, postPerMin: number }
+  /** WS connection and message caps (B-P5a); default DEFAULT_FEED_LIMITS. */
+  feedLimits?: FeedLimits
 }
 
 export function configFromEnv (env: NodeJS.ProcessEnv = process.env): CoordinatorConfig {
@@ -24,6 +31,12 @@ export function configFromEnv (env: NodeJS.ProcessEnv = process.env): Coordinato
     roundTimeoutMs: Number(env.ROUND_TIMEOUT_MS ?? 60_000),
     maxRounds: Number(env.MAX_ROUNDS ?? 3),
     spentCheck: env.SPENT_CHECK === 'none' ? 'none' : 'woc',
-    network: env.NETWORK === 'test' ? 'test' : 'main'
+    network: env.NETWORK === 'test' ? 'test' : 'main',
+    ...(env.RATE_LIMIT === 'off' ? {} : { rateLimit: { getPerMin: envInt(env.RATE_GET_PER_MIN, 120), postPerMin: envInt(env.RATE_POST_PER_MIN, 10) } }),
+    feedLimits: {
+      maxPerIp: envInt(env.WS_MAX_PER_IP, DEFAULT_FEED_LIMITS.maxPerIp),
+      maxClients: envInt(env.WS_MAX_CLIENTS, DEFAULT_FEED_LIMITS.maxClients),
+      maxMessagesPer10s: envInt(env.WS_MAX_MSGS_PER_10S, DEFAULT_FEED_LIMITS.maxMessagesPer10s)
+    }
   }
 }

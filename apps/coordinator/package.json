@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "AgentCoop coordinator and side API: offers, pools, pledges, WS feed (later: lock-in, signing rounds, broadcast). Holds no funds.",
+  "exports": {
+    "./client": "./src/client.ts",
+    "./auth": "./src/auth.ts"
+  },
   "engines": {
     "node": ">=22"
   },
