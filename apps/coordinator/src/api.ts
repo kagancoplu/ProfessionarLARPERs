@@ -5,13 +5,14 @@
  * round is running, Faz 2) and `hasOffer`.
  */
 import express, { type Router } from 'express'
-import type { Offer } from '../../../packages/overlay/src/stub/types'
+import type { Listing, Offer } from '../../../packages/overlay/src/stub/types'
 import type { PoolView } from '../../../packages/overlay/src/views'
 import type { HeightSource } from './chain'
 import type { CoordinatorStatus } from './engine'
 import { OverlayUnavailableError, type OverlayLookup } from './overlay'
 import type { CoordinatorStore } from './store'
 import { OfferError, verifyOffer } from './verifyOffer'
+import { normalizeOutpoint, verifyListing } from './verifyListing'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
 export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
@@ -94,6 +95,32 @@ export function createApiRouter (deps: ApiDeps): Router {
   r.get('/pools/:poolId/pledges', wrap(async (req, res) => {
     const all = req.query.all === '1'
     res.json(await deps.overlay.pledges(poolIdParam(req), { includeSpent: all, includeInvalid: all }))
+  }))
+
+  r.post('/listings', wrap(async (req, res) => {
+    const listing = req.body as Listing
+    const outpoint = typeof listing?.outpoint === 'string' ? normalizeOutpoint(listing.outpoint) : ''
+    const credit = /^[0-9a-f]{64}_\d+$/.test(outpoint) ? await deps.overlay.tokenOutput(outpoint) : undefined
+    const verified = verifyListing(listing, credit)
+    await deps.store.saveListing(verified)
+    res.status(201).json({ outpoint: verified.outpoint, accepted: true })
+  }))
+
+  /** Unspent listings, cheapest per credit first; spent ones (swept or cancelled) are dropped. */
+  r.get('/listings', wrap(async (req, res) => {
+    const tokenId = typeof req.query.tokenId === 'string' ? req.query.tokenId : undefined
+    const live: Listing[] = []
+    for (const l of await deps.store.listings(tokenId)) {
+      const credit = await deps.overlay.tokenOutput(l.outpoint)
+      if (credit === undefined || credit.spent) { await deps.store.deleteListing(l.outpoint); continue }
+      live.push(l)
+    }
+    live.sort((a, b) => {
+      const x = BigInt(a.askSats) * BigInt(b.credits)
+      const y = BigInt(b.askSats) * BigInt(a.credits)
+      return x < y ? -1 : x > y ? 1 : 0
+    })
+    res.json(live)
   }))
 
   r.get('/healthz', wrap(async (_req, res) => {

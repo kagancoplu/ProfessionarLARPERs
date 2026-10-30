@@ -1,7 +1,7 @@
 # B-P1 — `tm_agentcoop` indeksleme + yan API (offers, pools, WS) (→ S1)
 
 > Track B, Faz 1. Kaynak: `plan/track-B-overlay-coordinator.md` Faz 1, MASTER §3.2/§3.3/§3.5/§3.8, FINAL-IDEA §4.3–4.5.
-> Yazıldı: 30.10 ~16:40. Branch `trackB`. Node 22.
+> Yazıldı: 30.10 ~16:18. Branch `trackB`. Node 22.
 
 ## 1. Amaç
 
@@ -9,7 +9,7 @@
 2. A'nın skeleton'ı ve C'nin ajanları için yan API (`apps/coordinator`, :8090): `POST/GET /offers`, `GET /pools`, `/pools/:id`, `/pools/:id/pledges`, `WS /ws` (`hello`, `pool_update`).
 3. Uçtan uca mockchain testi: havuz → 2 pledge → teklif kaydı → 1 iptal → yeni pledge → settlement → `GET /pools/:id` = `settled`.
 
-## 2. Bağımlılıkların durumu (16:40)
+## 2. Bağımlılıkların durumu (16:18)
 
 | Bağımlılık | Durum | Ne yapıyorum |
 |---|---|---|
@@ -145,7 +145,7 @@ packages/overlay/test/
 | Overlay erişilemiyor (yan API) | `502 {code:'OVERLAY_UNAVAILABLE'}`; WS poll sessizce bir sonraki tura |
 | Arcade yükseklik alınamıyor | son bilinen yükseklik; hiç yoksa `failed` türetilmez (durum `open` kalır) ve `heightUnknown:true` |
 
-## 11. Sonuç (17:05)
+## 11. Sonuç (16:30)
 
 Mockchain kabulü tamam: overlay 15/15 (P0'ın 8'i + P1'in 7'si), koordinatör e2e 5/5. Plandan farklar:
 - Görünüm tipleri `packages/overlay/src/views.ts`'e taşındı (çalışma zamanı importu yok), böylece koordinatör ve C'nin ajanları SDK kopyası çekmeden tipleri kullanabiliyor.

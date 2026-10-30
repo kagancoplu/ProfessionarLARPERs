@@ -18,6 +18,7 @@ import { createApiRouter, type ApiDeps } from './api'
 import { ArcadeHeight, type HeightSource } from './chain'
 import { configFromEnv, type CoordinatorConfig } from './config'
 import { CoordinatorEngine } from './engine'
+import { subscribeOverlayEvents } from './events'
 import { jsonLogger, type Logger } from './log'
 import type { SettlementProtocol } from './protocol'
 import { noSpentChecker, WocSpentChecker, type SpentChecker } from './spent'
@@ -76,9 +77,20 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
     }, { roundTimeoutMs: config.roundTimeoutMs, maxRounds: config.maxRounds, tickMs: config.pollMs })
     feed.onParticipantMessage = (identity, msg) => engine!.onParticipantMessage(identity, msg)
   }
+  await engine?.load()
   await new Promise<void>(resolve => server.listen(config.port, resolve))
   feed.start()
   engine?.start()
+  // Overlay events (B.P3): re-read within ~100 ms of a pledge/settlement reaching the overlay.
+  let debounce: NodeJS.Timeout | undefined
+  const subscription = subscribeOverlayEvents(config.overlayUrl, () => {
+    if (debounce !== undefined) return
+    debounce = setTimeout(() => {
+      debounce = undefined
+      void feed.poll()
+      void engine?.tick()
+    }, 100)
+  }, opts.log ?? jsonLogger)
   return {
     url: `http://localhost:${config.port}`,
     server,
@@ -86,9 +98,14 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
     deps,
     ...(engine !== undefined ? { engine } : {}),
     close: async () => {
+      subscription.close()
+      if (debounce !== undefined) clearTimeout(debounce)
       engine?.stop()
       await feed.close()
-      await new Promise<void>(resolve => server.close(() => resolve()))
+      await new Promise<void>(resolve => {
+        server.close(() => resolve())
+        server.closeAllConnections() // keep-alive sockets would otherwise outlive a restart
+      })
       await store.close()
     }
   }

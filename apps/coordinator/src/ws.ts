@@ -24,6 +24,7 @@ export class Feed {
   private readonly last = new Map<string, string>()
   private timer?: NodeJS.Timeout
   private polling = false
+  private again = false
   /** Set by the server when the engine runs (Faz 2). Returns an error to send back, if any. */
   onParticipantMessage?: (identity: string | undefined, msg: any) => string | undefined
 
@@ -42,19 +43,24 @@ export class Feed {
     this.timer = setInterval(() => { void this.poll() }, this.pollMs)
   }
 
-  /** Re-read pools; send `pool_update` for every pool whose progress or status changed. */
+  /** Re-read pools; send `pool_update` for every pool whose progress or status changed. A call during a poll runs one more poll. */
   async poll (): Promise<void> {
-    if (this.polling) return
+    if (this.polling) { this.again = true; return }
     this.polling = true
     try {
-      for (const p of await derivePools(this.deps, await this.deps.overlay.pools())) {
-        const key = `${p.pledgedCredits}|${p.status}`
-        if (this.last.get(p.poolId) === key) continue
-        this.last.set(p.poolId, key)
-        this.broadcast(p.poolId, { type: 'pool_update', poolId: p.poolId, pledgedCredits: p.pledgedCredits, status: p.status })
-      }
-    } catch {
-      // overlay unreachable: try again next tick
+      do {
+        this.again = false
+        try {
+          for (const p of await derivePools(this.deps, await this.deps.overlay.pools())) {
+            const key = `${p.pledgedCredits}|${p.status}`
+            if (this.last.get(p.poolId) === key) continue
+            this.last.set(p.poolId, key)
+            this.broadcast(p.poolId, { type: 'pool_update', poolId: p.poolId, pledgedCredits: p.pledgedCredits, status: p.status })
+          }
+        } catch {
+          // overlay unreachable: try again next tick
+        }
+      } while (this.again)
     } finally {
       this.polling = false
     }

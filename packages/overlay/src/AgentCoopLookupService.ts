@@ -6,8 +6,10 @@ import { GAP_LIMIT, receivePkh } from './kit/addresses'
 import { TOPIC } from './AgentCoopTopicManager'
 import { parseOpReturn } from './stub/opreturn'
 import type { PoolTerms } from './stub/types'
-import type { PledgeView, PoolStatus, PoolView, SettlementView } from './views'
-export type { PledgeView, PoolStatus, PoolView, SettlementView } from './views'
+import type { PledgeView, PoolStatus, PoolView, SettlementView, VaultView } from './views'
+export type { PledgeView, PoolStatus, PoolView, SettlementView, VaultView } from './views'
+import type { OverlayEvents } from './events'
+import { expectedVaultScript, isVaultScriptHex } from './stub/vault'
 import {
   PLEDGE_COIN_VOUT,
   PLEDGE_FEE_VOUT,
@@ -15,6 +17,7 @@ import {
   validatePledgeRecord,
   validatePoolRecord,
   validateSettleRecord,
+  validateVaultRecord,
   type PoolRecord
 } from './records'
 
@@ -25,6 +28,8 @@ const POOLS = 'agentcoop_pools'
 const PLEDGES = 'agentcoop_pledges'
 const SETTLEMENTS = 'agentcoop_settlements'
 const RECORDS = 'agentcoop_records'
+const VAULTS = 'agentcoop_vaults'
+const VAULT_OUTPUTS = 'agentcoop_vault_outputs'
 const MAX_RESULTS = 500
 
 /** Queries accepted by `ls_agentcoop` (the `query` of a LookupQuestion). MASTER §3.8. */
@@ -42,6 +47,9 @@ export type AgentCoopQuery =
   | { op: 'pool', poolId: string }
   | { op: 'pledges', poolId: string, includeSpent?: boolean, includeInvalid?: boolean }
   | { op: 'settlement', poolId: string }
+  | { op: 'vaults', owner?: string, includeUnverified?: boolean }
+  | { op: 'vault', vaultId: string }
+  | { op: 'listings', tokenId?: string }
 
 /** Per-output metadata returned in each lookup answer's `context` (UTF-8 JSON). */
 export interface OutputContext {
@@ -93,6 +101,17 @@ interface PledgeRow {
   height: number | null
   spent: number
   spending_txid: string | null
+}
+
+interface VaultRow {
+  vault_id: string
+  txid: string
+  record_vout: number
+  owner: string
+  agent: string
+  guard: string
+  script_hex: string | null
+  verified: number
 }
 
 interface SettlementRow {
@@ -182,6 +201,35 @@ export const migrations = [{
   async down (knex: Knex): Promise<void> {
     for (const t of [POOLS, PLEDGES, SETTLEMENTS, RECORDS]) await knex.schema.dropTableIfExists(t)
   }
+}, {
+  name: '2026-10-30-003-agentcoop-vaults',
+  async up (knex: Knex): Promise<void> {
+    await knex.schema.createTable(VAULTS, t => {
+      t.string('txid', 64).notNullable()
+      t.integer('record_vout').notNullable()
+      t.string('vault_id', 64).notNullable().index()
+      t.string('owner', 66).notNullable().index()
+      t.string('agent', 66).notNullable()
+      t.string('guard', 66).notNullable()
+      t.text('script_hex')
+      t.boolean('verified').notNullable().defaultTo(false)
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+      t.primary(['txid', 'record_vout'])
+    })
+    await knex.schema.createTable(VAULT_OUTPUTS, t => {
+      t.string('txid', 64).notNullable()
+      t.integer('vout').notNullable()
+      t.string('script_hex', 220).notNullable().index()
+      t.bigInteger('satoshis').notNullable()
+      t.boolean('spent').notNullable().defaultTo(false)
+      t.string('spending_txid', 64)
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+      t.primary(['txid', 'vout'])
+    })
+  },
+  async down (knex: Knex): Promise<void> {
+    for (const t of [VAULTS, VAULT_OUTPUTS]) await knex.schema.dropTableIfExists(t)
+  }
 }]
 
 const isHex = (s: unknown, len: number): s is string => typeof s === 'string' && s.length === len && /^[0-9a-f]+$/.test(s)
@@ -193,21 +241,33 @@ export class AgentCoopLookupService implements LookupService {
   readonly admissionMode = 'whole-tx' as const
   readonly spendNotificationMode = 'txid' as const
 
-  constructor (private readonly knex: Knex) {}
+  constructor (private readonly knex: Knex, private readonly events?: OverlayEvents) {}
 
   async outputAdmittedByTopic (payload: OutputAdmittedByTopic): Promise<void> {
     if (payload.mode !== 'whole-tx' || payload.topic !== TOPIC) return
     const tx = Transaction.fromAtomicBEEF(payload.atomicBEEF)
     const txid = tx.id('hex')
-    const output = tx.outputs[payload.outputIndex]
+    await this.index(tx, txid, payload.outputIndex)
+    this.events?.emitEvent({ type: 'admitted', txid })
+  }
+
+  private async index (tx: Transaction, txid: string, outputIndex: number): Promise<void> {
+    const output = tx.outputs[outputIndex]
     if (output === undefined) return
+
+    const scriptHex = output.lockingScript.toHex()
+    if (isVaultScriptHex(scriptHex)) {
+      await this.knex(VAULT_OUTPUTS).insert({ txid, vout: outputIndex, script_hex: scriptHex, satoshis: output.satoshis ?? 0 })
+        .onConflict(['txid', 'vout']).ignore()
+      return
+    }
 
     const d = decodeBsv21(output.lockingScript)
     if (d !== null) {
-      const tokenId = d.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, payload.outputIndex) : d.id!
+      const tokenId = d.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, outputIndex) : d.id!
       await this.knex(OUTPUTS).insert({
         txid,
-        vout: payload.outputIndex,
+        vout: outputIndex,
         token_id: tokenId,
         op: d.op,
         amt: d.amt,
@@ -233,7 +293,7 @@ export class AgentCoopLookupService implements LookupService {
         await this.knex(POOLS).insert({
           pool_id: outpointOf(txid, POOL_CREDIT_VOUT),
           txid,
-          record_vout: payload.outputIndex,
+          record_vout: outputIndex,
           terms: JSON.stringify(terms),
           credit_token_id: c === null ? null : (c.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, POOL_CREDIT_VOUT) : c.id!),
           credit_amt: c?.amt ?? null,
@@ -270,15 +330,33 @@ export class AgentCoopLookupService implements LookupService {
         if (outpointOf(in0.sourceTXID ?? in0.sourceTransaction!.id('hex'), in0.sourceOutputIndex) !== settle.poolId) return
         await this.knex(SETTLEMENTS).insert({
           txid,
-          record_vout: payload.outputIndex,
+          record_vout: outputIndex,
           pool_id: settle.poolId,
           pledge_list_hash: settle.pledgeListHash,
           inputs: JSON.stringify(tx.inputs.map(i => outpointOf(i.sourceTXID ?? i.sourceTransaction!.id('hex'), i.sourceOutputIndex)))
         }).onConflict('txid').ignore()
         return
       }
+      case 'vault': {
+        const vault = validateVaultRecord(record.json)
+        if (vault === null) return
+        const vaultOut = tx.outputs.find(o => isVaultScriptHex(o.lockingScript.toHex()))
+        const script = vaultOut?.lockingScript.toHex() ?? null
+        await this.knex(VAULTS).insert({
+          txid,
+          record_vout: outputIndex,
+          vault_id: vault.vaultId,
+          owner: vault.owner,
+          agent: vault.agent,
+          guard: vault.guard,
+          script_hex: script,
+          // The owner, agent and guard keys are 'anyone'-derived, so anyone can check the claim.
+          verified: script !== null && script === expectedVaultScript(vault.owner, vault.agent, vault.guard, vault.vaultId).toHex()
+        }).onConflict(['txid', 'record_vout']).ignore()
+        return
+      }
       default:
-        await this.knex(RECORDS).insert({ txid, vout: payload.outputIndex, op: record.op, json: JSON.stringify(record.json) })
+        await this.knex(RECORDS).insert({ txid, vout: outputIndex, op: record.op, json: JSON.stringify(record.json) })
           .onConflict(['txid', 'vout']).ignore()
     }
   }
@@ -288,11 +366,14 @@ export class AgentCoopLookupService implements LookupService {
     const spendingTxid = payload.mode === 'txid' || payload.mode === 'script' ? payload.spendingTxid : null
     await this.knex(OUTPUTS).where({ txid: payload.txid, vout: payload.outputIndex }).update({ spent: true, spending_txid: spendingTxid })
     await this.knex(PLEDGES).where({ txid: payload.txid, vout: payload.outputIndex }).update({ spent: true, spending_txid: spendingTxid })
+    await this.knex(VAULT_OUTPUTS).where({ txid: payload.txid, vout: payload.outputIndex }).update({ spent: true, spending_txid: spendingTxid })
+    this.events?.emitEvent({ type: 'spent', txid: spendingTxid ?? payload.txid })
   }
 
   async outputEvicted (txid: string, outputIndex: number): Promise<void> {
     await this.knex(OUTPUTS).where({ txid, vout: outputIndex }).delete()
     await this.knex(PLEDGES).where({ txid, vout: outputIndex }).delete()
+    await this.knex(VAULT_OUTPUTS).where({ txid, vout: outputIndex }).delete()
   }
 
   async lookup (question: LookupQuestion): Promise<LookupFormula> {
@@ -360,8 +441,45 @@ export class AgentCoopLookupService implements LookupService {
         const view: SettlementView = { poolId: row.pool_id, txid: row.txid, pledgeListHash: row.pledge_list_hash, inputs: JSON.parse(row.inputs) }
         return [{ txid: row.txid, outputIndex: row.record_vout, context: this.ctx(view) }]
       }
+      case 'vaults': {
+        const rows = this.knex<VaultRow>(VAULTS).orderBy('created_at', 'desc').limit(MAX_RESULTS)
+        if (q.owner !== undefined) {
+          if (!isHex(q.owner, 66)) throw new Error('owner must be a compressed public key (hex)')
+          rows.where({ owner: q.owner })
+        }
+        if (q.includeUnverified !== true) rows.andWhere('verified', true)
+        return await Promise.all((await rows).map(async r => ({ txid: r.txid, outputIndex: r.record_vout, context: this.ctx(await this.vaultView(r)) })))
+      }
+      case 'vault': {
+        if (typeof q.vaultId !== 'string') throw new Error('vaultId required')
+        const row = await this.knex<VaultRow>(VAULTS).where({ vault_id: q.vaultId }).andWhere('verified', true).orderBy('created_at', 'asc').first()
+        return row === undefined ? [] : [{ txid: row.txid, outputIndex: row.record_vout, context: this.ctx(await this.vaultView(row)) }]
+      }
+      case 'listings': {
+        const rows = await this.knex(RECORDS).where({ op: 'list' }).orderBy('created_at', 'desc').limit(MAX_RESULTS)
+        return rows
+          .map((r: any) => ({ r, json: JSON.parse(r.json) }))
+          .filter(({ json }) => q.tokenId === undefined || json.tokenId === q.tokenId)
+          .map(({ r, json }) => ({ txid: r.txid, outputIndex: r.vout, context: this.ctx({ txid: r.txid, ...json }) }))
+      }
       default:
         throw new Error('unknown query op')
+    }
+  }
+
+  private async vaultView (r: VaultRow): Promise<VaultView> {
+    const utxos = r.script_hex === null
+      ? []
+      : await this.knex(VAULT_OUTPUTS).where({ script_hex: r.script_hex }).andWhere('spent', false).orderBy('created_at', 'asc')
+    return {
+      vaultId: r.vault_id,
+      owner: r.owner,
+      agent: r.agent,
+      guard: r.guard,
+      scriptHex: r.script_hex ?? '',
+      verified: Boolean(r.verified),
+      balanceSats: utxos.reduce((s: number, u: any) => s + Number(u.satoshis), 0),
+      utxos: utxos.map((u: any) => ({ outpoint: outpointOf(u.txid, u.vout), satoshis: Number(u.satoshis) }))
     }
   }
 
@@ -497,5 +615,11 @@ export class AgentCoopLookupService implements LookupService {
 
 export const createAgentCoopLookupService = (knex: Knex): { service: LookupService, migrations: typeof migrations } => ({
   service: new AgentCoopLookupService(knex),
+  migrations
+})
+
+/** Same, with an event emitter for GET /agentcoop/events. */
+export const makeAgentCoopLookupFactory = (events: OverlayEvents) => (knex: Knex): { service: LookupService, migrations: typeof migrations } => ({
+  service: new AgentCoopLookupService(knex, events),
   migrations
 })

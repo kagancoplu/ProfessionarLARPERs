@@ -2,7 +2,8 @@ import type { TopicManager } from '@bsv/overlay'
 import { Transaction, type AdmittanceInstructions } from '@bsv/sdk'
 import { identifyAdmissible, type RuleOptions } from './kit/rules'
 import { parseOpReturn } from './stub/opreturn'
-import { isP2pkhHex, PLEDGE_COIN_VOUT, validatePledgeRecord, validatePoolRecord, validateSettleRecord } from './records'
+import { isP2pkhHex, PLEDGE_COIN_VOUT, validatePledgeRecord, validatePoolRecord, validateSettleRecord, validateVaultRecord } from './records'
+import { isVaultScriptHex } from './stub/vault'
 
 export const TOPIC = 'tm_agentcoop'
 
@@ -15,9 +16,11 @@ export const TOPIC = 'tm_agentcoop'
  *
  * Records: the first well-formed `OP_FALSE OP_RETURN "agentcoop" <op> <json>`
  * output is admitted (0 sat, never spent) so the lookup service can index it
- * and answer queries with it; for a pledge, the pledge coin (out0) too. These
- * checks are structural only; whether a pledge matches its pool's terms is
- * decided at query time (AgentCoopLookupService).
+ * and answer queries with it; for a pledge, the pledge coin (out0) too. Every
+ * output with the Mandate Vault script shape is admitted as well (vault
+ * funding and change returning to a vault). These checks are structural only;
+ * whether a pledge matches its pool's terms, or a vault record really belongs
+ * to its owner, is decided at query time (AgentCoopLookupService).
  *
  * Every previous topic coin is retained (marked spent, kept as history):
  * the engine deletes previous coins that are not in coinsToRetain, which would
@@ -35,7 +38,8 @@ export class AgentCoopTopicManager implements TopicManager {
       if (record === null) continue
       if (record.op === 'pool' && validatePoolRecord(record.json) !== null) admit.add(vout)
       if (record.op === 'settle' && validateSettleRecord(record.json) !== null) admit.add(vout)
-      if (record.op === 'list' || record.op === 'vault') admit.add(vout) // raw for now (B.P3)
+      if (record.op === 'vault' && validateVaultRecord(record.json) !== null) admit.add(vout)
+      if (record.op === 'list') admit.add(vout) // optional, stored raw (the listing book is the coordinator's)
       if (record.op === 'pledge') {
         const pledge = validatePledgeRecord(record.json)
         const coin = tx.outputs[PLEDGE_COIN_VOUT]
@@ -47,6 +51,10 @@ export class AgentCoopTopicManager implements TopicManager {
         }
       }
       break // one agentcoop record per transaction
+    }
+
+    for (const [vout, output] of tx.outputs.entries()) {
+      if (isVaultScriptHex(output.lockingScript.toHex())) admit.add(vout)
     }
 
     return {
@@ -62,6 +70,7 @@ export class AgentCoopTopicManager implements TopicManager {
       '- deploy+mint: always (token id = its own outpoint)',
       '- transfer/burn: only when admitted token inputs cover the outputs',
       '- OP_FALSE OP_RETURN "agentcoop" <pool|pledge|settle|list|vault> <json>: the record output; for a pledge also out0 (the pledge coin)',
+      '- outputs with the Mandate Vault script shape (OP_IF <pk> CHECKSIG OP_ELSE 2 <pk> <pk> 2 CHECKMULTISIG OP_ENDIF)',
       'A transaction spending an unadmitted token output is rejected.'
     ].join('\n')
   }
