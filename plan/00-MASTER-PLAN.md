@@ -70,7 +70,7 @@
 
 | Ad | Değer | Not |
 |---|---|---|
-| OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault`; json UTF-8, tüm sayılar **string** |
+| OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault \| offer`; json UTF-8, tüm sayılar **string**. `offer { v, poolId, unlockingScriptHex }` (B.P6b): sağlayıcının SINGLE\|ACP teklif imzası, ayrı küçük bir tx'te zincirde; terms ve kilit script'i havuz kaydından/tx'inden gelir. Okuyan `verifyOffer` ile doğrular |
 | Kredi token'ı | BSV-21, kit'in `TOKEN_PROTOCOL = [1,'bsv21 token']`, basket `bsv21` | Kit'in `TokenKit` ve `addresses.ts` **kopyalanır**, yeniden yazılmaz |
 | Pledge coin anahtarı | protocol `[1,'agentcoop pledge']`, keyID = rastgele nonce, counterparty `'anyone'`, basket `agentcoop` | Basket'te her an **tek aktif pledge** (kör imza zararını sınırlamak için) |
 | Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox) |
@@ -185,6 +185,8 @@ reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint
 signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
 buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
 cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · reclaimReserved(wallet, kit, outpoint, basket)
+// B.P6b (yalnız ekleme, packages/core/src/pool/offerRecord.ts): teklifi zincirde yayınla → tm_agentcoop'a submit; başka koordinatörler bulur
+publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRecord(record, terms, poolTx): Offer · offerRecordOf(offer)
 // hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
 // parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
 //   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
@@ -253,6 +255,7 @@ Cevaptaki her çıktının `context`'i (UTF-8 JSON, B.P1):
 
 **Vault'lar (B.P3):** `vault` kaydının çıktısı ve vault şablonuna uyan **her** çıktı (`OP_IF <33> OP_CHECKSIG OP_ELSE OP_2 <33> <33> OP_2 OP_CHECKMULTISIG OP_ENDIF`, kayıt taşımayan para üstleri dahil) admit edilir; script hex ile birleştirilir. `{ op:'vaults', owner?, includeUnverified? }` / `{ op:'vault', vaultId }` → `{ vaultId, owner, agent, guard, scriptHex, verified, balanceSats, utxos: [{ outpoint, satoshis }] }`. `verified` = kayıttaki script, `owner/agent/guard` kimliklerinden `[1,'agentcoop vault']`, keyID = `vaultId`, `'anyone'` ile türetilen anahtarlarla yeniden hesaplanan script'e eşit. Doğrulanmamış kayıtlar varsayılan olarak gösterilmez. **D:** fonlama tx'i bu kaydı taşımalı; script D 1.1'deki gibi.
 `{ op:'listings', tokenId? }` → zincirdeki opsiyonel `OP_RETURN list` kayıtları (ham). Esas liste defteri koordinatörün `GET /listings`'i.
+`{ op:'offers', poolId }` (B.P6b) → zincirde yayınlanan teklif kayıtları, eskiden yeniye: `{ txid, v, poolId, unlockingScriptHex }`. Doğrulanmamış (herkes yayınlayabilir); koordinatör her birini `offerFromRecord` + `verifyOffer` ile dener, ilk geçerliyi kullanır.
 
 **Olay akışı (B.P3):** overlay `GET /agentcoop/events` (SSE) → her kabul/harcanmada `data: { type: 'admitted'|'spent', txid }`. Koordinatör ve UI anlık güncelleme için abone olabilir.
 

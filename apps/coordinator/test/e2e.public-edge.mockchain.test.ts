@@ -146,6 +146,8 @@ describe('impersonation attack (closed by B-P5a)', () => {
     expect((await fetch(`${coop.url}/offers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(offer) })).status).toBe(201)
 
     const victimId = await kit1.identityKey()
+    // A browser watcher that never says hello still gets the pool's progress (Track E's request).
+    const watcher = await rawClient()
     // The attacker says hello as the victim, without a proof, and pre-sends rejects for round 1.
     const attacker = await rawClient()
     attacker.ws.send(JSON.stringify({ type: 'hello', identity: victimId, poolIds: [terms.poolId] }))
@@ -172,6 +174,12 @@ describe('impersonation attack (closed by B-P5a)', () => {
     clearInterval(spam)
     expect(settled.txid).toMatch(/^[0-9a-f]{64}$/)
     expect(attacker.messages.some(m => m.type === 'sign_request')).toBe(false)
+    await watcher.waitFor(m => m.type === 'pool_update' && m.poolId === terms.poolId && m.status === 'settled')
+    expect(watcher.messages.some(m => m.type === 'sign_request')).toBe(false)
+    watcher.ws.close()
+    // GET /pools?pledges=1 (Track E): the settled pool lists no unspent pledges; an open one would list them in order
+    const withPledges = await (await fetch(`${coop.url}/pools?pledges=1`)).json()
+    expect(withPledges.find((p: any) => p.poolId === terms.poolId)).toMatchObject({ status: 'settled', pledges: [] })
     expect(attacker.messages.some(m => m.type === 'error' && m.error === 'say hello first')).toBe(true)
     expect(logs.some(l => l.event === 'sign_reject')).toBe(false)
     expect((await (await fetch(`${coop.url}/pools/${terms.poolId}`)).json()).coordinator).toMatchObject({ blacklist: [], lastRound: { round: 1, outcome: 'settled' } })

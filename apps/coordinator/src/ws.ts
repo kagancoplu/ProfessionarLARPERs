@@ -116,11 +116,16 @@ export class Feed {
     }
   }
 
-  /** Sessions that proved this identity (Faz 2: sign_request). */
-  sendTo (identity: string, msg: object): number {
+  /** Sessions that proved this identity (Faz 2: sign_request). `msg` may be pre-serialized JSON (B.P6b: the plan is serialized once per round). */
+  sendTo (identity: string, msg: object | string): number {
     let n = 0
+    let data: string | undefined
     for (const [ws, s] of this.sessions) {
-      if (s.proven && s.identity === identity && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(msg)); n++ }
+      if (s.proven && s.identity === identity && ws.readyState === WebSocket.OPEN) {
+        data ??= typeof msg === 'string' ? msg : JSON.stringify(msg)
+        ws.send(data)
+        n++
+      }
     }
     return n
   }

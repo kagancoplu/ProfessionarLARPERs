@@ -50,6 +50,7 @@ export type AgentCoopQuery =
   | { op: 'vaults', owner?: string, includeUnverified?: boolean }
   | { op: 'vault', vaultId: string }
   | { op: 'listings', tokenId?: string }
+  | { op: 'offers', poolId: string }
 
 /** Per-output metadata returned in each lookup answer's `context` (UTF-8 JSON). */
 export interface OutputContext {
@@ -461,6 +462,12 @@ export class AgentCoopLookupService implements LookupService {
           .map((r: any) => ({ r, json: JSON.parse(r.json) }))
           .filter(({ json }) => q.tokenId === undefined || json.tokenId === q.tokenId)
           .map(({ r, json }) => ({ txid: r.txid, outputIndex: r.vout, context: this.ctx({ txid: r.txid, ...json }) }))
+      }
+      case 'offers': {
+        // B.P6b: published offers for a pool, oldest first. Not verified here: the reader checks each with verifyOffer.
+        this.parseTokenId(q.poolId)
+        const rows = await this.knex(RECORDS).where({ op: 'offer' }).whereRaw("json_extract(json, '$.poolId') = ?", [q.poolId]).orderBy('created_at', 'asc').limit(MAX_RESULTS)
+        return rows.map((r: any) => ({ txid: r.txid, outputIndex: r.vout, context: this.ctx({ txid: r.txid, ...JSON.parse(r.json) }) }))
       }
       default:
         throw new Error('unknown query op')

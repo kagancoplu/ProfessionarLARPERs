@@ -19,6 +19,7 @@ import type { Transaction } from '@agentcoop/core/sdk'
 import type { PledgeView } from '../../../packages/overlay/src/views'
 import type { CoordinatorStatus } from './engine'
 import type { OverlayLookup } from './overlay'
+import type { OfferSource } from './offers'
 import type { CoordinatorStore } from './store'
 import { OfferError } from './verifyOffer'
 
@@ -32,7 +33,7 @@ export interface AuditReport {
     providerPaid: boolean
     creditsDelivered: boolean
     allIncludedValid: boolean
-    /** null: no stored offer to re-run the plan with */
+    /** null: no offer (stored or published) to re-run the plan with */
     selectionMatches: boolean | null
   }
   /** pledges ahead of the last included one in (height, txid) order that were left out */
@@ -46,6 +47,7 @@ export interface AuditReport {
 export interface AuditDeps {
   overlay: OverlayLookup
   store: CoordinatorStore
+  offers: OfferSource
   coordinatorStatus?: (poolId: string) => CoordinatorStatus | undefined
 }
 
@@ -78,7 +80,7 @@ export async function auditPool (deps: AuditDeps, poolId: string): Promise<Audit
 
   // ── chain facts ──
   const hashMatches = pledgeListHash(includedOutpoints) === recordHash
-  const offer = await deps.store.getOffer(poolId)
+  const offer = await deps.offers.find(poolId, undefined, { requireOpen: false }) // ours, or the one published on chain (B.P6b)
   const termsHashMatches = offer === undefined || typeof record.termsHash !== 'string' ? null : termsHash(offer.terms) === record.termsHash
   const out0 = tx.outputs[0]
   const providerPaid = out0 !== undefined && out0.satoshis === Number(terms.priceSats) && out0.lockingScript.toHex() === terms.payScriptHex
@@ -104,7 +106,7 @@ export async function auditPool (deps: AuditDeps, poolId: string): Promise<Audit
   let selectionMatches: boolean | null = null
   let expected: string[] | undefined
   if (offer === undefined) {
-    notes.push('no stored offer: the selection rule cannot be re-run by this coordinator')
+    notes.push('no offer (stored or published on chain): the selection rule cannot be re-run by this coordinator')
   } else {
     const poolTx = await deps.overlay.poolTx(poolId)
     try {

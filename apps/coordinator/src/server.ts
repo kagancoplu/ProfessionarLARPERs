@@ -26,6 +26,7 @@ import { rateLimit } from '../../../packages/overlay/src/limits'
 import { coreProtocol, type SettlementProtocol } from './protocol'
 import { noSpentChecker, WocSpentChecker, type SpentChecker } from './spent'
 import { OverlayLookup } from './overlay'
+import { OfferSource } from './offers'
 import { CoordinatorStore } from './store'
 import { Feed } from './ws'
 
@@ -49,9 +50,12 @@ export interface CoordinatorOptions {
 export async function startCoordinator (config: CoordinatorConfig, opts: CoordinatorOptions = {}): Promise<RunningCoordinator> {
   const store = await CoordinatorStore.open(config.dbFile)
   let engine: CoordinatorEngine | undefined
+  const overlay = new OverlayLookup(config.overlayUrl)
+  const offers = new OfferSource(overlay, store)
   const deps: ApiDeps = {
-    overlay: new OverlayLookup(config.overlayUrl),
+    overlay,
     store,
+    offers,
     height: opts.height ?? new ArcadeHeight(config.arcadeUrl),
     locking: () => engine?.locking() ?? new Set<string>(),
     feedCounts: () => feed.counts(),
@@ -80,6 +84,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
     engine = new CoordinatorEngine({
       overlay: deps.overlay,
       store,
+      offers,
       height: deps.height,
       protocol: opts.protocol,
       spent: opts.spent ?? (config.spentCheck === 'woc' ? new WocSpentChecker(config.network) : noSpentChecker),
@@ -95,6 +100,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
   // Overlay events (B.P3): re-read within ~100 ms of a pledge/settlement reaching the overlay.
   let debounce: NodeJS.Timeout | undefined
   const subscription = subscribeOverlayEvents(config.overlayUrl, () => {
+    offers.forget() // a published offer may just have arrived
     if (debounce !== undefined) return
     debounce = setTimeout(() => {
       debounce = undefined

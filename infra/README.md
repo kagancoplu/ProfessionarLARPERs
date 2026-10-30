@@ -33,6 +33,8 @@ sudo systemctl restart agentcoop caddy
 curl -s https://$COOP_HOST/healthz && curl -s https://$OVERLAY_HOST/agentcoop/healthz
 ```
 
+Track E's web app is served from Cloudflare Pages: add `app.<domain>` as a CNAME to the Pages project in the same DNS zone (not through this VPS).
+
 No domain: use `overlay.<ip-with-dashes>.sslip.io` and `coop.<ip-with-dashes>.sslip.io` (resolve to the IP, Let's Encrypt works).
 
 | File | |

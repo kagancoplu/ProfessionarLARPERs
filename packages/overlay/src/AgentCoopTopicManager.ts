@@ -2,7 +2,7 @@ import type { TopicManager } from '@bsv/overlay'
 import { Transaction, type AdmittanceInstructions } from '@agentcoop/core/sdk'
 import { identifyAdmissible, type RuleOptions } from '@agentcoop/core'
 import { parseOpReturn } from '@agentcoop/core'
-import { isP2pkhHex, PLEDGE_COIN_VOUT, validatePledgeRecord, validatePoolRecord, validateSettleRecord, validateVaultRecord } from './records'
+import { isP2pkhHex, PLEDGE_COIN_VOUT, validateOfferRecord, validatePledgeRecord, validatePoolRecord, validateSettleRecord, validateVaultRecord } from './records'
 import { isVaultScriptHex } from './vault'
 
 export const TOPIC = 'tm_agentcoop'
@@ -39,6 +39,7 @@ export class AgentCoopTopicManager implements TopicManager {
       if (record.op === 'pool' && validatePoolRecord(record.json) !== null) admit.add(vout)
       if (record.op === 'settle' && validateSettleRecord(record.json) !== null) admit.add(vout)
       if (record.op === 'vault' && validateVaultRecord(record.json) !== null) admit.add(vout)
+      if (record.op === 'offer' && validateOfferRecord(record.json) !== null) admit.add(vout) // B.P6b: the offer on chain
       if (record.op === 'list') admit.add(vout) // optional, stored raw (the listing book is the coordinator's)
       if (record.op === 'pledge') {
         const pledge = validatePledgeRecord(record.json)
@@ -69,7 +70,7 @@ export class AgentCoopTopicManager implements TopicManager {
       'BSV-21 credits (kit rules) and AgentCoop records:',
       '- deploy+mint: always (token id = its own outpoint)',
       '- transfer/burn: only when admitted token inputs cover the outputs',
-      '- OP_FALSE OP_RETURN "agentcoop" <pool|pledge|settle|list|vault> <json>: the record output; for a pledge also out0 (the pledge coin)',
+      '- OP_FALSE OP_RETURN "agentcoop" <pool|pledge|settle|list|vault|offer> <json>: the record output; for a pledge also out0 (the pledge coin)',
       '- outputs with the Mandate Vault script shape (OP_IF <pk> CHECKSIG OP_ELSE 2 <pk> <pk> 2 CHECKMULTISIG OP_ENDIF)',
       'A transaction spending an unadmitted token output is rejected.'
     ].join('\n')

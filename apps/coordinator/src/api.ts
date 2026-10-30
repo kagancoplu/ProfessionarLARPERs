@@ -15,6 +15,7 @@ import { OfferError, verifyOffer } from './verifyOffer'
 import { normalizeOutpoint, verifyListing } from './verifyListing'
 import { auditPool } from './audit'
 import { computeMetrics, toProm, type Metrics } from './metrics'
+import type { OfferSource } from './offers'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
 export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
@@ -22,6 +23,8 @@ export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOff
 export interface ApiDeps {
   overlay: OverlayLookup
   store: CoordinatorStore
+  /** stored offers, else the ones published on chain (B.P6b) */
+  offers: OfferSource
   height: HeightSource
   /** Pools with a signing round in progress (Faz 2 engine). */
   locking: () => ReadonlySet<string>
@@ -81,13 +84,16 @@ export function createApiRouter (deps: ApiDeps): Router {
   }))
 
   r.get('/offers/:poolId', wrap(async (req, res) => {
-    const offer = await deps.store.getOffer(poolIdParam(req))
+    const offer = await deps.offers.find(poolIdParam(req))
     if (offer === undefined) { res.status(404).json({ code: 'OFFER_NOT_FOUND', error: 'no offer for this pool' }); return }
     res.json(offer)
   }))
 
-  r.get('/pools', wrap(async (_req, res) => {
-    res.json(await derivePools(deps, await deps.overlay.pools()))
+  /** `?pledges=1` adds each pool's valid unspent pledges in coordinator order (for UIs; Track E). */
+  r.get('/pools', wrap(async (req, res) => {
+    const pools = await derivePools(deps, await deps.overlay.pools())
+    if (req.query.pledges !== '1') { res.json(pools); return }
+    res.json(await Promise.all(pools.map(async p => ({ ...p, pledges: await deps.overlay.pledges(p.poolId) }))))
   }))
 
   r.get('/pools/:poolId', wrap(async (req, res) => {

@@ -24,6 +24,7 @@ const keepDays = Number(process.env.BACKUP_KEEP_DAYS ?? 7)
 const FILES = [
   { rel: 'overlay/overlay.db', sqlite: true },
   { rel: 'coordinator/coordinator.db', sqlite: true },
+  { rel: 'coordinator2/coordinator.db', sqlite: true, as: 'coordinator2.db' },
   { rel: 'overlay/overlay.key', sqlite: false, mode: 0o600 }
 ]
 
@@ -34,7 +35,7 @@ async function backup () {
   for (const f of FILES) {
     const src = join(dataDir, f.rel)
     if (!existsSync(src)) { console.log(`[backup] skip ${f.rel} (missing)`); continue }
-    const dst = join(out, f.rel.split('/').pop())
+    const dst = join(out, f.as ?? f.rel.split('/').pop())
     if (f.sqlite) {
       const db = new Database(src, { readonly: true, fileMustExist: true })
       try { await db.backup(dst) } finally { db.close() }
@@ -57,7 +58,7 @@ async function backup () {
 function restore (from) {
   if (from === undefined || !existsSync(from)) { console.error('usage: node infra/backup.mjs restore <backup dir>'); process.exit(1) }
   for (const f of FILES) {
-    const src = join(from, f.rel.split('/').pop())
+    const src = join(from, f.as ?? f.rel.split('/').pop())
     if (!existsSync(src)) { console.log(`[restore] skip ${f.rel} (not in backup)`); continue }
     const dst = join(dataDir, f.rel)
     mkdirSync(dirname(dst), { recursive: true })

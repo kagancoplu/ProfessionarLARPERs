@@ -36,7 +36,7 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | Method | Path | |
 |---|---|---|
 | `POST` | `/offers` | Body: `Offer` (MASTER §3.3). Checked against the chain: the pool is on the overlay, valid and `open`; `lockingScriptHex`/`satoshis` are the pool's credit UTXO; `terms` equal the on-chain pool record; the signature's sighash byte is `0xC3` (`SINGLE\|ANYONECANPAY\|FORKID`) and it unlocks the credit UTXO for output 0 = `priceSats` → `payScriptHex`. `201`, or `400/404/409 { code, error }` |
-| `GET` | `/offers/:poolId` | the stored offer, or `404` |
+| `GET` | `/offers/:poolId` | the stored offer, else a valid one the provider published on chain (`OP_RETURN agentcoop offer`, checked like a POST and then stored), or `404` |
 | `GET` | `/pools` | every pool: overlay view + `status` + `hasOffer` + `height` |
 | `GET` | `/pools/:poolId` | one pool |
 | `GET` | `/pools/:poolId/pledges` | valid unspent pledges in coordinator order; `?all=1` adds spent and invalid ones with `invalidReason` |
@@ -121,6 +121,21 @@ Blacklists, attempt counts and last rounds are stored in the coordinator's datab
 Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
 
 The plan itself comes from Track A (`planSettlement`: deterministic order, exact N within a 120 % window, fee from the real signed size; MASTER §3.2/§3.4), injected through `src/protocol.ts` (`SettlementProtocol`, `coreProtocol`). `startCoordinator` without a protocol runs the side API and the feed only (`/healthz` → `engine: false`).
+
+## Any coordinator can close any pool (Faz 6.1, 6.2)
+
+The provider publishes its offer on chain (`publishOffer` from `@agentcoop/core`, then submit to `tm_agentcoop`): `OP_RETURN agentcoop offer { v, poolId, unlockingScriptHex }`. Any coordinator reading the same overlay finds it (`{ op: 'offers', poolId }`), rebuilds the full offer from the on-chain pool record and pool tx, checks it like a posted one, and can run the signing round. Bogus records for the same pool are skipped. Run a second one next to the first with `COOP2_PORT=8094 node infra/run.mjs` (own database). `test/e2e.second-coordinator.mockchain.test.ts`: coordinator 1 settles a pool and goes away; coordinator 2 audits that settlement from the chain alone (`consistent`, same `termsHash`), then closes a pool whose offer was never posted anywhere.
+
+## Scale (Faz 6.5)
+
+`test/e2e.scale.mockchain.test.ts` settles one pool with 50 and one with 100 participants, each a separate wallet-toolbox wallet that verifies the plan (lineage included) and signs over a proven session (`SCALE_SIZES=50,100`, `SCALE_OUT=<file>` for the numbers). Mock chain, one machine, 30.10:
+
+| Participants | Settlement | Fee | `sign_request` | First signature | Last signature | Broadcast → overlay `settled` |
+|---|---|---|---|---|---|---|
+| 50 | 18.5 kB | 1,860 sat (100 sat/kB) | 178 kB | 0.2 s | 2.5 s | 2.2 s |
+| 100 | 36.5 kB | 3,670 sat (100 sat/kB) | 347 kB | 0.4 s | 9.7 s | 8.0 s |
+
+All agents run in the test's one process, so the spread up to the last signature is mostly their own plan and lineage checks; on separate machines they run in parallel. The plan is serialized once per round.
 
 ## Audit and metrics
 

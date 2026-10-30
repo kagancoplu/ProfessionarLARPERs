@@ -26,3 +26,10 @@
 		output file /var/log/caddy/coop.log
 	}
 }
+
+# Second, independent coordinator (Faz 6.2; COOP2_PORT=8094 in /etc/agentcoop.env).
+# Uncomment and set COOP2_HOST=coop2.example.org:
+# {$COOP2_HOST} {
+# 	encode gzip
+# 	reverse_proxy 127.0.0.1:{$COOP2_PORT:8094}
+# }
