@@ -177,6 +177,7 @@ new P2pkhWalletSigner(wallet, { protocolID, keyID })
 | `GET` | `/offers/:poolId` | Offer getir |
 | `GET` | `/pools` · `/pools/:poolId` | Terms + ilerleme (`pledgedCredits`, `target`, `status: open\|locking\|settled\|failed\|cancelled`, `hasOffer`). `cancelled` = kredi UTXO'su settlement dışı bir tx'le harcandı. `failed` ve `locking` yan API'de türetilir (yükseklik / koordinatör turu); overlay yalnızca `open\|settled\|cancelled` bilir |
 | `GET` | `/pools/:poolId/pledges` | Harcanmamış pledge'ler (overlay'den) |
+| (ek) | `/pools/:poolId` cevabında `coordinator` | Havuz turlandıysa: `{ round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome: 'settled'\|'failed', missing, txid? } }` (B.P2). `GET /healthz` → `engine: true\|false` |
 | `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri |
 | `WS` | `/ws` | Katılımcı oturumu ve canlı akış |
 

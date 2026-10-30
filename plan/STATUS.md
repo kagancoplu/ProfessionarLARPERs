@@ -29,6 +29,7 @@
 | 30.10 16:45 | B | **§3.5 `status`'a `cancelled` eklendi**; `failed`/`locking` yan API'de türetiliyor | Sağlayıcı kredi UTXO'sunu başka tx'le harcarsa (§4.5 "havuzu iptal") bunun bir adı olmalı. **C/D:** UI ve ajanlar `cancelled`'ı bilmeli | ✅ §3.5 |
 | 30.10 16:45 | B | **§3.8 cevap `context` alanları, pledge geçerlilik kuralı, `pledges` sorgusuna `includeInvalid`, OP_RETURN kayıt çıktıları admit ediliyor** | **A:** `buildPledge` geçerlilik kuralına uymalı (out1 ≥ `feeSats` → `payScriptHex`, out0 ≥ `ceil(credits×price/N)+1`, `minCredits ≤ credits ≤ N`). **C:** ajanlar `pledges`/`pools` context'ini buna göre okur | ✅ §3.8 |
 | 30.10 16:45 | B | **§3.4 `cancelPledge` iptal tx'ini `tm_agentcoop`'a submit etmeli** | Overlay iptali yalnızca submit edilen tx'ten öğrenir | ✅ §3.4 yorum |
+| 30.10 17:25 | B | **§3.5 `GET /pools/:id` cevabına `coordinator` alanı** (tur, imzalı/toplam, kara liste nedenleriyle, son tur sonucu); `/healthz` → `engine` | Ajanlar ve UI turun neden düştüğünü görebilsin. Ekleme; mevcut alanlar değişmedi | ✅ §3.5 |
 | 30.10 17:05 | B | **§3.2 Settlement sighash notu: teklif `version=1`, `lockTime=0`, in0 `sequence=0xffffffff` ile imzalanır, settlement aynı değerlerle kurulmalı** | SINGLE\|ACP de bu üç alanı imzalıyor. **A:** `signOffer` ve `planSettlement` bu değerleri sabit kullanmalı | ✅ §3.2 |
 
 ## Plan değişiklikleri
@@ -36,6 +37,7 @@
 | Tarih | Track | Faz | Değişiklik | Neden |
 |---|---|---|---|---|
 | 30.10 16:00 | B | 5 (yeni) | **Faz 5 — Herkese açık yayın** eklendi: VPS, HTTPS (Caddy), alan adı (yoksa sslip.io), CORS, hız sınırı, WS `hello` kimlik kanıtı, `/healthz` + uptime izleme, "kendi ajanınla katıl" kılavuzu. S3'ten sonra başlar | Jüri ve dış ajanlar ürünü yerelde olmadan deneyemiyor (adoption %35, clear demo). `plan/SETUP-ACCOUNTS.md` repoda yok; D'nin yazması bekleniyor |
+| 30.10 17:55 | B | 2 | Faz 2.7: **koordinatörün cüzdanı yok**; `WALLET_COORDINATOR_KEY` Faz 5'teki `hello` kimlik kanıtına (ve MessageBox yedeğine) kadar kullanılmıyor. Faz 2.2'deki MessageBox yedeği yapılmadı (WS yeterli) | WS-only turda koordinatörün imzalayacak bir şeyi yok; non-custodial iddia "parası da anahtarı da yok" olarak güçleniyor |
 | 30.10 16:15 | B | 1 | Faz 1.1: topic manager pledge coin'lerini ve vault çıktılarını harcayan girdileri de **`coinsToRetain`**'e koymalı | Engine (`@bsv/overlay` 2.6.4 `classifyPreviousCoins`) önceki topic çıktılarından `coinsToRetain`'de olmayanları "stale" sayıp **siliyor**. Kit kuralı yalnızca token girdilerini tutuyor; pledge'ler tutulmazsa settlement/iptal (T4) geçmişi ve Faz 6.3 denetimi kaybolur |
 | 30.10 16:00 | B | 6 (yeni) | **Faz 6 — İzinsizlik ve ölçek kanıtı** eklendi: ikinci bağımsız koordinatör, `GET /metrics` (`custodiedSats = 0` zincirden hesaplı), `GET /pools/:id/audit` (sıralama + pledge-list hash'ini yeniden hesaplar), 50+ katılımcılı mainnet settlement (C'nin ajan sürüsüyle). S3'ten sonra; sıra 5 → 6 → 4 | FINAL-IDEA §8 "seçim yetkisi tespit edilebilir" iddiasının ve §11 kapanış rakamlarının kanıtı. **Önerilen arayüz eki (henüz MASTER'a yazılmadı, Faz 6.1'de):** teklif imzasını ayrı bir `OP_RETURN agentcoop offer` tx'iyle zincire yazmak, böylece ikinci koordinatör birinciye bağımlı kalmaz |
 
@@ -69,7 +71,12 @@
 
 ## Track B — Overlay + Koordinatör
 
-- **Faz:** P0 ✅ (30.10 16:15) · P1 ✅ mockchain (30.10 17:05; mainnet kısmı A.P1 + D.P0'ı bekliyor) → P2 (koordinatör turu) A.P1'e bağlı
+- **Faz:** P0 ✅ (16:15) · P1 ✅ mockchain (17:05) · P2 ✅ mockchain (30.10 17:55) → P3 (market/vault indeksi, canlı akış, barındırma). P1/P2'nin mainnet kabulü A.P1 + C.P2 + D (sats) bekliyor
+- **Bitenler (P2):**
+  - Plan: `plan/phases/B-P2.md`. MASTER §3.5'e `coordinator` alanı eklendi.
+  - Koordinatör motoru `apps/coordinator/src/engine.ts`: lock-in (teklif ∧ geçerli harcanmamış pledge ≥ N ∧ yükseklik < deadline) → `sign_request` (WS) → her imza şablonda `Spend` ile doğrulanıyor → assemble → yayın → overlay submit → `settled`. İmzalamayan (zaman aşımı / `sign_reject` / bozuk imza / çevrimdışı / zincirde harcanmış) outpoint kara listeye nedeniyle, bekleme listesinden yeni tur; 3 turdan sonra `open` (pledge kümesi değişince yeni deneme); son tarihi geçen dolmamış havuz `pool_failed` (bir kez, yayın yok). Teklif imzası her turdan önce şablonda doğrulanıyor. WoC toplu harcanmışlık kontrolü (`src/spent.ts`). JSON satır logları.
+  - **A'nın protokolü enjekte ediliyor** (`src/protocol.ts` `SettlementProtocol`); koordinatör kendi `planSettlement`'ını içermiyor. A gelmeden `npm run coordinator` imza turu çalıştırmaz (`/healthz` `engine:false`).
+  - Test: `apps/coordinator/test/e2e.coordinator.mockchain.test.ts` (mutlu yol + başkasının girdisine imza reddi, bekleme listesi + kısmi son pay, bozuk imza + red, 3 tur sınırı, dolmayan havuz). Koordinatör 10/10, overlay 15/15; iki koşuda kararsızlık yok. Test-only planlayıcı: `apps/coordinator/test/helpers/devProtocol.ts`.
 - **Bitenler (P1):**
   - Plan: `plan/phases/B-P1.md`. MASTER §3.2/§3.3/§3.4/§3.5/§3.8 güncellendi (yukarıdaki "Arayüz değişiklikleri").
   - Overlay indeksleme: `packages/overlay/src/{AgentCoopTopicManager,AgentCoopLookupService,records,views}.ts`. Havuz, pledge, iptal (T4), settlement (T5) ve iptal edilen havuz zincirden sayılıyor; pledge geçerliliği sorgu anında. Sorgular: `pools`, `pool`, `pledges`, `settlement` + kit sorguları. Test: `packages/overlay/test/overlay.agentcoop.test.ts` (overlay toplam 15/15).
@@ -79,11 +86,12 @@
   - `packages/overlay/`: kit overlay'inin kopyası, `tm_agentcoop` / `ls_agentcoop`, tablolar `agentcoop_token_outputs` / `agentcoop_tokens`. `npm run overlay` → :8080 (Arcade header'ları). Bağımsız paket (`@agentcoop/overlay`, AGENTS.md sürümleri sabit, Node 22: `nvm use 22`).
   - Doğrulama testi 1 ✅ ve 8 ✅ (yukarıdaki tablo). `npm test` 8/8 yeşil (`packages/overlay/test/validation1.mixed-settlement.test.ts`).
   - `packages/overlay/README.md`.
-- **Devam eden:** —. P2 için A.P1 (`planSettlement`, `assembleSettlement`, `broadcastEF`) gerekiyor; gelmezse koordinatör turu bu fonksiyonlar enjekte edilerek yazılır, A'nınki gelince bağlanır.
+- **Devam eden:** B.P3 planı.
 - **Bilinen sorunlar:** Kök workspace yok (Blokajlar): iki bağımsız paket, geçici kopyalar (`packages/overlay/src/kit/*`, `src/stub/*`, `test/helpers/mockchain.ts`, `apps/coordinator/src/verifyOffer.ts`), koordinatör overlay'i göreli yolla import ediyor. `test/helpers/{settlement,pool}.ts` yalnızca test için (A'nın builder'ları değil). Typecheck kit gibi `test/`'i kapsamıyor.
 - **Diğer track'lerin benden beklediği:**
   - **A (P1):** havuz tx'i: out0 = N kredilik UTXO, OP_RETURN `pool` json'unda `poolId` yok. Pledge tx'i MASTER §3.3 düzeninde ve §3.8 geçerlilik kuralına uygun. İptal tx'i overlay'e submit edilir. Teklif ve settlement `version=1`, `lockTime=0`, in0 `sequence=0xffffffff`. Skeleton: teklifi `POST {COOP_API_URL}/offers`, settlement'ı `tm_agentcoop`'a gönder; `GET /pools/:id` `settled` dönünce S1 tamam. Referans: `packages/overlay/test/helpers/pool.ts`.
-  - **C (P1/P2):** havuz keşfi `GET {COOP_API_URL}/pools` (`status`, `pledgedCredits`, `target`, `hasOffer`); canlı akış `WS /ws` `hello { identity, poolIds }`; tipler `packages/overlay/src/views.ts`.
+  - **C (P1/P2):** havuz keşfi `GET {COOP_API_URL}/pools` (`status`, `pledgedCredits`, `target`, `hasOffer`); canlı akış `WS /ws` `hello { identity, poolIds }`; tipler `packages/overlay/src/views.ts`. **İmza turu (P2):** ajan `hello`'da kendi identity'siyle bağlı kalmalı; `sign_request { poolId, round, plan, yourInputIndex }` gelince A'nın `verifySettlementPlan`'ı ile doğrulayıp `sign_response { poolId, round, inputIndex, unlockingScriptHex }` (SIGHASH_ALL) ya da `sign_reject { poolId, round, reason }` göndermeli; tur zaman aşımı 60 sn. Örnek bot: `apps/coordinator/test/helpers/participant.ts`.
+  - **A (P1):** koordinatör `planSettlement` / `assembleSettlement` / `broadcastEF`'i `apps/coordinator/src/protocol.ts` arayüzüyle çağırıyor (`PlanRequest`: offer, havuz tx'i, sıralı pledge'ler + kaynak tx'leri, round, exclude). İmza uyuşmazsa küçük bir adaptör yazılır; şablon girdi sırası in0 = teklif, in1..n = `plan.participants` sırası.
   - **A:** Test 1 sonucu: kit kuralları karışık settlement'ı **değiştirilmeden** kabul ediyor, `rules.ts` genişletmesi gerekmiyor. Settlement'ı overlay'e `X-Topics: ["tm_agentcoop"]` ile submit et (kit `tm_tokenkit`'i yerine). Sağlayıcının SINGLE\|ACP imzası yeniden planlamada geçerli kalıyor (test 1b). `test/helpers/settlement.ts`, A'nın `planSettlement`/`signSettlementInput`'ına referans olarak kullanılabilir.
   - **A/C/D:** Overlay URL'si yerelde `http://localhost:8080`, lookup servisi `ls_agentcoop`. Kredi token deploy'u ve transferleri de bu topic'e gider.
 

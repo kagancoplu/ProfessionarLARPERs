@@ -68,7 +68,7 @@ beforeAll(async () => {
   chain = await createMockChain()
   const dir = mkdtempSync(join(tmpdir(), 'agentcoop-coord-'))
   overlay = await startOverlay({ port: 18290, dbFile: join(dir, 'overlay.db'), chainTracker: chain.chainTracker, quiet: true })
-  coop = await startCoordinator({ port: 18291, overlayUrl: overlay.url, arcadeUrl: 'http://unused.invalid', dbFile: join(dir, 'coordinator.db'), pollMs: 200 }, { height })
+  coop = await startCoordinator({ port: 18291, overlayUrl: overlay.url, arcadeUrl: 'http://unused.invalid', dbFile: join(dir, 'coordinator.db'), pollMs: 200, roundTimeoutMs: 60_000, maxRounds: 3, spentCheck: 'none', network: 'main' }, { height })
   ;[provider, a1, a2] = await Promise.all([chain.makeWallet(), chain.makeWallet(), chain.makeWallet()])
   for (const w of [provider, a1, a2]) await chain.fund(w)
 })
