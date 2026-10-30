@@ -17,7 +17,6 @@
 
 | Tarih | Track | Blokaj | Kimden bekleniyor | Geçici çözüm |
 |---|---|---|---|---|
-| 2026-10-30 16:20 | D | Bu makinedeki BSV Desktop (`03e8836800…94a45a`, mainnet) **treasury mi?** Değilse treasury Desktop'ın identity key'i ve hangi laptopta olduğu | **İnsan** | `fund.ts` hangi Desktop açıksa onu kaynak kullanır; yanlış Desktop'tan fonlamamak için F1'den önce teyit |
 | 2026-10-30 17:25 → 18:40 | D | **Doğrulama testi 5 (mainnet) koşulamadı:** sats yok (yukarıdaki satır) ve D.P1/P2 `.env`/`data/`/Desktop olmayan bir bulut konteynerinde yazıldı. Kod hazır, mockchain'de yeşil. **Çalışma zamanı engeli kalktı (Node 24 + C'nin hook'u)** | **İnsan:** sats + F1 (`agent-1` ≥ 100 sat ücret için), treasury Desktop ≥ 1.100 sat; treasury laptopunda (Node 24) kökte `npm install` → `npm run validation5 -w @agentcoop/guard` | A.3 ve C.3 `VaultSigner`/`pledgeFromVault`'u mockchain'de kullanabilir |
 | 2026-10-30 19:55 | D | **Coop Rail canlı adımları koşulamadı** (kod hazır, offline e2e yeşil): Base Sepolia ETH + test USDC yok, EVM anahtarları (`BASE_PRIVATE_KEY`, `BASE_AGENT_PRIVATE_KEY`) yok, `maker` cüzdanında sats yok | **İnsan:** SETUP-ACCOUNTS #9–11 (iki EVM adresi, faucet ETH + Circle test USDC; anahtarlar yalnızca `.env` + kasa), `maker` 30k sat (F4). Sonra Node 24 laptopta `npm run deploy -w @agentcoop/maker -- --yes` ve `npm run validation4 -w @agentcoop/scripts -- --yes` | Offline kanıt: `test/e2e.rail.mockchain.test.ts`; MockUSDC deploy betiğinde |
 | 30.10 20:45 | D → **B** (bilgi; trackD'de yazıldı, B cevapladı) | İki B testi Node 22.22'de aralıklı düşüyordu: ölçek "100 participants" (`ECONNRESET`, `TokenKit.nextIndex`) ve public-edge "impersonation attack" | B | **B düzeltti (20:45):** (1) 100 ajan tek test sürecinde event loop'u bloklayınca kapanmış keep-alive soketi yeniden kullanılıyordu; test yardımcısı `retrySocket` idempotent overlay/HTTP çağrılarını soket hatasında yeniden deniyor (koordinatörün kendi lookup'ı zaten deniyordu). (2) Saldırgan tur açılmadan spam'e başlayıp testin 10 mesaj/10 sn sınırını aşıyor, bağlantısı kapanıyordu; artık `round_start`'tan sonra ≤ 5 mesaj. Tam paket 2/2 koşuda B testleri yeşil. **A (öneri):** kit `OverlayClient.lookup` soket hatasında yeniden denemiyor; ayrı süreçteki ajanlarda nadir ama mümkün |
@@ -121,6 +120,7 @@
 
 | Tarih | Tip (T1–T11) | txid | Track | Not |
 |---|---|---|---|---|
+| 2026-10-30 21:23 | FUND | [ac07226714cfc6a692d36ba0c4d9300d4e55ade6c0eb9405d1175379b4001dea](https://whatsonchain.com/tx/ac07226714cfc6a692d36ba0c4d9300d4e55ade6c0eb9405d1175379b4001dea) | D | **İlk mainnet işlemi.** Treasury Desktop `03c07007f2…db96e1` → `agent-1` 1.000 sat (BRC-29), `agent-1`'de kabul edildi; ilk ödeme kilidi kalktı. Runbook adım 2 |
 
 ## Doğrulama testleri (MASTER-PLAN §5 / FINAL-IDEA §12.1)
 
@@ -362,7 +362,7 @@
   - **C (C.3):** vault'lu ajan = `adoptVaultOutput` + `pledgeFromVault(…, { cosign: httpCosigner(GUARD_URL), poolBEEF: <overlay {op:'pool'} BEEF> })` + sign_request'te `VaultSigner` (settle) + `internalizeVaultSettlement`; red `CosignRejected.reason` → `sign_reject`. **Perakende 402:** `topUpHotWallet(wallet, { vaultId, utxo, satoshis, cosign })` → sats ajanın `default` basket'ine (`AuthFetch` olağan şekilde çalışır), tavan `hotWalletDailySats`.
   - **E:** guard uçları hazır (`GET /policies`, `/decisions`, `/events`, CORS; `apps/guard/README.md`). `vault-ops.ts` node importsuz kalıyor. **Liman (Rail):** maker `GET /quote?dir=usdc-bsv&amount=`, `GET /events` (`MAKER_URL`, :8094; `apps/maker/src/server.ts`); Base tarafı ABI `contracts/base-htlc/artifacts.json`. Canlı swap testnet fonu gelene kadar yok; liman "experimental"
   - A → F1'den sonra `agent-1` 1.000 sat (test 2) · herkes → mainnet sats
-- **Cüzdan/fon durumu:** sats talebi: ☑ gönderildi ☑ **geldi, elimizde** (kullanıcı teyidi 30.10 21:40; miktar: *(doldurun)*) · treasury laptopundaki Desktop: `03e8836800f10ea1524f2a3035270335991fa62a6ed5b3cff4b265831d0394a45a` (mainnet; treasury mi? teyit bekleniyor) · fonlanan cüzdanlar: yok (7 sunucu cüzdanı 0 sat)
+- **Cüzdan/fon durumu:** sats talebi: ☑ gönderildi ☑ **geldi, elimizde** (kullanıcı teyidi 30.10 21:40; miktar: *(doldurun)*) · **treasury Desktop = `03c07007f2…db96e1`** (kullanıcının MacBook'u, mainnet; `fund.ts` bağlandı, 30.10 21:23) · fonlanan cüzdanlar: `agent-1` 1.000 sat (ilk ödeme kilidi kalktı); diğer 6 sunucu cüzdanı 0 sat. `infra/preflight.mjs --wallets` aynı makinede: S1 için engel yalnız bakiyeler (`provider-api`, `agent-1`, `agent-2` ≥ 5.000)
 - **Axel soruları:** ☐ gönderildi (metin: `plan/phases/D-P0.md` §2) · cevaplar:
 - **SETUP-ACCOUNTS kontrol listesi** (D yürütür):
   - [ ] 3× BSV Desktop mainnet kurulu, seed'ler çevrimdışı (1 tanesi treasury laptopunda açık görünüyor)
