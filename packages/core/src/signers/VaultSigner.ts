@@ -375,6 +375,8 @@ export async function pledgeFromVault (wallet: WalletInterface, args: {
   bufferSats?: number
   allowMultiple?: boolean
   originator?: string
+  /** A 5.3: settle my credits onto the vault script instead of my P2PKH receive address. */
+  creditLock?: 'vault'
 }): Promise<VaultPledge> {
   const { terms, credits, vaultId, originator } = args
   validateTerms(terms)
@@ -386,7 +388,7 @@ export async function pledgeFromVault (wallet: WalletInterface, args: {
   }
   const { publicKey: participant } = await wallet.getPublicKey({ identityKey: true }, originator)
   const satoshis = pledgeAmount(terms, credits, args.bufferSats)
-  const record: PledgeRecord = { v: '1', poolId: terms.poolId, credits, participant, tokenIndex: String(args.tokenIndex), signer: 'vault' }
+  const record: PledgeRecord = { v: '1', poolId: terms.poolId, credits, participant, tokenIndex: String(args.tokenIndex), signer: 'vault', ...(args.creditLock === 'vault' ? { creditLock: 'vault' as const } : {}) }
   const ins: VaultPledgeInstructions = { signer: 'vault', vaultId, poolId: terms.poolId, protocolID: VAULT_PROTOCOL, keyID: vaultId, counterparty: 'anyone' }
   const res = await spendFromVault(wallet, {
     vaultId,

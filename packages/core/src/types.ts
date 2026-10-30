@@ -84,6 +84,7 @@ export interface PledgeRecord {       // OP_RETURN op=pledge
   participant: string                 // identity key
   tokenIndex: string                  // kredi çıktısının gideceği receive address index'i (kit addresses.ts)
   signer: 'p2pkh' | 'vault'           // pledge coin'in tipi → koordinatör unlockingScriptLength'i buradan bilir
+  creditLock?: 'vault'                // A-P5 5.3, yalnızca signer:'vault' ile: kredi çıktısı P2PKH yerine pledge coin'in vault script'ine kilitli (scripts/creditLock.ts)
 }
 // Pledge tx düzeni (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
 // Para üstü kuralı: settlement'ta katılımcının para üstü, pledge coin'in KENDİ locking script'ine döner.
@@ -113,6 +114,7 @@ export interface SettlementParticipant {
   credits: string
   signer: 'p2pkh' | 'vault'
   changeSats: string
+  creditLock?: 'vault'                // pledge kaydından; doğrulayıcılar zincirdeki kayıtla karşılaştırır
 }
 
 export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular

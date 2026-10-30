@@ -4,6 +4,7 @@
  *
  *   in 0      offer (N credits, 1 sat, SINGLE|ACP)  ↔  out 0       P sats → payScript
  *   in 1..n   pledge coins (ALL)                    ↔  out 1..n    BSV-21 transfer k_i → receivePkh(participant_i, tokenIndex_i)
+ *                                                                   (record.creditLock 'vault': → coin_i's own vault script, A 5.3)
  *                                                      out n+1..2n  change_i → pledge coin_i's own locking script
  *                                                      out 2n+1     OP_RETURN agentcoop settle
  *
@@ -17,6 +18,8 @@ import { buildBsv21Script } from '../kit/inscription'
 import { receivePkh } from '../kit/addresses'
 import { AgentCoopError } from '../errors'
 import { buildOpReturn } from '../scripts/opreturn'
+import { buildVaultCreditScript } from '../scripts/creditLock'
+import { isVaultLockingScriptHex } from '../scripts/vault'
 import { P2PKH_UNLOCKING_SCRIPT_LENGTH, type Offer, type PledgeRecord, type SettlementParticipant, type SettlementPlan } from '../types'
 import { parseOutpoint } from '../util/outpoint'
 import { creditsCost, termsHash, validateTerms } from './terms'
@@ -50,6 +53,17 @@ export interface PlanOptions {
 
 /** Default unlocking-script length per signer type until Track D fixes the vault value (track A 2.5). */
 export const VAULT_UNLOCKING_SCRIPT_LENGTH = 1 + 74 + 74 + 1 // OP_0 dummy, 2 × (push + ≤73-byte sig), OP_FALSE branch selector
+
+/** 'vault' when the pledge record asks for vault-locked credits (only a vault pledge can); else undefined. */
+export const creditLockOf = (r: Pick<PledgeRecord, 'signer' | 'creditLock'> | undefined): 'vault' | undefined =>
+  r?.signer === 'vault' && r.creditLock === 'vault' ? 'vault' : undefined
+
+/** The credit output a participant receives: P2PKH to its receive address, or its coin's vault script (A 5.3). */
+export function creditScriptFor (tokenId: string, p: Pick<PledgeCandidate, 'record' | 'lockingScriptHex'>): LockingScript {
+  const insc = { op: 'transfer' as const, id: tokenId, amt: p.record.credits }
+  if (creditLockOf(p.record) === 'vault') return buildVaultCreditScript(insc, p.lockingScriptHex)
+  return buildBsv21Script(insc, receivePkh(p.record.participant, Number(p.record.tokenIndex)))
+}
 
 const unlockLength = (p: PledgeCandidate): number =>
   p.unlockingScriptLength ?? (p.record.signer === 'vault' ? VAULT_UNLOCKING_SCRIPT_LENGTH : P2PKH_UNLOCKING_SCRIPT_LENGTH)
@@ -86,12 +100,12 @@ function buildTemplate (offer: Offer, chain: ChainInfo, chosen: PledgeCandidate[
   chosen.forEach((p, i) => {
     const { vout: pv } = parseOutpoint(p.outpoint)
     tx.addInput({ sourceTransaction: p.sourceTx, sourceOutputIndex: pv, unlockingScript: new UnlockingScript(), sequence: 0xffffffff })
-    tx.addOutput({
-      lockingScript: buildBsv21Script({ op: 'transfer', id: t.tokenId, amt: p.record.credits }, receivePkh(p.record.participant, Number(p.record.tokenIndex))),
-      satoshis: 1
-    })
+    tx.addOutput({ lockingScript: creditScriptFor(t.tokenId, p), satoshis: 1 })
     const change = p.satoshis - Number(creditsCost(t, p.record.credits)) - 1 - fees[i]
-    participants.push({ outpoint: p.outpoint, participant: p.record.participant, credits: p.record.credits, signer: p.record.signer, changeSats: String(change) })
+    participants.push({
+      outpoint: p.outpoint, participant: p.record.participant, credits: p.record.credits, signer: p.record.signer, changeSats: String(change),
+      ...(creditLockOf(p.record) === 'vault' ? { creditLock: 'vault' as const } : {})
+    })
   })
   chosen.forEach((p, i) => {
     tx.addOutput({ lockingScript: LockingScript.fromHex(p.lockingScriptHex), satoshis: Math.max(Number(participants[i].changeSats), 1) })
@@ -168,7 +182,9 @@ export function planSettlement (offer: Offer, pledges: PledgeCandidate[], chain:
   // that cannot cover their share + fee are dropped and the search reruns.
   const ordered = orderPledges(pledges).filter(p => {
     const k = BigInt(p.record.credits)
-    return !exclude.has(p.outpoint) && p.record.poolId === t.poolId && p.record.v === '1' && k >= BigInt(t.minCredits) && k <= n
+    // A vault-locked credit needs a vault pledge coin to take its script from.
+    const lockOk = p.record.creditLock === undefined || (creditLockOf(p.record) === 'vault' && isVaultLockingScriptHex(p.lockingScriptHex))
+    return !exclude.has(p.outpoint) && p.record.poolId === t.poolId && p.record.v === '1' && k >= BigInt(t.minCredits) && k <= n && lockOk
   })
   const dropped = new Set<PledgeCandidate>()
   for (;;) {

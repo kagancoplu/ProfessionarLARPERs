@@ -37,7 +37,7 @@ export interface PledgeOptions { tokenIndex: number, originator?: string, buffer
 export interface P2pkhPledge { txid: string, outpoint: string, record: PledgeRecord, instructions: PledgeInstructions, satoshis: number, beef: number[] }
 /** What a vault pledge needs besides the terms: the vault UTXO it spends and the guard's co-signer. */
 export interface VaultPledgeOptions extends PledgeOptions {
-  vault: { vaultId: string, utxo: VaultUtxo, cosign: Cosigner, poolBEEF?: number[] | string }
+  vault: { vaultId: string, utxo: VaultUtxo, cosign: Cosigner, poolBEEF?: number[] | string, /** A 5.3 */ creditLock?: 'vault' }
 }
 
 export async function buildPledge (wallet: WalletInterface, terms: PoolTerms, credits: string, signer: 'vault', vaultScript: LockingScript | undefined, opts: VaultPledgeOptions): Promise<VaultPledge>
@@ -54,9 +54,9 @@ export async function buildPledge (
   validateTerms(terms)
   if (signer === 'vault') {
     if (!('vault' in opts)) throw new AgentCoopError('BAD_PLEDGE', 'a vault pledge needs opts.vault { vaultId, utxo, cosign }')
-    const { vaultId, utxo, cosign, poolBEEF } = opts.vault
+    const { vaultId, utxo, cosign, poolBEEF, creditLock } = opts.vault
     if (vaultScript !== undefined && vaultScript.toHex() !== utxo.lockingScriptHex) throw new AgentCoopError('BAD_PLEDGE', `vault UTXO ${utxo.outpoint} is not on the given vault script`)
-    return await pledgeFromVault(wallet, { vaultId, utxo, terms, credits, tokenIndex: opts.tokenIndex, cosign, poolBEEF, bufferSats: opts.bufferSats, allowMultiple: opts.allowMultiple, originator: opts.originator })
+    return await pledgeFromVault(wallet, { vaultId, utxo, terms, credits, tokenIndex: opts.tokenIndex, cosign, poolBEEF, creditLock, bufferSats: opts.bufferSats, allowMultiple: opts.allowMultiple, originator: opts.originator })
   }
   if (vaultScript !== undefined) throw new AgentCoopError('BAD_PLEDGE', 'vaultScript is only for signer \'vault\'')
   if (BigInt(credits) < BigInt(terms.minCredits) || BigInt(credits) > BigInt(terms.credits)) throw new AgentCoopError('BAD_PLEDGE', `credits must be in ${terms.minCredits}..${terms.credits}`)

@@ -11,8 +11,9 @@
  * transaction's txid is recomputed, so fabricated history is refused.
  */
 import { Transaction } from '../sdk'
-import { decodeBsv21, tokenIdFromOutpoint } from '../kit/inscription'
-import { identifyAdmissible, UnknownTokenInputError } from '../kit/rules'
+import { tokenIdFromOutpoint } from '../kit/inscription'
+import { bsv21Decoder, identifyAdmissible, UnknownTokenInputError } from '../kit/rules'
+import { decodeBsv21Owned, type CreditOwner, type OwnerKind } from '../scripts/creditLock'
 import { ARCADE_URL } from '../types'
 import { coopOutpoint, parseOutpoint } from '../util/outpoint'
 import { inputScriptValid } from '../util/spend'
@@ -23,7 +24,9 @@ export interface LineageResult {
   ok: boolean
   tokenId?: string
   amt?: bigint
+  /** Set when the output is owned by a P2PKH. */
   ownerPkh?: string
+  owner?: CreditOwner
   /** Transactions walked back to the deploy. */
   depth: number
   reason?: string
@@ -39,6 +42,8 @@ export interface LineageOptions {
   fetchTx?: TxFetcher
   maxDepth?: number
   cache?: LineageCache
+  /** Token owners accepted along the way (rules.ts RuleOptions.ownerKinds). Default ['p2pkh']. Do not share a cache across settings. */
+  ownerKinds?: readonly OwnerKind[]
 }
 
 const sleep = async (ms: number): Promise<void> => await new Promise(resolve => setTimeout(resolve, ms))
@@ -70,6 +75,12 @@ export async function verifyLineage (outpoint: string, opts: LineageOptions = {}
   const fetchTx = opts.fetchTx ?? arcadeTxFetcher(opts.arcadeUrl, opts.wocUrl)
   const maxDepth = opts.maxDepth ?? 50
   const cache: LineageCache = opts.cache ?? new Map()
+  const rules = { ownerKinds: opts.ownerKinds }
+  const decode = bsv21Decoder(rules)
+  const ownerOf = (script: Parameters<typeof decode>[0]): Pick<LineageResult, 'ownerPkh' | 'owner'> => {
+    const owner = decodeBsv21Owned(script)?.owner
+    return owner === undefined ? {} : { owner, ...(owner.kind === 'p2pkh' ? { ownerPkh: owner.pkh } : {}) }
+  }
   const txs = new Map<string, Promise<Transaction>>()
 
   const load = async (txid: string): Promise<Transaction> => {
@@ -94,11 +105,11 @@ export async function verifyLineage (outpoint: string, opts: LineageOptions = {}
     try { tx = await load(txid) } catch (e) { return fail(e instanceof Error ? e.message : String(e)) }
     const out = tx.outputs[vout]
     if (out === undefined) return fail(`${op} does not exist`)
-    const d = decodeBsv21(out.lockingScript)
+    const d = decode(out.lockingScript)
     if (d === null) return fail(`${op} is not a canonical BSV-21 output`)
     if (d.op === 'burn') return fail(`${op} is a burn`)
     if (d.op === 'deploy+mint') {
-      const r = { ok: true, tokenId: tokenIdFromOutpoint(txid, vout), amt: d.amount, ownerPkh: d.ownerPkh, depth }
+      const r = { ok: true, tokenId: tokenIdFromOutpoint(txid, vout), amt: d.amount, ...ownerOf(out.lockingScript), depth }
       cache.set(op, r)
       return r
     }
@@ -115,7 +126,7 @@ export async function verifyLineage (outpoint: string, opts: LineageOptions = {}
       input.sourceTransaction = source
       const sourceOut = source.outputs[input.sourceOutputIndex]
       if (sourceOut === undefined) return fail(`input ${vin} of ${txid} spends a missing output`)
-      const sd = decodeBsv21(sourceOut.lockingScript)
+      const sd = decode(sourceOut.lockingScript)
       if (sd === null || sd.op === 'burn') continue
       const sid = sd.op === 'deploy+mint' ? tokenIdFromOutpoint(sourceTxid, input.sourceOutputIndex) : sd.id!
       if (sid !== d.id) continue // another token's input: the rules ignore it for this token
@@ -127,13 +138,13 @@ export async function verifyLineage (outpoint: string, opts: LineageOptions = {}
     }
     let admitted: number[]
     try {
-      admitted = identifyAdmissible(tx, previousCoins).outputsToAdmit
+      admitted = identifyAdmissible(tx, previousCoins, rules).outputsToAdmit
     } catch (e) {
       if (e instanceof UnknownTokenInputError) return fail(`${txid} spends ${e.outpoint}, which is not genuine`)
       throw e
     }
     const r = admitted.includes(vout)
-      ? { ok: true, tokenId: d.id!, amt: d.amount, ownerPkh: d.ownerPkh, depth: deepest }
+      ? { ok: true, tokenId: d.id!, amt: d.amount, ...ownerOf(out.lockingScript), depth: deepest }
       : fail(`${op} is not covered by genuine ${d.id} inputs`)
     cache.set(op, r)
     return r
