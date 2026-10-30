@@ -139,10 +139,10 @@ describe('coordinator engine: rounds, blacklist, waiting list', () => {
     const p = await newPool()
     const garbage = await pledgeMined('a5', p, 300n)
     const rejecter = await pledgeMined('a6', p, 300n)
-    // Order matters with A's planner: it picks an exact N inside a 120% window of the ordered pledges
-    // (a5 300 + a6 300 + a4 400 = 1000 here; with a1 600 before a4 the window would be 300+300+600, no exact 1000).
-    await pledgeMined('a4', p, 400n)
+    // 300, 300, 600, 400: the order that stalled A's planner before its 17:50 fix (no exact 1000 inside the
+    // 120% window). Round 1 = a5 + a6 + a4, round 2 = a1 + a4.
     await pledgeMined('a1', p, 600n)
+    await pledgeMined('a4', p, 400n)
     await postOffer(p)
     await bot.a4.waitFor(m => m.type === 'settled' && m.poolId === p.poolId)
     const view = await get(`/pools/${p.poolId}`)
