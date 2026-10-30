@@ -43,6 +43,8 @@ export interface StackOptions {
   /** Simulated GPU minutes per second (default 3000: jobs take well under a second). */
   minutesPerSecond?: number
   brain?: Brain
+  /** Products whose credit token the operator mints at start (default: gpu-h100 only). */
+  products?: string[]
 }
 
 export interface DemoAgent {
@@ -61,11 +63,14 @@ export interface MockStack {
   apiUrl: string
   dataDir: string
   products: Product[]
+  /** gpu-h100's credit token. */
   tokenId: string
+  /** Every minted product's credit token. */
+  tokenIds: Record<string, string>
   operator: CliContext
   lineage: LineageOptions
   overlayClient: () => OverlayClient
-  openPool: (args: Omit<OpenPoolArgs, 'product'>) => Promise<PoolRecord>
+  openPool: (args: Omit<OpenPoolArgs, 'product'> & { product?: string }) => Promise<PoolRecord>
   agent: (profile: string) => Promise<DemoAgent>
   /** Mine `n` blocks and tell the coordinator the new height. */
   advanceBlocks: (n: number) => Promise<void>
@@ -79,7 +84,7 @@ function tempProducts (minutesPerSecond: number): string {
   cpSync(PRODUCTS_DIR, dir, { recursive: true })
   for (const f of readdirSync(dir).filter(f => f.endsWith('.json'))) {
     const p = JSON.parse(readFileSync(join(dir, f), 'utf8'))
-    p.simulate.minutesPerSecond = minutesPerSecond
+    if (p.simulate.minutesPerSecond !== undefined) p.simulate.minutesPerSecond = minutesPerSecond
     writeFileSync(join(dir, f), JSON.stringify(p, null, 2))
   }
   return dir
@@ -129,7 +134,12 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
     pools: new PoolRegistry(),
     out: line => { say(`\x1b[32mprovider \x1b[0m ${line}`) }
   }
-  const { tokenId } = await mint(operator, { sym: 'H100HR', amt: 100_000n, dec: 0, product: 'gpu-h100' })
+  const symbols: Record<string, string> = { 'gpu-h100': 'H100HR', 'data-proxy': 'PROXYGB' }
+  const tokenIds: Record<string, string> = {}
+  for (const id of opts.products ?? ['gpu-h100']) {
+    tokenIds[id] = (await mint(operator, { sym: symbols[id] ?? id.replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 16), amt: 100_000n, dec: 0, product: id })).tokenId
+  }
+  const tokenId = tokenIds['gpu-h100']
   const products = loadProducts(productsDir)
   const runner = new JobRunner({ products })
   const app = createProviderApp({ wallet: providerWallet, products, runner, ledger: new CreditLedger(), overlay: overlayClient(), fetchTx, coopApiUrl: coop.url })
@@ -147,10 +157,11 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
     dataDir,
     products,
     tokenId,
+    tokenIds,
     operator,
     lineage,
     overlayClient,
-    openPool: async args => await openPool(operator, { product: 'gpu-h100', ...args }),
+    openPool: async args => await openPool(operator, { ...args, product: args.product ?? 'gpu-h100' }),
     agent: async name => {
       const wallet = await chain.makeWallet()
       await chain.fund(wallet)

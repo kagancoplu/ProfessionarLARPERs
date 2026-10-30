@@ -15,7 +15,7 @@
  *     only used for discovery;
  *  6. it was not redeemed before.
  * Then the wallet internalizes it into the `bsv21` basket (SPV-checked) and
- * the caller's prepaid balance grows by credits × minutesPerCredit minutes.
+ * the caller's prepaid balance grows by credits × unitsPerCredit metered units.
  *
  * Return: unused whole credits go back to the caller as tokens (TokenKit.send);
  * a remainder smaller than one credit stays prepaid.
@@ -26,7 +26,7 @@ import {
   verifyLineage as coreVerifyLineage, type OverlayClient, type TokenKit, type TxFetcher
 } from '@agentcoop/core'
 import type { CreditLedger } from './credits'
-import { minutesPerCredit, type Product } from './products'
+import { defaultProduct, runnerIdOf, unitsPerCredit, type Product } from './products'
 
 export type VerifyLineage = typeof coreVerifyLineage
 
@@ -55,8 +55,10 @@ export interface RedeemResult {
   product: string
   tokenId: string
   credits: number
-  /** Prepaid balance after the redeem, in GPU minutes. */
-  prepaidMinutes: number
+  /** Prepaid balance after the redeem, in the product's metered units. */
+  prepaidUnits: number
+  /** GPU products: the same as prepaidUnits. */
+  prepaidMinutes?: number
   /** Transactions verifyLineage walked back to the deploy. */
   lineageDepth: number
 }
@@ -146,7 +148,7 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
   const lineageDepth = await checkLineage(deps, parsed, txid, vout, { tokenId, amount: decoded.amount, ownerPkh: decoded.ownerPkh })
 
   // 3 + 6, atomically: claim the outpoint and room under the pending cap
-  const mpc = minutesPerCredit(product)
+  const mpc = unitsPerCredit(product)
   const reserved = deps.ledger.reserveRedeem(outpoint, caller, tokenId, credits * mpc, MAX_PENDING_REDEEM_CREDITS * mpc)
   if (reserved === 'replayed') throw new CreditError(409, 'ERR_REDEEM_REPLAYED', 'these credits were already redeemed')
   if (reserved === 'over-limit') {
@@ -172,24 +174,25 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
     deps.ledger.releaseRedeem(outpoint)
     throw new CreditError(400, 'ERR_REDEEM_FAILED', `the wallet did not accept the transfer: ${(e as Error).message}`)
   }
-  const prepaidMinutes = deps.ledger.commitRedeem(outpoint)
-  return { outpoint, product: product.id, tokenId, credits, prepaidMinutes, lineageDepth }
+  const prepaidUnits = deps.ledger.commitRedeem(outpoint)
+  return { outpoint, product: product.id, tokenId, credits, prepaidUnits, ...(runnerIdOf(product) === 'gpu' ? { prepaidMinutes: prepaidUnits } : {}), lineageDepth }
 }
 
-export async function returnCredits (deps: CreditDeps, caller: string, body: unknown): Promise<{ txid: string, product: string, credits: number, prepaidMinutes: number }> {
+export async function returnCredits (deps: CreditDeps, caller: string, body: unknown): Promise<{ txid: string, product: string, credits: number, prepaidUnits: number, prepaidMinutes?: number }> {
   const b = (body ?? {}) as { credits?: unknown, product?: unknown }
-  const product = b.product === undefined ? deps.products.find(p => p.tokenId !== null) : deps.products.find(p => p.id === b.product)
+  const product = b.product === undefined ? defaultProduct(deps.products.filter(p => p.tokenId !== null)) : deps.products.find(p => p.id === b.product)
   if (product?.tokenId == null) throw new CreditError(400, 'ERR_BAD_REQUEST', 'no such product with a credit token')
   const credits = b.credits
   if (typeof credits !== 'number' || !Number.isSafeInteger(credits) || credits < 1) throw new CreditError(400, 'ERR_BAD_REQUEST', 'credits must be a positive integer')
-  const minutes = credits * minutesPerCredit(product)
+  const minutes = credits * unitsPerCredit(product)
   if (!deps.ledger.tryDebit(caller, product.tokenId, minutes)) {
     const have = deps.ledger.balance(caller, product.tokenId)
-    throw new CreditError(400, 'ERR_INSUFFICIENT_CREDITS', `prepaid balance is ${have} min = ${Math.floor(have / minutesPerCredit(product))} whole credits`)
+    throw new CreditError(400, 'ERR_INSUFFICIENT_CREDITS', `prepaid balance is ${have} units = ${Math.floor(have / unitsPerCredit(product))} whole credits`)
   }
   try {
     const { txid } = await deps.kit.send(product.tokenId, BigInt(credits), caller)
-    return { txid, product: product.id, credits, prepaidMinutes: deps.ledger.balance(caller, product.tokenId) }
+    const prepaidUnits = deps.ledger.balance(caller, product.tokenId)
+    return { txid, product: product.id, credits, prepaidUnits, ...(runnerIdOf(product) === 'gpu' ? { prepaidMinutes: prepaidUnits } : {}) }
   } catch (e) {
     deps.ledger.refund(caller, product.tokenId, minutes)
     throw new CreditError(502, 'ERR_RETURN_FAILED', `could not send the credits back: ${(e as Error).message}`)

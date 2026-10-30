@@ -128,7 +128,7 @@ export class Agent {
   /** Redeemed and not yet used, in GPU minutes. */
   async prepaidMinutes (): Promise<number> {
     const { balances } = await this.provider.balance()
-    return balances.find(b => b.product === this.profile.product)?.prepaidMinutes ?? 0
+    return balances.find(b => b.product === this.profile.product)?.prepaidUnits ?? 0
   }
 
   /** Credit tokens in the agent's wallet that the overlay vouches for (after a sync). */
@@ -158,8 +158,8 @@ export class Agent {
       .find(o => o.txid === txid && o.ctx.ownerPkh === pkh)
     if (out === undefined) throw new Error(`credit transfer ${txid} is not on the overlay yet`)
     const res = await this.provider.redeem(out.beef, out.vout)
-    this.log.info(`Redeemed ${credits} ${product.unit} credit${credits === 1 ? '' : 's'} at the provider (prepaid now ${res.prepaidMinutes} GPU-min). https://whatsonchain.com/tx/${txid}`)
-    return { credits, prepaidMinutes: res.prepaidMinutes, txid }
+    this.log.info(`Redeemed ${credits} ${product.unit} credit${credits === 1 ? '' : 's'} at the provider (prepaid now ${res.prepaidUnits} GPU-min). https://whatsonchain.com/tx/${txid}`)
+    return { credits, prepaidMinutes: res.prepaidUnits, txid }
   }
 
   /** Run one job of the agent's own work, paying the cheapest way it knows (Faz 1: prepaid credits, else retail). */
@@ -183,7 +183,7 @@ export class Agent {
     const submitted = await this.provider.submitJob({ kind: need.kind, minutes: need.minutes, product: product.id })
     const p = submitted.payment
     if (p.method === 'credits') {
-      this.log.info(`Job ${submitted.jobId} paid from prepaid credits: ${p.minutes} GPU-min.`)
+      this.log.info(`Job ${submitted.jobId} paid from prepaid credits: ${p.minutes ?? p.units} GPU-min.`)
     } else {
       this.recordSpend(p.satoshis)
       this.log.info(`Job ${submitted.jobId} paid at retail: ${need.minutes} GPU-min at ${product.retailSatsPerCredit} sat/${product.unit} = ${sat(p.satoshis)} sat (HTTP 402, BRC-105). https://whatsonchain.com/tx/${p.txid}`)

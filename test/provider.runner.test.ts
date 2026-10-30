@@ -11,7 +11,7 @@ const job = { owner: '02'.padEnd(66, '1'), product: 'gpu-h100', payment: { metho
 
 describe('products', () => {
   it('loads products/gpu-h100.json', () => {
-    const [p] = loadProducts()
+    const p = loadProducts().find(x => x.id === 'gpu-h100')
     expect(p).toMatchObject({ id: 'gpu-h100', unit: 'GPU-hour', retailSatsPerCredit: 50, minutesPerCredit: 60, demoPricing: true, simulate: { minutesPerSecond: 60 } })
   })
 
@@ -40,8 +40,8 @@ describe('job runner', () => {
 
   it('runs at most `gpus` jobs at once and queues the rest', async () => {
     const runner = new JobRunner({ products: [product(1)] })
-    const first = runner.submit({ ...job, kind: 'eval', minutes: 20 })
-    const second = runner.submit({ ...job, kind: 'inference', minutes: 20 })
+    const first = runner.submit({ ...job, kind: 'eval', units: 20 })
+    const second = runner.submit({ ...job, kind: 'inference', units: 20 })
     expect(runner.get(first.id)!.status).toBe('running')
     expect(runner.get(second.id)!.status).toBe('queued')
     await runner.wait(first.id)

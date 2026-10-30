@@ -18,7 +18,8 @@ import { createPaymentMiddleware, type PaymentReplayStore, type PaymentRequest }
 import type { WalletInterface } from '@agentcoop/core/sdk'
 import { MAX_PENDING_REDEEM_CREDITS, MAX_REDEEM_CREDITS, TokenKit, type OverlayClient, type TxFetcher } from '@agentcoop/core'
 import { CreditLedger } from './credits'
-import { minutesPerCredit, retailSatsFor, type Product } from './products'
+import { defaultProduct, retailSatsFor, runnerIdOf, unitsPerCredit, type Product } from './products'
+import { RUNNERS } from './runners'
 import { CreditError, redeemCredits, returnCredits, Serial, type CreditDeps, type VerifyLineage } from './redeem'
 import { JOB_KINDS, MAX_JOB_MINUTES, type Job, type JobKind, type JobPayment, type JobRunner } from './runner'
 
@@ -45,22 +46,28 @@ export interface ProviderAppOptions {
 export interface JobQuote {
   product: Product
   kind: JobKind
-  minutes: number
-  /** Retail price in sats, used when the prepaid balance does not cover `minutes`. */
+  /** Quantity in the product runner's unit (GPU minutes, proxy MB). */
+  units: number
+  /** Retail price in sats, used when the prepaid balance does not cover `units`. */
   retailSats: number
 }
 
-/** Validates a POST /v1/jobs body. The price comes from here, never from the request. */
+/**
+ * Validates a POST /v1/jobs body: `{ product?, kind, minutes }` for GPU
+ * products, `{ product, kind, mb }` for proxy products (runners.ts). The price
+ * comes from here, never from the request.
+ */
 export function quoteJob (body: unknown, products: Product[]): JobQuote | { error: string } {
-  const b = (body ?? {}) as { product?: unknown, kind?: unknown, minutes?: unknown }
-  const product = b.product === undefined ? products[0] : products.find(p => p.id === b.product)
+  const b = (body ?? {}) as Record<string, unknown>
+  const product = b.product === undefined ? defaultProduct(products) : products.find(p => p.id === b.product)
   if (product === undefined) return { error: `unknown product ${String(b.product)}` }
-  if (typeof b.kind !== 'string' || !(JOB_KINDS as readonly string[]).includes(b.kind)) return { error: `kind must be one of ${JOB_KINDS.join(', ')}` }
-  const minutes = b.minutes
-  if (typeof minutes !== 'number' || !Number.isSafeInteger(minutes) || minutes < 1 || minutes > MAX_JOB_MINUTES) {
-    return { error: `minutes must be an integer from 1 to ${MAX_JOB_MINUTES}` }
+  const spec = RUNNERS[runnerIdOf(product)]
+  if (typeof b.kind !== 'string' || !spec.kinds.includes(b.kind)) return { error: `kind must be one of ${spec.kinds.join(', ')} for ${product.id}` }
+  const units = b[spec.quantityField]
+  if (typeof units !== 'number' || !Number.isSafeInteger(units) || units < 1 || units > spec.maxQuantity) {
+    return { error: `${spec.quantityField} must be an integer from 1 to ${spec.maxQuantity} for ${product.id}` }
   }
-  return { product, kind: b.kind as JobKind, minutes, retailSats: retailSatsFor(product, minutes) }
+  return { product, kind: b.kind, units, retailSats: retailSatsFor(product, units) }
 }
 
 const isJobRequest = (req: PaymentRequest): boolean => req.method === 'POST' && req.path === '/v1/jobs'
@@ -92,7 +99,7 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     : { wallet, kit: new TokenKit(wallet, opts.overlay), overlay: opts.overlay, ledger, products, verifyLineage: opts.verifyLineage, fetchTx: opts.fetchTx, arcadeUrl: opts.arcadeUrl }
   const tokenOps = new Serial()
   /** Jobs whose price was covered by prepaid credits (set by the price function). */
-  const paidWithCredits = new WeakMap<object, { minutes: number, tokenId: string }>()
+  const paidWithCredits = new WeakMap<object, { units: number, tokenId: string }>()
   const app = express()
   app.use(express.json())
 
@@ -108,8 +115,8 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
       const quote = quoteJob(req.body, products)
       if ('error' in quote) return 0 // the route answers 400; nothing to pay for
       const tokenId = quote.product.tokenId
-      if (tokenId !== null && ledger.tryDebit(identityOf(req), tokenId, quote.minutes)) {
-        paidWithCredits.set(req, { minutes: quote.minutes, tokenId })
+      if (tokenId !== null && ledger.tryDebit(identityOf(req), tokenId, quote.units)) {
+        paidWithCredits.set(req, { units: quote.units, tokenId })
         return 0
       }
       return quote.retailSats
@@ -120,10 +127,16 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     const { publicKey: server } = await wallet.getPublicKey({ identityKey: true })
     const { pools, source } = await fetchPools(opts.coopApiUrl, products)
     res.json({
-      provider: { name: 'AgentCoop simulated GPU provider', server },
-      products: products.map(p => ({
-        id: p.id, label: p.label, unit: p.unit, retailSatsPerCredit: p.retailSatsPerCredit, minutesPerCredit: minutesPerCredit(p), tokenId: p.tokenId, demoPricing: p.demoPricing === true
-      })),
+      provider: { name: 'AgentCoop simulated provider (GPU + proxy)', server },
+      products: products.map(p => {
+        const spec = RUNNERS[runnerIdOf(p)]
+        return {
+          id: p.id, label: p.label, unit: p.unit, retailSatsPerCredit: p.retailSatsPerCredit,
+          ...(spec.id === 'gpu' ? { minutesPerCredit: unitsPerCredit(p) } : {}),
+          tokenId: p.tokenId, demoPricing: p.demoPricing === true,
+          runner: spec.id, kinds: spec.kinds, quantityField: spec.quantityField, unitsPerCredit: unitsPerCredit(p)
+        }
+      }),
       pricingNote: products.some(p => p.demoPricing === true)
         ? 'demo pricing: retail and pool prices are illustrative; a pool discount shows the mechanism, not a proven saving (FINAL-IDEA §9)'
         : undefined,
@@ -141,7 +154,7 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     const covered = paidWithCredits.get(req)
     const receipt = req.payment
     let payment: JobPayment
-    if (covered !== undefined) payment = { method: 'credits', ...covered }
+    if (covered !== undefined) payment = { method: 'credits', ...covered, ...(runnerIdOf(quote.product) === 'gpu' ? { minutes: covered.units } : {}) }
     else if (receipt !== undefined && receipt.satoshisPaid > 0) payment = { method: 'sats', satoshis: receipt.satoshisPaid, txid: receipt.txid }
     else {
       res.status(500).json({ status: 'error', code: 'ERR_PAYMENT_INTERNAL', description: 'job reached the route without payment' })
@@ -149,9 +162,9 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     }
     let job: Job
     try {
-      job = runner.submit({ owner: identityOf(req), product: quote.product.id, kind: quote.kind, minutes: quote.minutes, payment })
+      job = runner.submit({ owner: identityOf(req), product: quote.product.id, kind: quote.kind, units: quote.units, payment })
     } catch (e) {
-      if (covered !== undefined) ledger.refund(identityOf(req), covered.tokenId, covered.minutes)
+      if (covered !== undefined) ledger.refund(identityOf(req), covered.tokenId, covered.units)
       res.status(503).json({ status: 'error', code: 'ERR_RUNNER', description: (e as Error).message })
       return
     }
@@ -184,8 +197,13 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     res.json({
       identity: me,
       balances: products.filter(p => p.tokenId !== null).map(p => {
-        const prepaidMinutes = ledger.balance(me, p.tokenId!)
-        return { product: p.id, tokenId: p.tokenId, minutesPerCredit: minutesPerCredit(p), prepaidMinutes, returnableCredits: Math.floor(prepaidMinutes / minutesPerCredit(p)) }
+        const prepaidUnits = ledger.balance(me, p.tokenId!)
+        const gpu = runnerIdOf(p) === 'gpu'
+        return {
+          product: p.id, tokenId: p.tokenId, unit: RUNNERS[runnerIdOf(p)].quantityField, unitsPerCredit: unitsPerCredit(p), prepaidUnits,
+          ...(gpu ? { minutesPerCredit: unitsPerCredit(p), prepaidMinutes: prepaidUnits } : {}),
+          returnableCredits: Math.floor(prepaidUnits / unitsPerCredit(p))
+        }
       }),
       limits: { maxRedeem: MAX_REDEEM_CREDITS, maxPending: MAX_PENDING_REDEEM_CREDITS }
     })

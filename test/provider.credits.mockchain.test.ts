@@ -103,7 +103,7 @@ afterAll(async () => {
 describe('provider-cli mint', () => {
   it('deployed the credit token and wrote it into the product configuration', async () => {
     expect(tokenId).toMatch(/^[0-9a-f]{64}_0$/)
-    expect(products[0].tokenId).toBe(tokenId)
+    expect(products.find(p => p.id === 'gpu-h100')!.tokenId).toBe(tokenId)
     const [b] = await new TokenKit(operator, overlay.client()).balances()
     expect(b).toMatchObject({ tokenId, sym: 'GPUMIN', overlay: 99_900n })
   })
@@ -112,7 +112,7 @@ describe('provider-cli mint', () => {
 describe('credits at the provider (one credit = one GPU-hour, used by the minute)', () => {
   it('advertises the credit token, its unit and where to redeem it', async () => {
     const catalog = await agent.catalog()
-    expect(catalog.products[0]).toMatchObject({ tokenId, unit: 'GPU-hour', minutesPerCredit: 60, retailSatsPerCredit: 50, demoPricing: true })
+    expect(catalog.products.find(p => p.id === 'gpu-h100')).toMatchObject({ tokenId, unit: 'GPU-hour', minutesPerCredit: 60, retailSatsPerCredit: 50, demoPricing: true })
     expect(catalog.pricingNote).toMatch(/^demo pricing:/)
     expect(catalog.credits).toEqual({ maxRedeem: 20, maxPending: 20, redeemTo: server })
     expect(await agent.ownedCredits()).toBe(100n)
@@ -121,7 +121,7 @@ describe('credits at the provider (one credit = one GPU-hour, used by the minute
   it('redeems one credit for a 45-minute job, which then costs no sats', async () => {
     const satsBefore = await spendableSats(providerApi)
     const job = await agent.runJob({ kind: 'eval', minutes: 45 })
-    expect(job.payment).toEqual({ method: 'credits', minutes: 45, tokenId })
+    expect(job.payment).toEqual({ method: 'credits', units: 45, minutes: 45, tokenId })
     expect(job.status).toBe('done')
     expect(await spendableSats(providerApi)).toBe(satsBefore)
     expect(await agent.prepaidMinutes()).toBe(15)
@@ -133,14 +133,14 @@ describe('credits at the provider (one credit = one GPU-hour, used by the minute
 
   it('spends the leftover minutes on the next job without redeeming again', async () => {
     const job = await agent.runJob({ kind: 'eval', minutes: 15 })
-    expect(job.payment).toEqual({ method: 'credits', minutes: 15, tokenId })
+    expect(job.payment).toEqual({ method: 'credits', units: 15, minutes: 15, tokenId })
     expect(await agent.prepaidMinutes()).toBe(0)
     expect(await agent.ownedCredits()).toBe(99n)
   })
 
   it('pays an 8-hour fine-tune with 8 credits', async () => {
     const job = await agent.runJob({ kind: 'finetune', minutes: 480 })
-    expect(job.payment).toEqual({ method: 'credits', minutes: 480, tokenId })
+    expect(job.payment).toEqual({ method: 'credits', units: 480, minutes: 480, tokenId })
     expect(await agent.prepaidMinutes()).toBe(0)
     expect(await agent.ownedCredits()).toBe(91n)
   })

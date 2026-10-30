@@ -1,0 +1,14 @@
+{
+  "id": "data-proxy",
+  "label": "Residential proxy GB",
+  "unit": "GB",
+  "runner": "proxy",
+  "retailSatsPerCredit": 40,
+  "unitsPerCredit": 1024,
+  "demoPricing": true,
+  "tokenId": null,
+  "simulate": {
+    "unitsPerSecond": 20480,
+    "slots": 16
+  }
+}

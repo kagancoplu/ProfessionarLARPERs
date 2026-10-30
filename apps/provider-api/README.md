@@ -1,6 +1,6 @@
-# provider-api: simulated GPU provider
+# provider-api: simulated provider (GPU + proxy)
 
-A paid GPU-job API protected with HTTP 402 (BRC-105). The GPU work is simulated; the payments, credit tokens and settlement around it are real.
+A paid job API protected with HTTP 402 (BRC-105). It sells two products: H100 GPU time and residential-proxy bandwidth. The work is simulated; the payments, credit tokens and settlement around it are real.
 
 ```bash
 npm run provider          # http://localhost:8092 (PROVIDER_API_URL), needs WALLET_PROVIDER_API_KEY
@@ -10,15 +10,22 @@ npm run provider          # http://localhost:8092 (PROVIDER_API_URL), needs WALL
 |---|---|---|---|
 | `GET` | `/healthz` | free, no auth | liveness |
 | `GET` | `/v1/catalog` | free | products, retail price, credit token, `credits.redeemTo` (this server's identity), open pools from `COOP_API_URL` |
-| `POST` | `/v1/jobs` `{ kind, minutes, product? }` | `ceil(minutes × retailSatsPerCredit / minutesPerCredit)` sats, or **free** if the prepaid balance covers the minutes | queue a simulated `finetune` / `eval` / `inference` job |
+| `POST` | `/v1/jobs` GPU `{ kind, minutes, product? }` · proxy `{ product: 'data-proxy', kind, mb }` | `ceil(units × retailSatsPerCredit / unitsPerCredit)` sats, or **free** if the prepaid balance covers the units | queue a simulated job (`finetune` / `eval` / `inference`, or `crawl` / `scrape`) |
 | `GET` | `/v1/jobs/:id` | free | status, GPU log, result hash (only for the identity that paid) |
 | `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | free | claim a BSV-21 credit transfer to this server as prepaid balance |
 | `POST` | `/v1/credits/return` `{ credits, product? }` | free | send unused whole credits back as tokens |
-| `GET` | `/v1/credits/balance` | free | the caller's prepaid balance: `prepaidMinutes`, `returnableCredits` |
+| `GET` | `/v1/credits/balance` | free | the caller's prepaid balance per product: `prepaidUnits`, `returnableCredits` (GPU also `prepaidMinutes`) |
 
 All routes except `/healthz` are mutually authenticated (BRC-103/104). Clients use the SDK's `AuthFetch`, which also pays 402 challenges automatically.
 
-**Products are configuration.** Each file in `products/` is one product: `{ id, label, unit, retailSatsPerCredit, minutesPerCredit?, tokenId, simulate: { minutesPerSecond, gpus? } }`. `provider-cli mint` writes the credit token id into it. A second product is a second file.
+**Products are configuration plus a runner.** Each file in `products/` is one product: `{ id, label, unit, runner?, retailSatsPerCredit, minutesPerCredit? | unitsPerCredit?, demoPricing?, tokenId, simulate }`. `provider-cli mint --product <id>` writes the credit token id into it. A runner (`src/runners.ts`) defines the job kinds, the quantity field, the limit and the simulated log:
+
+| Product | Runner | 1 credit | Retail | Job request |
+|---|---|---|---|---|
+| `gpu-h100` | `gpu` | 1 H100 GPU-hour = 60 min | 50 sat | `{ kind: 'finetune' \| 'eval' \| 'inference', minutes }` |
+| `data-proxy` | `proxy` | 1 GB = 1024 MB | 40 sat | `{ product: 'data-proxy', kind: 'crawl' \| 'scrape', mb }` |
+
+A new product of an existing kind is a new JSON file. A new kind of work is a new runner. Without `product` a request means the first GPU product.
 
 **Credit unit:** one `gpu-h100` credit is **one H100 GPU-hour** (`minutesPerCredit: 60`, retail 50 sat per credit), and it is used up by the minute. A redeemed credit adds 60 minutes to the prepaid balance, each job debits its minutes, and whatever a job leaves over pays for the next job. Retail jobs are billed per minute as well: 30 min costs 25 sat and 8 h costs 400 sat.
 

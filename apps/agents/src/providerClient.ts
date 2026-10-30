@@ -5,7 +5,21 @@
  */
 import { AuthFetch, type WalletInterface } from '@agentcoop/core/sdk'
 
-export interface CatalogProduct { id: string, label: string, unit: string, retailSatsPerCredit: number, minutesPerCredit?: number, tokenId: string | null, demoPricing?: boolean }
+export interface CatalogProduct {
+  id: string
+  label: string
+  unit: string
+  retailSatsPerCredit: number
+  /** GPU products only. */
+  minutesPerCredit?: number
+  tokenId: string | null
+  demoPricing?: boolean
+  runner?: 'gpu' | 'proxy'
+  kinds?: string[]
+  /** Job request field for the quantity: 'minutes' (gpu) or 'mb' (proxy). */
+  quantityField?: 'minutes' | 'mb'
+  unitsPerCredit?: number
+}
 export interface Catalog {
   provider: { name: string, server: string }
   products: CatalogProduct[]
@@ -22,7 +36,7 @@ export interface JobView {
   kind: string
   minutes: number
   status: 'queued' | 'running' | 'done'
-  payment: { method: 'credits', minutes: number, tokenId: string } | { method: 'sats', satoshis: number, txid: string }
+  payment: { method: 'credits', units: number, minutes?: number, tokenId: string } | { method: 'sats', satoshis: number, txid: string }
   log: string[]
   resultHash?: string
 }
@@ -55,22 +69,22 @@ export class ProviderClient {
   }
 
   /** Paid by the prepaid credit balance when it covers the job, otherwise at retail via 402. */
-  async submitJob (job: { kind: string, minutes: number, product?: string }): Promise<{ jobId: string, status: string, payment: JobView['payment'] }> {
+  async submitJob (job: { kind: string, product?: string, minutes?: number, mb?: number }): Promise<{ jobId: string, status: string, payment: JobView['payment'] }> {
     return await this.call('POST', '/v1/jobs', job)
   }
 
   /** Prepaid balance at the provider, in GPU minutes (one credit = minutesPerCredit minutes). */
-  async balance (): Promise<{ identity: string, balances: Array<{ product: string, tokenId: string, minutesPerCredit: number, prepaidMinutes: number, returnableCredits: number }>, limits: { maxRedeem: number, maxPending: number } }> {
+  async balance (): Promise<{ identity: string, balances: Array<{ product: string, tokenId: string, unit: string, unitsPerCredit: number, prepaidUnits: number, minutesPerCredit?: number, prepaidMinutes?: number, returnableCredits: number }>, limits: { maxRedeem: number, maxPending: number } }> {
     return await this.call('GET', '/v1/credits/balance')
   }
 
   /** Claim a BSV-21 transfer to the provider-api's token address as prepaid credits. */
-  async redeem (beef: number[], outputIndex: number): Promise<{ outpoint: string, product: string, credits: number, prepaidMinutes: number, lineageDepth: number }> {
+  async redeem (beef: number[], outputIndex: number): Promise<{ outpoint: string, product: string, credits: number, prepaidUnits: number, prepaidMinutes?: number, lineageDepth: number }> {
     return await this.call('POST', '/v1/credits/redeem', { beef, outputIndex })
   }
 
   /** Get unused whole credits back as tokens. */
-  async returnCredits (credits: number, product?: string): Promise<{ txid: string, credits: number, prepaidMinutes: number }> {
+  async returnCredits (credits: number, product?: string): Promise<{ txid: string, credits: number, prepaidUnits: number, prepaidMinutes?: number }> {
     return await this.call('POST', '/v1/credits/return', { credits, product })
   }
 
