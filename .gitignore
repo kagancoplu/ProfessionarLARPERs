@@ -25,4 +25,10 @@ contracts/**/out/
 contracts/**/cache/
 contracts/**/broadcast/
 
+# frontend (apps/web) build and tooling caches
+apps/web/dist/
+apps/web/.vite/
+apps/web/playwright-report/
+apps/web/test-results/
+
 .DS_Store

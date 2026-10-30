@@ -41,6 +41,9 @@
 | 19 | **Base mainnet ETH** (gas; yalnızca Faz 5 A yolu) | Coinbase veya bir borsadan **Base ağına** çekim | *maker* ve *agent* EVM adreslerine ~$1'er ETH. HTLC deploy + 2 swap birkaç sent tutar; fazlası tampon | | ~$2 |
 | 20 | **Base mainnet USDC** (yalnızca Faz 5 A yolu) | Coinbase → Base ağı (köprü değil, doğrudan Base çekimi) | *agent* adresine $2, *maker* adresine $2 USDC (ileri ve ters yön birer swap). Önce ≤ $0,50 deneme | | ~$4 |
 | 21 | **Claude Desktop veya Claude Code** (Faz 7 MCP demosu) | <https://claude.ai/download> | Bir üyede kurulu; `mcpServers` konfigürasyonu README'de | | 0 |
+| 22 | **Cloudflare Pages** (frontend yayını; Track E) | <https://pages.cloudflare.com> | Ücretsiz hesap; GitHub reposuna bağla (`apps/web`, build `npm -w apps/web run build`, çıktı `apps/web/dist`); `VITE_*` env'leri B'nin herkese açık URL'leriyle. Alan adı varsa `app.<alan>` CNAME | E | 0 |
+| 23 | **Tiled** (harita editörü; Track E) | <https://www.mapeditor.org> | E'nin laptopuna kur; haritalar JSON olarak `apps/web/src/town/map/` | E | 0 (bağış isteğe bağlı) |
+| 24 | **CC0 varlık paketleri** (Track E) | kenney.nl, itch.io (lisansı tek tek doğrula) | İndirilen her paketin lisansı `apps/web/assets/LICENSES.md`'ye | E | 0 |
 
 ## 4. Hesap gerektirmeyen ama bilinmesi gerekenler
 
@@ -74,3 +77,4 @@
 - [ ] USD harcamaları için kart sahibi belli
 - [ ] (Faz 5 A yolu) Base mainnet ETH + USDC, maker ve agent adreslerinde
 - [ ] (Faz 7) Claude Desktop/Code bir üyede kurulu
+- [ ] (Track E) Cloudflare Pages hesabı + repo bağlantısı; Tiled kurulu

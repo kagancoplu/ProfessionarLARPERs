@@ -17,6 +17,7 @@
 
 | Tarih | Track | Blokaj | Kimden bekleniyor | Geçici çözüm |
 |---|---|---|---|---|
+| 2026-10-30 18:40 | E | Track E'nin sahibi (kişi) ve başlangıç saati belli değil; `apps/web` henüz yok | **İnsan** (E kişisini ata) | E.P0 mock modda diğer track'lere bağımlı değil; hemen başlayabilir |
 | 2026-10-30 16:20 | D (herkes) | **Mainnet sats yok:** sats talebi henüz gönderilmedi. Treasury Desktop'ta bakiye yok, fonlama (F1–F4) yapılamıyor. Bu makinedeki Desktop'tan 1.000 sat deneme ödemesi HTTP 400 ile reddedildi, hiçbir şey gönderilmedi | **İnsan:** Telegram mesaj 1 + 2 (`plan/phases/D-P0.md` §2) | Herkes mockchain'de devam; S1'in mainnet koşusu sats gelince. Sats gelince D önce F1 (agent-1=1000, A'nın test 2'si için) |
 | 2026-10-30 16:20 | D | Bu makinedeki BSV Desktop (`03e8836800…94a45a`, mainnet) **treasury mi?** Değilse treasury Desktop'ın identity key'i ve hangi laptopta olduğu | **İnsan** | `fund.ts` hangi Desktop açıksa onu kaynak kullanır; yanlış Desktop'tan fonlamamak için F1'den önce teyit |
 | 2026-10-30 17:25 | D | **Doğrulama testi 5 (mainnet) koşulamadı:** sats yok (yukarıdaki satır) ve D.P1 `.env`/`data/`/Desktop olmayan bir bulut konteynerinde yazıldı. Kod hazır, mockchain'de yeşil | **İnsan:** sats + F1 (`agent-1` ≥ 100 sat ücret için), treasury Desktop ≥ 1.100 sat; treasury laptopunda `cd apps/guard && npm ci && npm run validation5` | A.3 ve C.3 `VaultSigner`'ı mockchain'de kullanabilir (`apps/guard` 24/24) |
@@ -33,6 +34,11 @@
 
 | Tarih | Track | Değişen | Neden | MASTER-PLAN güncellendi mi |
 |---|---|---|---|---|
+| 2026-10-30 18:40 | D (E için; D.P2'de yapılacak) | **§3.7 guard eklemeleri:** `GET /policies/:agent`, `GET /decisions?agent=&limit=` (`data/guard/decisions.jsonl`), `GET /events` (SSE, §3.10 zarfı); CORS + `Access-Control-Expose-Headers: x-bsv-auth-*` | Sahip konsolu ve Kasaba'daki bekçi animasyonu | ✅ §3.7 |
+| 2026-10-30 18:40 | E → **A** | `@agentcoop/core` **index**'i tarayıcıda derlenebilir kalmalı (`node:*`/wallet-toolbox yalnız `node/*` altında). `sdk.ts` CJS yolunu re-export ediyor; web Vite alias ile ESM build'e yönlendirecek (§3.10). Yetmezse `package.json` `exports`'a `"browser"` koşulu rica edilecek (E.P0 0.6 sonucu burada) | Konsollar core builder'larını (`buildPledge`, `signSettlementInput`, `internalizeSettlement`, `reserveListing`, `buildSweep`, `TokenKit`, `VaultSigner`) doğrudan kullanır | ✅ §3.10 |
+| 2026-10-30 18:40 | E → **B** | (1) Koordinatör WS: `hello` göndermeyen izleyiciye de `pool_update` gitsin (E.P0'da doğrulanacak; gitmiyorsa istek). (2) Yayında CORS (Faz 5.3'te var). (3) Opsiyonel: `GET /pools` cevabında pledge'ler. (4) Faz 5'te `app.<alan>` DNS kaydı (Cloudflare Pages) | Cüzdansız jüri Kasaba'yı canlı görmeli | — |
+| 2026-10-30 18:40 | E → **C** | (1) provider-api **CORS** + `Access-Control-Expose-Headers: x-bsv-auth-*, x-bsv-payment-*` (tarayıcıdan `AuthFetch` 402). (2) `apps/agents` **SSE `GET /events`** ve `GET /agents` (`AGENTS_URL`=:8093; tipler §3.10). (3) `apps/provider-cli`'ın cüzdan tarafı (`openPool`, `syncRevenue`, `sweepRevenue`) node importsuz bir modülde olsun ki web aynı kodu kullansın. Yedekler: Vite proxy; `apps/web/tools/log-relay.mjs` (activity.log → SSE); E akışları core ile yeniden kurar | Sağlayıcı konsolu, ajan balonları, iş/402 akışı tarayıcıdan | ✅ §3.10 |
+| 2026-10-30 18:40 | E → **D** | Owner-cli akışları (`vault-ops.ts`: create/fund/policy/withdraw) tarayıcı-güvenli (node importsuz) kalsın; maker `GET /quote`, `GET /events` (Rail sahnesi, D.P3) | Sahip konsolu, liman | ✅ §3.7/§3.10 |
 | 2026-10-30 16:20 | D → **A, B, C** | **ESM/CJS:** tsx altında `"type":"module"` paketler `@bsv/sdk`'nın iki kopyasını yüklüyor; §3.1'deki tsconfig `paths` yöntemi ESM'den isimli import'ta kırılıyor. Çalışan yol: wallet-toolbox kullanan paketler **CommonJS** + tsconfig `NodeNext`. Kanıt ve örnek MASTER §3.1 notunda, `scripts/` bu şekilde kuruldu. **A, `@agentcoop/core` için seçtiği yolu buraya yazsın** | Deneyle doğrulandı (16:00–16:15) | ✅ §3.1'e not eklendi (kural metni A'nın, değiştirilmedi) |
 | 2026-10-30 16:20 | D | **`openWallet(name, { startMonitor?, dir? })`** → `{ wallet, identityKey, monitor, close }`: `scripts/wallets.ts` (Arcade birincil, `data/wallets/<ad>.sqlite`, anahtar `.env`'den). Kullanılabilir adlar: `provider-api, coordinator, guard, agent-1..3, maker`. Sunucu cüzdanı açan herkes bunu kullanır (C 0.1, A 1.7) | MASTER §6.2 adım 3 | §6.2'de zaten tanımlı |
 | 2026-10-30 16:20 | D | `.env.example` (MASTER §3.9 birebir, satır başına bir değişken), `.env` bu makinede hazır (7 anahtar), `config/identities.json` (7 public identity key, commit edilir) | MASTER §3.9, §6.2 | — |
@@ -59,6 +65,8 @@
 
 | Tarih | Track | Faz | Değişiklik | Neden |
 |---|---|---|---|---|
+| 2026-10-30 18:40 | E (yeni track) | 0–7 | **Track E — Frontend eklendi:** `plan/track-E-frontend.md`. Hibrit: iş gören konsollar (sağlayıcı / sahip / katılımcı / gözlemci) + pixel-art "Kasaba" canlı görünümü (aynı store). Stack: Vite + React 19 + Zustand + TanStack Query + Phaser 3 + Tiled + Tailwind 4 + MSW + Playwright; `WalletClient('auto')` ile her imza kullanıcının BSV Desktop'ında. Modlar: live / mock / replay. Sıra P0→P1→P2→P3→P4→(P6 avatar, P7 çok oyuncu: zaman kalırsa)→**P5 teslim** (her zaman son). Masaüstü, İngilizce, tek oyuncu | B2 şartı (kullanıcı akışları BSV cüzdanıyla) tarayıcıdan; benimsenme %35 ve sunum %10. Ayrı kişi yapıyor |
+| 2026-10-30 18:40 | E | MASTER | §1 (5 track), §3.1 (`apps/web`), §3.7 (E için GET uçları, D.P2), §3.9 (`AGENTS_URL`, `VITE_*`), **§3.10 yeni** (tarayıcı kuralı, `CoopEvent` olay zarfı, kaynak başına SSE tipleri, replay dosyası), §5 (S2/S3/S4'e E fazları, bağımlılık grafiği) | E'nin diğer track'lerden istediği arayüzler tek yerde |
 | 2026-10-30 16:02 | D | 5 (yeni) | **Faz 5 eklendi:** Rail PoC başarılıysa tam Coop Rail (ters yön BSV→USDC, maker envanter dengelemesi, Base mainnet'te $1–2'lik gerçek swap; guard'da `rail-in`/`rail-out`). Başarısızsa B yolu: vault filosu, sahip düzeyinde toplam tavan, politika şablonları, acil durdurma, zincirde politika taahhüdü. Zaman kutusu A 5 sa / B 3 sa | Benimsenme %35 ("başka zincirden likidite") ve non-custodial %20 |
 | 2026-10-30 16:02 | D | 6 (yeni) | **Faz 6 eklendi:** maliyet benchmark'ı (BSV'de N katılımcılı tek settlement ve mainnet'te N=50'ye karşı EVM'de deposit+refund emanet kontratı; Sepolia'da gerçek ölçüm) + `test/attacks/*` saldırı paketi; her test FINAL-IDEA §8'deki bir satıra etiketli. Zaman kutusu 4 sa | "Neden BSV" ve "non-custodial" iddialarını ölçüme ve teste bağlamak |
 | 2026-10-30 16:02 | D | 7 (yeni, D önerisi) | **Faz 7 eklendi:** vault'u her ajana açan `VaultFetch` + vault MCP server (Claude Desktop/Code ajanı sahibinin tavanıyla 402 öder). Zaman kutusu 3 sa | Vault'u AgentCoop dışında bir giriş kapısına çevirir (benimsenme + ajan ödemeleri); mevcut guard ve sıcak cüzdanı yeniden kullanır |
@@ -210,3 +218,12 @@
   - [ ] VPS + alan adı + HTTPS (S2'ye kadar)
   - [ ] USD harcamaları için kart sahibi belli
   - [ ] (Faz 5 A) Base mainnet ETH + USDC · (Faz 7) Claude Desktop/Code
+
+## Track E — Frontend (konsollar + Kasaba)
+
+- **Faz:** P0 başlamadı. Plan: `plan/track-E-frontend.md` (2026-10-30 18:40, D yazdı; E kişisi P0 öncesi gözden geçirir)
+- **Bitenler:** —
+- **Devam eden:** —
+- **Bilinen sorunlar:** —
+- **Diğer track'lerin benden beklediği:** D (P4/P5): README "frontend" bölümü, ekran görüntüleri, herkese açık URL; B (Faz 5): `app.<alan>` için hazır build
+- **Benim diğer track'lerden beklediklerim:** yukarıdaki "Arayüz değişiklikleri" E → A/B/C/D satırları (hepsi için geçici çözüm var; E.P0 mock'ta başlar)
