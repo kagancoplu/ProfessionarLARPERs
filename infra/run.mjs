@@ -7,6 +7,7 @@
  * Reads the root .env if present (never overrides variables already set).
  *   DATA_DIR      ./data             persistent state: overlay/overlay.db, overlay/overlay.key, coordinator/coordinator.db
  *   OVERLAY_PORT  8080               COOP_PORT 8090
+ *   COOP2_PORT    (unset)            a second, independent coordinator on the same overlay (B.P6b, Faz 6.2): own database coordinator2/coordinator.db
  *   NETWORK, ARCADE_URL, TOKEN_WHITELIST, OVERLAY_PRIVATE_KEY, ROUND_TIMEOUT_MS, MAX_ROUNDS, SPENT_CHECK  passed through
  */
 import { spawn } from 'node:child_process'
@@ -32,7 +33,7 @@ if (existsSync(envFile)) {
 }
 
 const dataDir = resolve(root, process.env.DATA_DIR ?? 'data')
-for (const d of ['overlay', 'coordinator']) mkdirSync(join(dataDir, d), { recursive: true })
+for (const d of ['overlay', 'coordinator', 'coordinator2']) mkdirSync(join(dataDir, d), { recursive: true })
 const keyFile = join(dataDir, 'overlay', 'overlay.key')
 if (process.env.OVERLAY_PRIVATE_KEY === undefined || process.env.OVERLAY_PRIVATE_KEY === '') {
   if (!existsSync(keyFile)) writeFileSync(keyFile, randomBytes(32).toString('hex'), { mode: 0o600 })
@@ -51,7 +52,14 @@ const services = [
     name: 'coordinator',
     cwd: join(root, 'apps/coordinator'),
     env: { PORT: coopPort, OVERLAY_URL: `http://localhost:${overlayPort}`, COORDINATOR_DB: join(dataDir, 'coordinator', 'coordinator.db') }
-  }
+  },
+  ...(process.env.COOP2_PORT
+    ? [{
+        name: 'coordinator2',
+        cwd: join(root, 'apps/coordinator'),
+        env: { PORT: process.env.COOP2_PORT, OVERLAY_URL: `http://localhost:${overlayPort}`, COORDINATOR_DB: join(dataDir, 'coordinator2', 'coordinator.db') }
+      }]
+    : [])
 ]
 
 let stopping = false
@@ -97,6 +105,6 @@ function stop () {
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
 
-console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}`)
+console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}${process.env.COOP2_PORT ? `, coordinator2 :${process.env.COOP2_PORT}` : ''}`)
 start(services[0])
-setTimeout(() => start(services[1]), 1_500) // the coordinator reads the overlay
+setTimeout(() => { for (const svc of services.slice(1)) start(svc) }, 1_500) // the coordinators read the overlay

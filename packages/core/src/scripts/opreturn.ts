@@ -3,7 +3,7 @@
  *
  *   OP_FALSE OP_RETURN "agentcoop" <op> <json>
  *
- * `op` ∈ pool | pledge | settle | list | vault; `json` is UTF-8 and every leaf
+ * `op` ∈ pool | pledge | settle | list | vault | offer; `json` is UTF-8 and every leaf
  * value is a string (numbers included), like BSV-21's canonical JSON.
  */
 import { LockingScript, OP, Script, Utils } from '../sdk'

@@ -69,6 +69,13 @@ export function validateVaultRecord (json: Record<string, unknown>): VaultRecord
   return ok ? json as unknown as VaultRecord : null
 }
 
+/** B.P6b `offer { v, poolId, unlockingScriptHex }`: the provider's SINGLE|ACP signature, published. Checked against the pool by the reader. */
+export function validateOfferRecord (json: Record<string, unknown>): { v: '1', poolId: string, unlockingScriptHex: string } | null {
+  if (!allStrings(json) || json.v !== '1') return null
+  const ok = typeof json.poolId === 'string' && isTokenId(json.poolId) && isHex(json.unlockingScriptHex) && json.unlockingScriptHex.length <= 400
+  return ok ? json as { v: '1', poolId: string, unlockingScriptHex: string } : null
+}
+
 /** OP_DUP OP_HASH160 <20> OP_EQUALVERIFY OP_CHECKSIG */
 export const isP2pkhHex = (hex: string): boolean => /^76a914[0-9a-f]{40}88ac$/.test(hex)
 

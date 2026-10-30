@@ -70,13 +70,14 @@
 >
 > **Ek (D, 2026-10-30 17:45, A.P0 `main`'e geldikten sonra; Node 22.22, tsx 4.23).** A'nın köprüsü `packages/core/src/sdk.ts` → `export * from '…/@bsv/sdk/dist/cjs/mod.js'` **vitest'te çalışıyor** (alias), ama **tsx/Node çalışma zamanında çalışmıyor**: Node'un ESM→CJS köprüsü (cjs-module-lexer) SDK CJS build'inin 186 export'undan **58'ini göremiyor** (`PrivateKey`, `PublicKey`, `Transaction`, `Script`, `LockingScript`, `P2PKH`, `WalletClient`, `CachedKeyDeriver`…). Belirti: `SyntaxError: The requested module '../sdk' does not provide an export named 'LockingScript'` (A'nın `scripts/lineage-check.ts`'i dahil her `@agentcoop/core` kullanıcısı). **Denenen çözüm:** kök, `packages/core`, `scripts`, `apps/*` `package.json`'larından `"type": "module"` kaldırılınca (CJS; tsx import'ları `require`'a çevirir) core + guard + `verifyLineage` yükleniyor ve süreçte **tek** SDK kopyası var (`PrivateKey === require('@bsv/sdk').PrivateKey`); yalnızca top-level `await` kullanan betikler (`lineage-check.ts`) `main().catch(…)`'a çevrilmeli. Karar A'nın (STATUS → Blokajlar).
 >
-> **Ek (D, 2026-10-30 18:20): çözüldü — Node 24'te.** A `sdk.ts`'i değiştirmedi; C'nin `register-sdk` hook'u (yukarıdaki kural) kullanılıyor. **Node 24.22**'de guard (`/healthz` 200, boş `/cosign` 400, kimliksiz `PUT` 401), owner-cli ve `scripts/balances.ts` hook'la yükleniyor; D'nin `npm run …` script'leri hook'u ekliyor. **Node 22.22**'de hook kırık: `registerHooks` `load` zincirinde CJS modülleri (`@bsv/wallet-toolbox/out/src/index.js`, `express`) `source: undefined` döner → `ERR_INVALID_RETURN_PROPERTY_VALUE` (C'nin `npm run provider`'ı da). Çalışma zamanı için **Node 24** kullanın (treasury laptopu 24.13); vitest her ikisinde çalışır. `scripts/demo-injection.ts` A'nın `test/helpers/mockchain.ts`'ini tsx altında kullanabilmek için ayrıca `scripts/lib/register-cjs.mjs` (aynı desen, yalnız `knex`) yükler.
+> **Ek (D, 2026-10-30 18:20): çözüldü — Node 24'te.** A `sdk.ts`'i değiştirmedi; C'nin `register-sdk` hook'u (yukarıdaki kural) kullanılıyor. **Node 24.22**'de guard (`/healthz` 200, boş `/cosign` 400, kimliksiz `PUT` 401), owner-cli ve `scripts/balances.ts` hook'la yükleniyor; D'nin `npm run …` script'leri hook'u ekliyor. Node 22.22'deki hook hatası (`ERR_INVALID_RETURN_PROPERTY_VALUE`) B'nin 20:00 düzeltmesiyle giderildi (aşağıda); `scripts/lib/register-cjs.mjs` kaldırıldı.
+> **Ek (B, 2026-10-30 20:00):** hook artık yalnızca `resolve` kullanıyor (wrapper'lar `node_modules/.cache/agentcoop/` altında dosya); Node **22.22**'de de çalışıyor, `@bsv/sdk` ve `knex`'i sarmalıyor. `scripts/lib/register-cjs.mjs` kaldırıldı.
 
 ### 3.2 Sabitler
 
 | Ad | Değer | Not |
 |---|---|---|
-| OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault`; json UTF-8, tüm sayılar **string** |
+| OP_RETURN zarfı | `OP_FALSE OP_RETURN "agentcoop" <op> <json>` | `op ∈ pool \| pledge \| settle \| list \| vault \| offer`; json UTF-8, tüm sayılar **string**. `offer { v, poolId, unlockingScriptHex }` (B.P6b): sağlayıcının SINGLE\|ACP teklif imzası, ayrı küçük bir tx'te zincirde; terms ve kilit script'i havuz kaydından/tx'inden gelir. Okuyan `verifyOffer` ile doğrular |
 | Kredi token'ı | BSV-21, kit'in `TOKEN_PROTOCOL = [1,'bsv21 token']`, basket `bsv21` | Kit'in `TokenKit` ve `addresses.ts` **kopyalanır**, yeniden yazılmaz |
 | Pledge coin anahtarı | protocol `[1,'agentcoop pledge']`, keyID = rastgele nonce, counterparty `'anyone'`, basket `agentcoop` | Basket'te her an **tek aktif pledge** (kör imza zararını sınırlamak için) |
 | Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox). Ajanın ve guard'ın vault anahtarı herkesçe `new KeyDeriver('anyone').derivePublicKey(proto, vaultId, identityKey)` ile hesaplanır (= kendi `getPublicKey(forSelf:true)`'ları; D.P1'de doğrulandı) |
@@ -197,6 +198,8 @@ reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint
 signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
 buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
 cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · reclaimReserved(wallet, kit, outpoint, basket)
+// B.P6b (yalnız ekleme, packages/core/src/pool/offerRecord.ts): teklifi zincirde yayınla → tm_agentcoop'a submit; başka koordinatörler bulur
+publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRecord(record, terms, poolTx): Offer · offerRecordOf(offer)
 // hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
 // parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
 //   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
@@ -215,10 +218,12 @@ cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · recla
 | `POST` | `/listings` · `GET /listings?tokenId=` | Market listeleri. `POST` zincire karşı doğrular (outpoint overlay'de admit edilmiş, harcanmamış kredi çıktısı; `tokenId`/`credits` eşleşiyor; imza `0xC3` ve girdi ↔ aynı index'teki çıktı = `askSats → payScriptHex`). `GET` yalnızca hâlâ harcanmamışları, en ucuz (`askSats/credits`) önce döndürür (B.P3) |
 | `GET` | `/pools/:poolId/audit` | (B.P6a) Settle edilmiş havuzun denetimi, zincirden yeniden hesaplanır: `{ poolId, settlement: { txid, round, pledgeListHash, termsHash }, included[], checks: { hashMatches, termsHashMatches, providerPaid, creditsDelivered, allIncludedValid, selectionMatches }, skippedEarlier: [{ outpoint, participant, credits, reason }], verdict: 'consistent'\|'inconsistent'\|'unexplained-skips' }`. Kara liste nedenleri koordinatörün beyanıdır; seçim A'nın `planSettlement`'ı o beyanla yeniden çalıştırılarak kontrol edilir. Settle edilmemişse `409 NOT_SETTLED` |
 | `GET` | `/metrics` (`?format=prom`) | (B.P6a) Overlay'den hesaplanan sayılar: havuz/pledge durumları, settlement sayısı, katılımcı (toplam/ortalama/en büyük), ortalama ücret ve boyut, tur sayısı, **`custodiedSats`** (her settlement çıktısı sağlayıcı ödemesi / katılımcının kredisi / katılımcının para üstü / OP_RETURN sınıflarından birine girmeli; girmeyenlerin toplamı) ve `custodyCheck` |
+| `GET` | `/healthz` | (B.P5a) `{ ok, overlay, height, arcade, engine, openPools, ws: { clients, proven }, uptimeS }`. Overlay'de `GET /agentcoop/healthz` → `{ ok, db, lastEventAt, sseClients, uptimeS }`. Hız sınırı aşımı her yerde `429 { code: 'RATE_LIMITED' }` + `Retry-After` |
 | `WS` | `/ws` | Katılımcı oturumu ve canlı akış |
 
 **WS mesajları** (JSON, `type` alanı):
-- `hello { identity, poolIds[] }` → katılımcı kaydolur (imza turlarına çağrılmak için)
+- `challenge { nonce }` (sunucu, bağlantı açılınca; bağlantıya özel) (B.P5a)
+- `hello { identity, poolIds[], sig }` → katılımcı kaydolur (imza turlarına çağrılmak için). `sig` = `createSignature({ data: utf8("agentcoop hello\n" + host + "\n" + nonce), protocolID: [1,'agentcoop hello'], keyID: '1', counterparty: 'anyone' })` DER hex; `host` = bağlanılan URL'nin host'u. Cevap `hello_ack { identity, poolIds, proven }`. `sig`'siz hello yalnızca izler: `sign_request` almaz, `sign_response`/`sign_reject` reddedilir. İstemci: `connectCoordinator(url, wallet, { poolIds, onMessage })` (`@agentcoop/coordinator/client`) (B.P5a)
 - `pool_update { poolId, pledgedCredits, status }` (herkese)
 - `sign_request { poolId, round, plan: SettlementPlan, yourInputIndex }`
 - `sign_response { poolId, round, inputIndex, unlockingScriptHex }` | `sign_reject { poolId, round, reason }`
@@ -266,6 +271,7 @@ Cevaptaki her çıktının `context`'i (UTF-8 JSON, B.P1):
 
 **Vault'lar (B.P3):** `vault` kaydının çıktısı ve vault şablonuna uyan **her** çıktı (`OP_IF <33> OP_CHECKSIG OP_ELSE OP_2 <33> <33> OP_2 OP_CHECKMULTISIG OP_ENDIF`, kayıt taşımayan para üstleri dahil) admit edilir; script hex ile birleştirilir. `{ op:'vaults', owner?, includeUnverified? }` / `{ op:'vault', vaultId }` → `{ vaultId, owner, agent, guard, scriptHex, verified, balanceSats, utxos: [{ outpoint, satoshis }] }`. `verified` = kayıttaki script, `owner/agent/guard` kimliklerinden `[1,'agentcoop vault']`, keyID = `vaultId`, `'anyone'` ile türetilen anahtarlarla yeniden hesaplanan script'e eşit. Doğrulanmamış kayıtlar varsayılan olarak gösterilmez. **D:** fonlama tx'i bu kaydı taşımalı; script D 1.1'deki gibi.
 `{ op:'listings', tokenId? }` → zincirdeki opsiyonel `OP_RETURN list` kayıtları (ham). Esas liste defteri koordinatörün `GET /listings`'i.
+`{ op:'offers', poolId }` (B.P6b) → zincirde yayınlanan teklif kayıtları, eskiden yeniye: `{ txid, v, poolId, unlockingScriptHex }`. Doğrulanmamış (herkes yayınlayabilir); koordinatör her birini `offerFromRecord` + `verifyOffer` ile dener, ilk geçerliyi kullanır.
 
 **Olay akışı (B.P3):** overlay `GET /agentcoop/events` (SSE) → her kabul/harcanmada `data: { type: 'admitted'|'spent', txid }`. Koordinatör ve UI anlık güncelleme için abone olabilir.
 

@@ -1,0 +1,161 @@
+/** Store shape (track-E §3.1). One source of truth read by the consoles and the Town. */
+import type { DataMode, ServiceName } from '../env'
+import type { ApiPool, GuardDecision, GuardPolicy, Listing, PledgeView, VaultView } from '../api/types'
+import type { AgentAction, AnyCoopEvent, EventSource } from '../events/types'
+
+export type WalletStatus = 'idle' | 'connecting' | 'connected' | 'error'
+
+export interface MeState {
+  status: WalletStatus
+  identityKey?: string
+  network?: 'mainnet' | 'testnet'
+  error?: string
+  connectedAt?: string
+}
+
+export interface ServiceHealth { ok: boolean | 'unknown', checkedAt?: string, detail?: string }
+
+export interface PoolEntry extends ApiPool {
+  pledges?: PledgeView[]
+  updatedAt: string
+}
+
+export interface AgentDecision { action: AgentAction, poolId?: string, credits?: string, sats?: number, reason: string, ts: string }
+
+export interface AgentEntry {
+  name: string
+  profile: string
+  identity: string
+  mode?: 'p2pkh' | 'vault'
+  vaultId?: string
+  lastThought?: { text: string, ts: string }
+  lastDecision?: AgentDecision
+  decisions: AgentDecision[]
+  injected?: { text: string, ts: string }
+  /** sats the agent holds, when a source tells us (overlay-derived later) */
+  purseSats?: number
+  lastSeen: string
+}
+
+export interface VaultEntry extends VaultView {
+  policy?: GuardPolicy
+  policyUpdatedAt?: string
+  decisions: GuardDecision[]
+  paused?: boolean
+}
+
+export interface JobEntry {
+  jobId: string
+  owner: string
+  kind: string
+  minutes: number
+  status: 'queued' | 'running' | 'done' | 'failed'
+  progress?: number
+  resultHash?: string
+  ts: string
+}
+
+/** FINAL-IDEA §7 catalogue. */
+export type TxKind = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9' | 'T10' | 'T11'
+
+export interface TxRecord {
+  id: string
+  kind: TxKind
+  label: string
+  txid: string
+  ts: string
+  actor?: string
+  poolId?: string
+  src: EventSource
+}
+
+export type NotificationKind = 'sign_request' | 'info' | 'error' | 'success'
+
+export interface Notification {
+  id: string
+  kind: NotificationKind
+  title: string
+  body?: string
+  ts: string
+  expiresAt?: string
+  poolId?: string
+  read: boolean
+}
+
+export interface Metrics {
+  settlements: number
+  participants: number
+  feeSats: number
+  /** always 0 by construction (FINAL-IDEA §8); shown as "Held in custody" */
+  custodiedSats: 0
+  /** Σ (retail − pool price) over settled pools; labelled "demo pricing" */
+  villageSavingsSats: number
+  failedPools: number
+  deniedByGuard: number
+}
+
+export interface Toast { id: string, kind: 'info' | 'success' | 'error' | 'warn', text: string, ts: string }
+
+export type DrawerKind = 'pool' | 'agent' | 'tx' | 'vault' | 'listing' | 'me'
+
+export interface UiState {
+  drawer?: { kind: DrawerKind, id: string }
+  toasts: Toast[]
+  narrowScreen: boolean
+}
+
+export interface Settings {
+  sound: boolean
+  theme: 'day' | 'night' | 'auto'
+  reducedMotion: boolean
+  presenter: boolean
+  replaySpeed: number
+}
+
+export interface StoreData {
+  mode: DataMode
+  replayName?: string
+  me: MeState
+  health: Record<ServiceName, ServiceHealth>
+  pools: { byId: Record<string, PoolEntry>, order: string[] }
+  listings: { byOutpoint: Record<string, Listing> }
+  vaults: { byId: Record<string, VaultEntry> }
+  agents: { byIdentity: Record<string, AgentEntry> }
+  jobs: { byId: Record<string, JobEntry> }
+  txs: TxRecord[]
+  notifications: Notification[]
+  metrics: Metrics
+  /** last FEED_LIMIT events, newest last */
+  feed: AnyCoopEvent[]
+  ui: UiState
+  settings: Settings
+  counters: { eventsSeen: number }
+}
+
+export const FEED_LIMIT = 200
+export const TOAST_LIMIT = 5
+export const SIGN_REQUEST_MS = 60_000
+
+export const DEFAULT_SETTINGS: Settings = { sound: false, theme: 'auto', reducedMotion: false, presenter: false, replaySpeed: 1 }
+
+export function initialData (mode: DataMode = 'live', replayName?: string): StoreData {
+  const health = (): ServiceHealth => ({ ok: 'unknown' })
+  return {
+    mode,
+    ...(replayName !== undefined ? { replayName } : {}),
+    me: { status: 'idle' },
+    health: { coop: health(), overlay: health(), provider: health(), guard: health(), agents: health(), arcade: health() },
+    pools: { byId: {}, order: [] },
+    listings: { byOutpoint: {} },
+    vaults: { byId: {} },
+    agents: { byIdentity: {} },
+    jobs: { byId: {} },
+    txs: [],
+    notifications: [],
+    metrics: { settlements: 0, participants: 0, feeSats: 0, custodiedSats: 0, villageSavingsSats: 0, failedPools: 0, deniedByGuard: 0 },
+    feed: [],
+    ui: { toasts: [], narrowScreen: false },
+    settings: { ...DEFAULT_SETTINGS },
+    counters: { eventsSeen: 0 }
+  }
+}

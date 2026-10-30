@@ -1,0 +1,35 @@
+# AgentCoop public edge (B-P5a). Caddy gets and renews Let's Encrypt certificates
+# by itself and redirects HTTP to HTTPS. Hosts come from /etc/agentcoop.env:
+#   OVERLAY_HOST=overlay.example.org   COOP_HOST=coop.example.org
+# No domain yet: use <server-ip>.sslip.io names (no DNS needed), e.g.
+#   OVERLAY_HOST=overlay.203-0-113-7.sslip.io   COOP_HOST=coop.203-0-113-7.sslip.io
+{
+	email {$ACME_EMAIL:admin@localhost}
+}
+
+{$OVERLAY_HOST} {
+	encode gzip
+	# SSE (/agentcoop/events) must not be buffered.
+	reverse_proxy 127.0.0.1:{$OVERLAY_PORT:8080} {
+		flush_interval -1
+	}
+	log {
+		output file /var/log/caddy/overlay.log
+	}
+}
+
+{$COOP_HOST} {
+	encode gzip
+	# WebSocket upgrade on /ws is proxied as is.
+	reverse_proxy 127.0.0.1:{$COOP_PORT:8090}
+	log {
+		output file /var/log/caddy/coop.log
+	}
+}
+
+# Second, independent coordinator (Faz 6.2; COOP2_PORT=8094 in /etc/agentcoop.env).
+# Uncomment and set COOP2_HOST=coop2.example.org:
+# {$COOP2_HOST} {
+# 	encode gzip
+# 	reverse_proxy 127.0.0.1:{$COOP2_PORT:8094}
+# }

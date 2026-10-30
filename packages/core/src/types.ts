@@ -11,7 +11,7 @@ import type { Transaction, UnlockingScript, WalletProtocol } from './sdk'
 
 /** OP_RETURN envelope: OP_FALSE OP_RETURN "agentcoop" <op> <json>. */
 export const OP_RETURN_TAG = 'agentcoop'
-export const COOP_OPS = ['pool', 'pledge', 'settle', 'list', 'vault'] as const
+export const COOP_OPS = ['pool', 'pledge', 'settle', 'list', 'vault', 'offer'] as const
 export type CoopOp = typeof COOP_OPS[number]
 
 /** Pledge coin keys: keyID = random nonce, counterparty 'anyone'. One active pledge per basket. */

@@ -32,3 +32,4 @@ apps/web/playwright-report/
 apps/web/test-results/
 
 .DS_Store
+backups/

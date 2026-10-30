@@ -1,0 +1,126 @@
+/*
+ * Design tokens (apps/web/DESIGN.md). Hex values live ONLY here and in assets/palette.ts.
+ * Day and night share token names; the theme controller sets <html data-theme="day|night">.
+ */
+@import "tailwindcss";
+
+:root {
+  --surface: #F3E6C8;
+  --surface-2: #FBF3DF;
+  --surface-3: #E7D6AE;
+  --ink: #2A1E14;
+  --ink-muted: #6B5A48;
+  --wood: #7A4A1F;
+  --wood-dark: #4E2E12;
+  --wood-light: #B98650;
+  --gold: #E0A526;
+  --gold-dark: #9C6B10;
+  --grass: #5E9E3E;
+  --grass-dark: #3C6E2A;
+  --danger: #C8402E;
+  --danger-dark: #8C2418;
+  --sky: #7EC8E3;
+  --water: #3F7FB5;
+  --warn: #D97B21;
+  --link: var(--water);
+  color-scheme: light;
+}
+
+:root[data-theme="night"] {
+  --surface: #161C22;
+  --surface-2: #222B35;
+  --surface-3: #2D3842;
+  --ink: #F1E7D0;
+  --ink-muted: #B4A68E;
+  --wood: #A8703A;
+  --wood-dark: #6B4420;
+  --wood-light: #C9955E;
+  --gold: #F2BE45;
+  --gold-dark: #B98A1E;
+  --grass: #7FC25A;
+  --grass-dark: #4E8C34;
+  --danger: #E85D47;
+  --danger-dark: #B23A28;
+  --sky: #9FD8F0;
+  --water: #5FA0D6;
+  --warn: #F09A3E;
+  --link: var(--sky);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-wood: var(--wood);
+  --color-wood-dark: var(--wood-dark);
+  --color-wood-light: var(--wood-light);
+  --color-gold: var(--gold);
+  --color-gold-dark: var(--gold-dark);
+  --color-grass: var(--grass);
+  --color-grass-dark: var(--grass-dark);
+  --color-danger: var(--danger);
+  --color-danger-dark: var(--danger-dark);
+  --color-sky: var(--sky);
+  --color-water: var(--water);
+  --color-warn: var(--warn);
+  --color-link: var(--link);
+
+  --font-display: "Pixelify Sans", "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", "Pixelify Sans", sans-serif;
+  --font-counter: "VT323", "IBM Plex Sans", monospace;
+
+  --shadow-hard: 2px 2px 0 var(--wood-dark);
+  --shadow-hard-sm: 1px 1px 0 var(--ink);
+  --shadow-hard-lg: 3px 3px 0 var(--ink);
+  --shadow-none: 0 0 #0000;
+
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+}
+
+@layer base {
+  html { background: var(--surface); }
+  body {
+    margin: 0;
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--surface);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 500; margin: 0; line-height: 1.25; }
+  h1 { font-size: 32px; font-weight: 700; line-height: 40px; }
+  h2 { font-size: 24px; line-height: 32px; }
+  h3 { font-size: 20px; line-height: 28px; }
+  a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+  code, pre { font-family: var(--font-counter); font-size: 18px; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  ::selection { background: var(--gold); color: var(--ink); }
+  button { font: inherit; }
+  img.pixel, canvas, .pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+@layer components {
+  /* 1-bit dither on large parchment surfaces (DESIGN.md: decoration "intentional") */
+  .dither {
+    background-image: radial-gradient(var(--surface-3) 0.5px, transparent 0.6px);
+    background-size: 4px 4px;
+  }
+  .label { font-family: var(--font-display); font-size: 14px; line-height: 20px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 500; }
+  .counter { font-family: var(--font-counter); line-height: 1; }
+  .mono { font-family: var(--font-counter); font-size: 18px; line-height: 24px; }
+  .notch { clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px); }
+  .steps-in { animation: steps-in 160ms steps(4) both; }
+  @keyframes steps-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}

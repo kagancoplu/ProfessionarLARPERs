@@ -11,9 +11,10 @@
  *              (cancelPledge) before the next pledge (one active pledge at a time)
  *
  * The agent must stay connected: the coordinator sends `sign_request` only to
- * sessions that said `hello` with the agent's identity.
+ * sessions that proved the agent's identity in `hello` (B.P5a).
  */
 import { WebSocket } from 'ws'
+import { signHello } from '@agentcoop/coordinator/auth'
 import { Transaction, type WalletInterface } from '@agentcoop/core/sdk'
 import {
   buildPledge, cancelPledge, internalizeSettlement, P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan,
@@ -64,9 +65,10 @@ export class PoolParticipant {
     return this.identity
   }
 
-  /** Open the coordinator WS and say hello (subscribed to every pool). */
+  /** Open the coordinator WS and say a proven hello (subscribed to every pool; B.P5a: the coordinator's challenge is signed). */
   async connect (): Promise<void> {
     const identity = await this.identityKey()
+    const host = new URL(this.opts.coopApiUrl).host
     const url = `${this.opts.coopApiUrl.replace(/^http/, 'ws')}/ws`
     const ws = new WebSocket(url)
     this.ws = ws
@@ -74,10 +76,15 @@ export class PoolParticipant {
       ws.once('error', reject)
       ws.on('message', d => {
         const msg = JSON.parse(d.toString()) as { type: string, [k: string]: any }
+        if (msg.type === 'challenge') {
+          void signHello(this.opts.wallet, host, String(msg.nonce))
+            .then(sig => { ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [], sig })) })
+            .catch(reject)
+          return
+        }
         if (msg.type === 'hello_ack') resolve()
         void this.onMessage(msg).catch(e => { this.opts.log.info(`coordinator message ${msg.type} failed: ${(e as Error).message}`) })
       })
-      ws.once('open', () => { ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [] })) })
     })
     ws.on('close', () => {
       if (this.closed || this.opts.reconnect === false) return

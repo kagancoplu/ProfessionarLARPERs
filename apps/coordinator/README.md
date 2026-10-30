@@ -4,7 +4,7 @@ The AgentCoop coordinator and side API (MASTER §3.5). It reads pools and pledge
 
 **It holds no funds and no keys.** An offer is the provider's `SIGHASH_SINGLE|ANYONECANPAY` signature: it can only ever pay the provider its price at output 0. Every participant checks the whole settlement and signs `SIGHASH_ALL`, so the coordinator cannot change any output. Anyone can run a coordinator (FINAL-IDEA §4.5).
 
-Status: **Track B, Faz 3 + integration with Track A** (mock chain). `npm run coordinator` runs real signing rounds with Track A's protocol. Run it with the overlay via `node infra/run.mjs` (see `infra/README.md`).
+Status: **Track B, Faz 3 + integration with Track A, Faz 6 audit/metrics, Faz 5 public edge** (mock chain; public URLs once the VPS is up). `npm run coordinator` runs real signing rounds with Track A's protocol. Run it with the overlay via `node infra/run.mjs` (see `infra/README.md`).
 
 ## Run
 
@@ -27,13 +27,16 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | `MAX_ROUNDS` | `3` | rounds per lock attempt (MASTER §3.2) |
 | `SPENT_CHECK` | `woc` | pre-round check that pledge coins are unspent (WhatsOnChain bulk `POST /utxos/spent`), or `none` |
 | `NETWORK` | `main` | for the spent check |
+| `RATE_LIMIT` | on | `off` disables the per-IP HTTP limits |
+| `RATE_GET_PER_MIN` / `RATE_POST_PER_MIN` | `120` / `10` | per client IP; loopback exempt; behind Caddy the client is the last `X-Forwarded-For` hop |
+| `WS_MAX_PER_IP` / `WS_MAX_CLIENTS` / `WS_MAX_MSGS_PER_10S` | `20` / `1000` / `40` | WebSocket caps; over the message rate the connection is closed (`1008`) |
 
 ## HTTP
 
 | Method | Path | |
 |---|---|---|
 | `POST` | `/offers` | Body: `Offer` (MASTER §3.3). Checked against the chain: the pool is on the overlay, valid and `open`; `lockingScriptHex`/`satoshis` are the pool's credit UTXO; `terms` equal the on-chain pool record; the signature's sighash byte is `0xC3` (`SINGLE\|ANYONECANPAY\|FORKID`) and it unlocks the credit UTXO for output 0 = `priceSats` → `payScriptHex`. `201`, or `400/404/409 { code, error }` |
-| `GET` | `/offers/:poolId` | the stored offer, or `404` |
+| `GET` | `/offers/:poolId` | the stored offer, else a valid one the provider published on chain (`OP_RETURN agentcoop offer`, checked like a POST and then stored), or `404` |
 | `GET` | `/pools` | every pool: overlay view + `status` + `hasOffer` + `height` |
 | `GET` | `/pools/:poolId` | one pool |
 | `GET` | `/pools/:poolId/pledges` | valid unspent pledges in coordinator order; `?all=1` adds spent and invalid ones with `invalidReason` |
@@ -41,7 +44,7 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | `GET` | `/listings?tokenId=` | unspent listings, cheapest per credit first; swept or cancelled ones are dropped |
 | `GET` | `/pools/:poolId/audit` | re-derives a settled pool from the chain: `checks` (`hashMatches`, `termsHashMatches`, `providerPaid`, `creditsDelivered`, `allIncludedValid`, `selectionMatches`), `skippedEarlier` (pledges ahead in line that were left out, with the reason), `verdict` (`consistent` / `inconsistent` / `unexplained-skips`). `409 NOT_SETTLED` otherwise |
 | `GET` | `/metrics` (`?format=prom`) | pools and pledges by state, settlements, participants, average fee and size, rounds, and `custodiedSats` with its `custodyCheck` |
-| `GET` | `/healthz` | overlay reachable, current height, `engine` (signing rounds on/off) |
+| `GET` | `/healthz` | `{ ok, overlay, height, arcade, engine, openPools, ws: { clients, proven }, uptimeS }`; `503` when the overlay is unreachable |
 
 `GET /pools/:poolId` also carries `coordinator: { round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome, missing, txid? } }` once the pool has had a round.
 
@@ -58,11 +61,48 @@ curl -s -X POST localhost:8090/offers -H 'Content-Type: application/json' -d @of
 
 JSON messages with a `type` field (MASTER §3.5).
 
-- Client → `{"type":"hello","identity":"03…","poolIds":["<txid>_0"]}`; empty `poolIds` = every pool. Reply: `hello_ack`, then the current `pool_update` of each subscribed pool. The identity is how the coordinator reaches a participant for signing rounds (Faz 2; Faz 5 adds a proof that the client holds the key).
+- Server → `{"type":"challenge","nonce":"<64 hex>"}` right after the connection opens (one nonce per connection).
+- Client → `{"type":"hello","identity":"03…","poolIds":["<txid>_0"],"sig":"<DER hex>"}`; empty `poolIds` = every pool. `sig` proves the identity: `wallet.createSignature({ data: utf8("agentcoop hello\n" + host + "\n" + nonce), protocolID: [1, 'agentcoop hello'], keyID: '1', counterparty: 'anyone' })`, where `host` is the host of the URL the client connected to (`coop.example.org`, `localhost:8090`), so a proof made for another coordinator does not work here. Reply: `hello_ack { identity, poolIds, proven }`, then the current `pool_update` of each subscribed pool. Without `sig` (or without `identity`) the session only watches: no `sign_request`, and `sign_response`/`sign_reject` are refused (`say hello first`). `src/client.ts` (`@agentcoop/coordinator/client`) does the handshake.
 - Server → `{"type":"pool_update","poolId","pledgedCredits","status"}` whenever a pool's progress or status changes. Connections that have not sent `hello` get every pool.
-- Server → `{"type":"sign_request","poolId","round","plan","yourInputIndex"}` to the session(s) that said `hello` with the participant's identity.
-- Client → `{"type":"sign_response","poolId","round","inputIndex","unlockingScriptHex"}` or `{"type":"sign_reject","poolId","round","reason"}`. A response is accepted only from the session of that input's participant, and only if the signature is valid on the template.
+- Server → `{"type":"sign_request","poolId","round","plan","yourInputIndex"}` to the session(s) that proved the participant's identity.
+- Client → `{"type":"sign_response","poolId","round","inputIndex","unlockingScriptHex"}` or `{"type":"sign_reject","poolId","round","reason"}`. Accepted only from a proven session of that input's participant, and a response only if the signature is valid on the template. (Before B-P5a anyone could say `hello` with someone else's identity and reject their input, which blacklisted the victim; `test/e2e.public-edge.mockchain.test.ts` replays that attack.)
 - Server → `round_failed { poolId, round, missing }`, `settled { poolId, txid }`, `pool_failed { poolId }` to the pool's subscribers.
+
+## Join with your own agent
+
+Public URLs: `https://coop.<domain>` and `https://overlay.<domain>` once the VPS is up (STATUS, Track B). Locally: `http://localhost:8090` and `http://localhost:8080` (`node infra/run.mjs`). Reads need no account; signing needs a BRC-100 wallet (wallet-toolbox in Node, or BSV Desktop).
+
+```bash
+COOP=http://localhost:8090 OVERLAY=http://localhost:8080
+curl -s $COOP/pools | jq '.[] | {poolId, status, pledgedCredits, target, hasOffer}'
+curl -s $COOP/offers/<poolId> | jq .terms                               # what the provider signed
+curl -s -X POST $OVERLAY/lookup -H 'Content-Type: application/json' \
+  -d '{"service":"ls_agentcoop","query":{"op":"pool","poolId":"<poolId>"}}' | jq '.outputs | length'
+curl -s $COOP/pools/<poolId>/audit | jq .verdict                        # after it settled
+```
+
+An agent in TypeScript (Track A's builders, this package's client):
+
+```ts
+import { buildPledge, verifySettlementPlan, signSettlementInput, P2pkhWalletSigner, receivePkh, internalizeSettlement, TokenKit, OverlayClient, COOP_TOPIC, COOP_SERVICE } from '@agentcoop/core'
+import { connectCoordinator } from '@agentcoop/coordinator/client'
+
+const kit = new TokenKit(wallet, new OverlayClient(OVERLAY, undefined, 'main', undefined, COOP_TOPIC, COOP_SERVICE))
+const me = await kit.identityKey()
+const offer = await (await fetch(`${COOP}/offers/${poolId}`)).json()
+const pledge = await buildPledge(wallet, offer.terms, '100', 'p2pkh', undefined, { tokenIndex: await kit.nextIndex(me) })
+const coop = await connectCoordinator(COOP, wallet, { poolIds: [poolId], onMessage: async (m, s) => {
+  if (m.type !== 'sign_request') return
+  await verifySettlementPlan(m.plan, offer, pledge.outpoint, { expectedCredits: pledge.record.credits, expectedCreditPkh: receivePkh(me, Number(pledge.record.tokenIndex)), verifyLineage: true })
+  const unlock = await signSettlementInput(m.plan, m.yourInputIndex, new P2pkhWalletSigner(wallet, pledge.instructions))
+  s.send({ type: 'sign_response', poolId, round: m.round, inputIndex: m.yourInputIndex, unlockingScriptHex: unlock.toHex() })
+} })
+await kit.overlay.submit(pledge.beef)                                       // the pledge is on chain and on the overlay
+const { txid } = await coop.waitFor(m => m.type === 'settled' && m.poolId === poolId, 3_600_000)
+// then internalizeSettlement(...) for the change and kit.sync() for the credits
+```
+
+Stay connected until the pool settles: a participant that does not answer within the round timeout (60 s) is blacklisted and replaced from the waiting list. If the plan does not check out, send `sign_reject` with a reason.
 
 ## Signing rounds
 
@@ -81,6 +121,21 @@ Blacklists, attempt counts and last rounds are stored in the coordinator's datab
 Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
 
 The plan itself comes from Track A (`planSettlement`: deterministic order, exact N within a 120 % window, fee from the real signed size; MASTER §3.2/§3.4), injected through `src/protocol.ts` (`SettlementProtocol`, `coreProtocol`). `startCoordinator` without a protocol runs the side API and the feed only (`/healthz` → `engine: false`).
+
+## Any coordinator can close any pool (Faz 6.1, 6.2)
+
+The provider publishes its offer on chain (`publishOffer` from `@agentcoop/core`, then submit to `tm_agentcoop`): `OP_RETURN agentcoop offer { v, poolId, unlockingScriptHex }`. Any coordinator reading the same overlay finds it (`{ op: 'offers', poolId }`), rebuilds the full offer from the on-chain pool record and pool tx, checks it like a posted one, and can run the signing round. Bogus records for the same pool are skipped. Run a second one next to the first with `COOP2_PORT=8094 node infra/run.mjs` (own database). `test/e2e.second-coordinator.mockchain.test.ts`: coordinator 1 settles a pool and goes away; coordinator 2 audits that settlement from the chain alone (`consistent`, same `termsHash`), then closes a pool whose offer was never posted anywhere.
+
+## Scale (Faz 6.5)
+
+`test/e2e.scale.mockchain.test.ts` settles one pool with 50 and one with 100 participants, each a separate wallet-toolbox wallet that verifies the plan (lineage included) and signs over a proven session (`SCALE_SIZES=50,100`, `SCALE_OUT=<file>` for the numbers). Mock chain, one machine, 30.10:
+
+| Participants | Settlement | Fee | `sign_request` | First signature | Last signature | Broadcast → overlay `settled` |
+|---|---|---|---|---|---|---|
+| 50 | 18.5 kB | 1,860 sat (100 sat/kB) | 178 kB | 0.2 s | 2.5 s | 2.2 s |
+| 100 | 36.5 kB | 3,670 sat (100 sat/kB) | 347 kB | 0.4 s | 9.7 s | 8.0 s |
+
+All agents run in the test's one process, so the spread up to the last signature is mostly their own plan and lineage checks; on separate machines they run in parallel. The plan is serialized once per round.
 
 ## Audit and metrics
 

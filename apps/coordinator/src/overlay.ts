@@ -16,15 +16,20 @@ export class OverlayLookup {
   constructor (readonly url: string) {}
 
   async lookup<T = unknown> (query: Record<string, unknown>): Promise<Array<LookupResult<T>>> {
-    let res: Response
-    try {
-      res = await fetch(`${this.url}/lookup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service: SERVICE, query })
-      })
-    } catch (e) {
-      throw new OverlayUnavailableError(`overlay unreachable at ${this.url}: ${(e as Error).message}`)
+    let res: Response | undefined
+    // A lookup is idempotent: retry socket errors. overlay-express closes keep-alive sockets after
+    // 1000 requests or 5 s idle, and a request racing that close fails with ECONNRESET (B.P6b, 100 participants).
+    for (let attempt = 1; res === undefined; attempt++) {
+      try {
+        res = await fetch(`${this.url}/lookup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: SERVICE, query })
+        })
+      } catch (e) {
+        if (attempt >= 3) throw new OverlayUnavailableError(`overlay unreachable at ${this.url}: ${(e as Error).message} (${String((e as any).cause?.code ?? (e as any).cause?.message ?? '')})`)
+        await new Promise(resolve => setTimeout(resolve, 50 * attempt))
+      }
     }
     const answer = await res.json().catch(() => ({})) as any
     if (!res.ok) throw new OverlayUnavailableError(`overlay lookup failed (${res.status}): ${String(answer.message ?? answer.description ?? '')}`)
@@ -65,6 +70,11 @@ export class OverlayLookup {
   async settlementWithTx (poolId: string): Promise<{ view: SettlementView, tx: Transaction } | undefined> {
     const [r] = await this.lookup<SettlementView>({ op: 'settlement', poolId })
     return r === undefined ? undefined : { view: r.context, tx: r.tx }
+  }
+
+  /** Offers published on chain for a pool (B.P6b), oldest first; unverified. */
+  async offers (poolId: string): Promise<Array<{ v: '1', poolId: string, unlockingScriptHex: string, txid: string }>> {
+    return (await this.lookup<{ v: '1', poolId: string, unlockingScriptHex: string, txid: string }>({ op: 'offers', poolId })).map(r => r.context)
   }
 
   /** The pool transaction (out0 = the credit UTXO the offer spends). */

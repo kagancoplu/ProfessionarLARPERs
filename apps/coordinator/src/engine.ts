@@ -16,15 +16,17 @@ import type { OverlayLookup } from './overlay'
 import type { SettlementProtocol } from './protocol'
 import { inputIsValid } from './script'
 import type { SpentChecker } from './spent'
+import type { OfferSource } from './offers'
 import type { CoordinatorStore } from './store'
 
 export interface EngineDeps {
   overlay: OverlayLookup
   store: CoordinatorStore
+  offers: OfferSource
   height: HeightSource
   protocol: SettlementProtocol
   spent: SpentChecker
-  feed: { sendTo: (identity: string, msg: object) => number, broadcast: (poolId: string, msg: object) => void }
+  feed: { sendTo: (identity: string, msg: object | string) => number, broadcast: (poolId: string, msg: object) => void }
   log: Logger
 }
 
@@ -158,9 +160,10 @@ export class CoordinatorEngine {
           }
           continue
         }
-        if (BigInt(pool.pledgedCredits) < BigInt(pool.target)) continue
-        const offer = await this.deps.store.getOffer(pool.poolId)
+        // Stored, or published on chain by the provider (B.P6b): looked up for every open pool so `hasOffer` is right early.
+        const offer = await this.deps.offers.find(pool.poolId, pool)
         if (offer === undefined) continue
+        if (BigInt(pool.pledgedCredits) < BigInt(pool.target)) continue
         await this.startRound(pool, offer, height)
       }
     } catch (e) {
@@ -228,8 +231,10 @@ export class CoordinatorEngine {
       const state: RoundState = { poolId, round, plan, offer, template, inputs, signed: new Map(), failed: new Map(), done: false }
       this.rounds.set(poolId, state)
       this.deps.log('round_start', { poolId, round, participants: inputs.size, pledgeListHash: plan.pledgeListHash })
+      // The plan (template BEEF, ~3.5 kB per participant) is serialized once, not once per participant (B.P6b, 6.6).
+      const head = `{"type":"sign_request","poolId":${JSON.stringify(poolId)},"round":${round},"plan":${JSON.stringify(plan)},"yourInputIndex":`
       for (const [idx, inp] of inputs) {
-        const sent = this.deps.feed.sendTo(inp.participant, { type: 'sign_request', poolId, round, plan, yourInputIndex: idx })
+        const sent = this.deps.feed.sendTo(inp.participant, `${head}${idx}}`)
         if (sent === 0) state.failed.set(idx, 'offline')
       }
       state.timer = setTimeout(() => { void this.finish(poolId, round) }, this.opts.roundTimeoutMs)

@@ -1,0 +1,25 @@
+# systemd unit for the overlay + coordinator (node infra/run.mjs). Installed by
+# infra/setup-vps.sh at /etc/systemd/system/agentcoop.service.
+[Unit]
+Description=AgentCoop overlay + coordinator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentcoop
+WorkingDirectory=/opt/agentcoop
+EnvironmentFile=/etc/agentcoop.env
+Environment=DATA_DIR=/var/lib/agentcoop
+ExecStart=/usr/bin/node infra/run.mjs
+Restart=always
+RestartSec=3
+# run.mjs stops both services on SIGTERM
+KillMode=mixed
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/agentcoop
+
+[Install]
+WantedBy=multi-user.target

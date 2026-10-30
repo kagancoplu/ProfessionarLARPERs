@@ -4,7 +4,8 @@
  * stand-in for A's verifySettlementPlan) and then behaves as told.
  */
 import { Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
-import { WebSocket } from 'ws'
+import type { WebSocket } from 'ws'
+import { connectCoordinator } from '../../src/client'
 import { decodeBsv21 } from '@agentcoop/core'
 import { receivePkh } from '@agentcoop/core'
 import { SCOPE_ALL, signInput, type Coin } from '../../../../packages/overlay/test/helpers/settlement'
@@ -23,14 +24,9 @@ export interface Bot {
 export async function startBot (coopUrl: string, wallet: WalletInterface, opts: { behavior?: (round: number) => Behavior, delayMs?: number } = {}): Promise<Bot> {
   const { publicKey: identity } = await wallet.getPublicKey({ identityKey: true })
   const coins = new Map<string, Coin>()
-  const messages: any[] = []
-  const ws = new WebSocket(`${coopUrl.replace('http', 'ws')}/ws`)
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
-  const send = (m: object): void => { ws.send(JSON.stringify(m)) }
+  let send = (_m: object): void => {}
 
-  ws.on('message', d => {
-    const msg = JSON.parse(d.toString())
-    messages.push(msg)
+  const onMessage = (msg: any): void => {
     if (msg.type !== 'sign_request') return
     void (async () => {
       const behavior = opts.behavior?.(msg.round) ?? 'sign'
@@ -52,8 +48,11 @@ export async function startBot (coopUrl: string, wallet: WalletInterface, opts: 
         : (await signInput(wallet, tx, idx, coin.key, SCOPE_ALL)).toHex()
       send({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: idx, unlockingScriptHex })
     })()
-  })
-  send({ type: 'hello', identity, poolIds: [] })
+  }
+  // Proven hello (B-P5a)
+  const session = await connectCoordinator(coopUrl, wallet, { onMessage })
+  send = session.send
+  const { ws, messages } = session
 
   const waitFor = async (pred: (m: any) => boolean, ms = 15_000): Promise<any> => {
     const end = Date.now() + ms
@@ -64,7 +63,6 @@ export async function startBot (coopUrl: string, wallet: WalletInterface, opts: 
       await new Promise(resolve => setTimeout(resolve, 50))
     }
   }
-  await waitFor(m => m.type === 'hello_ack')
   return {
     identity,
     ws,

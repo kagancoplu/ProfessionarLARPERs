@@ -11,8 +11,13 @@ export interface OverlayEvent { type: 'admitted' | 'spent', txid: string }
 export class OverlayEvents extends EventEmitter {
   /** open SSE responses, ended on close() so the HTTP server can shut down */
   readonly streams = new Set<Response>()
+  /** last admission or spend (healthz) */
+  lastEventAt?: number
 
-  emitEvent (e: OverlayEvent): void { this.emit('event', e) }
+  emitEvent (e: OverlayEvent): void {
+    this.lastEventAt = Date.now()
+    this.emit('event', e)
+  }
 
   close (): void {
     for (const res of this.streams) res.end()

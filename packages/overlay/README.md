@@ -89,3 +89,13 @@ Policy is not a limit on settlement size.
 ## Layout
 
 npm workspace member of the repo root. Credit rules, inscriptions, addresses, the OP_RETURN envelope, types and the vault script come from `@agentcoop/core` (Track A); this package adds the topic manager, the lookup service, record validation (`src/records.ts`), vault helpers (`src/vault.ts`), the event stream (`src/events.ts`) and the views other packages import (`src/views.ts`). `test/helpers/{settlement,pool}.ts` are test-only builders for edge cases; the end-to-end flow with Track A's real builders is `apps/coordinator/test/e2e.integration.mockchain.test.ts`.
+
+## Public edge (B-P5a)
+
+- `GET /agentcoop/healthz` → `{ ok, db, lastEventAt, sseClients, uptimeS }` (`503` if the database does not answer). overlay-express's own `/healthz` stays.
+- Bodies: JSON 1 MB, binary (`/submit` BEEF) 10 MB. CORS: overlay-express default (public).
+- Per client IP (behind Caddy: last `X-Forwarded-For` hop; loopback exempt): `/lookup` 60/min, `/submit` 30/min → `429 { code: 'RATE_LIMITED' }`. Env `OVERLAY_RATE_LOOKUP_PER_MIN`, `OVERLAY_RATE_SUBMIT_PER_MIN`, `RATE_LIMIT=off`.
+
+## Offers on chain (B-P6b)
+
+`OP_RETURN agentcoop offer { v, poolId, unlockingScriptHex }` is admitted (structural check only). `{ op: 'offers', poolId }` returns every published record for the pool, oldest first, as `{ txid, v, poolId, unlockingScriptHex }`: unverified, since anyone can publish one; readers check each with `offerFromRecord` + `verifyOffer`.

@@ -69,7 +69,7 @@ Vault'lu bir ajan koordinatörün imza turunda **guard ile birlikte** imzalasın
 | `apps/guard/src/store.ts` | `LedgerEntry.kind/poolId/poolSats/hotSats`, `spentInWindow(…, exclude[])`, `poolSpent`, `hotSpent`, `findReservation`, rezervasyon çözümü | D |
 | `apps/guard/src/main.ts` | `ARCADE_URL`'den `fetchTx` | D |
 | `apps/guard/src/server.ts` | CORS (`GUARD_CORS_ORIGIN`, `x-bsv-auth-*` expose), `GET /policies/:agent`, `GET /decisions`, `GET /events` (SSE) — Track E | D |
-| `scripts/lib/register-cjs.mjs` (yeni) | demo için `knex` ESM sarmalayıcısı (A'nın mockchain yardımcısı tsx altında) | D |
+| `scripts/lib/register-cjs.mjs` (yeni) | demo için `knex` ESM sarmalayıcısı (A'nın mockchain yardımcısı tsx altında) | D — **20:05 B kaldırdı** (hook artık `knex`'i de sarıyor) |
 | `packages/core/src/signers/VaultSigner.ts` | `CosignContext.poolBEEF?`, `hotWallet?`; settle'da `txBEEF` gönderilmez; `spendFromVault` çıktı basket/etiket + ek context, yayın hatasında `relinquishOutput`; yeni: `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `hotWalletScript`, `ANYONE_IDENTITY_KEY` | D |
 | `apps/owner-cli/src/chain.ts` | `findVaultUtxos`: B'nin overlay'i (`{ op:'vaults', owner }`) ikinci kaynak (`OVERLAY_URL`) | D |
 | `apps/guard/test/pledge.test.ts` (yeni) | pledge (P1–P6), havuz tx'i okuma, ledger rezervasyonları (mockchain'siz tx'ler); settle'ın tamamı e2e'de | D |
