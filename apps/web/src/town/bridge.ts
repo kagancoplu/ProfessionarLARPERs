@@ -17,6 +17,7 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
   const sync = (): void => {
     if (!town.alive) return
     const s = store.getState()
+    if (s.me.identityKey !== undefined && !town.villagers.has(s.me.identityKey)) town.addVillager(s.me.identityKey, 'visitor', 'you')
     for (const a of Object.values(s.agents.byIdentity)) {
       const v = town.addVillager(a.identity, a.profile, a.name)
       const pledged = Object.values(s.pools.byId).some(p => (p.status === 'open' || p.status === 'locking') && p.pledges?.some(x => x.participant === a.identity && !x.spent))

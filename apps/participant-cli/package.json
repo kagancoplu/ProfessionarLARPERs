@@ -1,0 +1,13 @@
+{
+  "name": "@agentcoop/participant-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Human pool participant on BSV Desktop: pools, pledge, sign, cancel",
+  "scripts": {
+    "start": "tsx --import @agentcoop/core/register-sdk src/cli.ts"
+  },
+  "dependencies": {
+    "@agentcoop/core": "*"
+  }
+}

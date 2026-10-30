@@ -14,7 +14,8 @@ export class AgentLog {
   readonly lines: string[] = []
   readonly decisions: string[] = []
 
-  constructor (readonly agent: string, dir?: string, private readonly quiet = false) {
+  /** `sink` receives every line too (e.g. a CLI that prints them its own way). */
+  constructor (readonly agent: string, dir?: string, private readonly quiet = false, private readonly sink?: (line: string) => void) {
     if (dir !== undefined) {
       mkdirSync(join(dir, 'agents', agent), { recursive: true })
       this.activityFile = join(dir, 'agents', agent, 'activity.log')
@@ -33,6 +34,7 @@ export class AgentLog {
     this.lines.push(line)
     if (this.activityFile !== undefined) appendFileSync(this.activityFile, `${now.toISOString()} ${line}\n`)
     if (!this.quiet) console.log(`${COLORS[this.agent] ?? '\x1b[32m'}${this.agent.padEnd(9)}\x1b[0m ${line}`)
+    this.sink?.(line)
   }
 
   decision (text: string): void {
@@ -42,5 +44,6 @@ export class AgentLog {
     if (this.decisionsFile !== undefined) appendFileSync(this.decisionsFile, `${now.toISOString()} ${line}\n`)
     if (this.activityFile !== undefined) appendFileSync(this.activityFile, `${now.toISOString()} ${line}\n`)
     if (!this.quiet) console.log(`${COLORS[this.agent] ?? '\x1b[32m'}${this.agent.padEnd(9)}\x1b[0m \x1b[1m${line}\x1b[0m`)
+    this.sink?.(line)
   }
 }

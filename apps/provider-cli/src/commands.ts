@@ -11,7 +11,7 @@
  */
 import { P2PKH, Random, Transaction, Utils, type LockingScript, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  anyonePkh, buildReserveAndAnnounce, cancelPool as coreCancelPool, P2PKH_UNLOCK_LENGTH, PROVIDER_PROTOCOL, REVENUE_BASKET,
+  anyonePkh, buildReserveAndAnnounce, cancelPool as coreCancelPool, P2PKH_UNLOCK_LENGTH, PROVIDER_PROTOCOL, publishOffer, REVENUE_BASKET,
   signOffer, signWalletP2pkhInput, TokenKit, type CustomInstructions, type KitQuery, type Offer, type OverlayClient, type PoolTerms, type TermsDraft
 } from '@agentcoop/core'
 import { loadProducts, setProductTokenId } from '../../provider-api/src/products'
@@ -133,6 +133,10 @@ export async function openPool (ctx: CliContext, args: OpenPoolArgs): Promise<Po
   ctx.out('Signing the offer (SIGHASH_SINGLE|ANYONECANPAY). Approve in BSV Desktop…')
   const offer = await signOffer(ctx.wallet, announced.poolId, announced.terms)
   ctx.pools.update(nonce, { offer })
+  // The offer on chain too (OP_RETURN offer): any coordinator can close the pool, not just the one we post to.
+  const published = await publishOffer(ctx.wallet, offer)
+  await ctx.overlay.submit(published.beef)
+  ctx.out(`  offer published on chain (OP_RETURN offer). https://whatsonchain.com/tx/${published.txid}`)
   try {
     return await postOffer(ctx, announced.poolId)
   } catch (e) {

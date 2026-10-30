@@ -30,6 +30,7 @@ import { PoolRegistry, type PoolRecord } from '../../../provider-cli/src/pools'
 import { Agent } from '../agent'
 import { rulesBrain, type Brain } from '../brain'
 import { AgentLog } from '../log'
+import { Market } from '../market'
 import { PoolParticipant } from '../participant'
 import { Procurement } from '../procurement'
 import { loadProfile } from '../profile'
@@ -48,6 +49,7 @@ export interface DemoAgent {
   agent: Agent
   participant: PoolParticipant
   procurement: Procurement
+  market: Market
   wallet: Wallet
 }
 
@@ -158,8 +160,9 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
       const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir })
       const participant = new PoolParticipant({ wallet, kit: agent.tokens!, coopApiUrl: coop.url, log, lineage, reconnect: false })
       await participant.connect()
-      const procurement = new Procurement({ agent, brain: opts.brain ?? rulesBrain, participant, coopApiUrl: coop.url })
-      const a = { agent, participant, procurement, wallet }
+      const market = new Market(agent, { coopApiUrl: coop.url, lineage })
+      const procurement = new Procurement({ agent, brain: opts.brain ?? rulesBrain, participant, market, coopApiUrl: coop.url })
+      const a = { agent, participant, procurement, market, wallet }
       agents.push(a)
       return a
     },

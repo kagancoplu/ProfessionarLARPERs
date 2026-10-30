@@ -1,5 +1,5 @@
 /** Mutable world of the mock mode: what the MSW handlers answer and what the scenario mutates. */
-import type { AgentInfo, ApiPool, Catalog, GuardDecision, GuardPolicy, Listing, PledgeView, VaultView } from '../api/types'
+import type { AgentInfo, ApiPool, Catalog, GuardDecision, GuardPolicy, Listing, PledgeView, ProviderJob, VaultView } from '../api/types'
 import { MOCK_AGENTS, MOCK_IDS, MOCK_PRODUCT, MOCK_VAULT_ID } from './data'
 
 export interface MockWorld {
@@ -12,6 +12,18 @@ export interface MockWorld {
   decisions: GuardDecision[]
   agents: AgentInfo[]
   catalog: Catalog
+  /** the human at the keyboard (mock Desktop): what the flows did */
+  me: {
+    pledges: Map<string, { outpoint: string, credits: number, signed: boolean }>
+    credits: bigint
+    prepaidMinutes: number
+    jobs: Map<string, ProviderJob>
+    minted?: { sym: string, amt: bigint, tokenId: string }
+    pools: Set<string>
+    revenue: number[]
+    revenueSynced: Array<{ poolId: string, sats: number }>
+    waitingSince?: number
+  }
 }
 
 export function createMockWorld (height = 920_000): MockWorld {
@@ -32,6 +44,7 @@ export function createMockWorld (height = 920_000): MockWorld {
     }]]),
     decisions: [],
     agents: MOCK_AGENTS.map(a => ({ ...a })),
+    me: { pledges: new Map(), credits: 0n, prepaidMinutes: 0, jobs: new Map(), pools: new Set(), revenue: [], revenueSynced: [] },
     catalog: {
       provider: { name: 'AgentCoop simulated GPU provider (mock)', server: MOCK_IDS.providerServer },
       products: [{ ...MOCK_PRODUCT }],

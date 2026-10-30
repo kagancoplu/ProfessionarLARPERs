@@ -19,6 +19,7 @@ import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { loadDotEnv, network } from '@agentcoop/core/node/env'
 import { Agent } from './agent'
 import { brainFromEnv } from './llmBrain'
+import { Market } from './market'
 import { PoolParticipant } from './participant'
 import { Procurement } from './procurement'
 import { loadProfile } from './profile'
@@ -62,7 +63,8 @@ async function runAgent (name: string): Promise<void> {
     } catch (e) {
       agent.log.info(`coordinator ${coopApiUrl} unreachable (${(e as Error).message !== '' ? (e as Error).message : String((e as { code?: string }).code ?? e)}); credits and retail only`)
     }
-    const procurement = new Procurement({ agent, brain, participant, coopApiUrl })
+    const market = new Market(agent, { coopApiUrl })
+    const procurement = new Procurement({ agent, brain, participant, market, coopApiUrl })
     let done = 0
     for (const need of workload(profile)) {
       if (stopping || done >= maxJobs) break

@@ -1,25 +1,235 @@
 {
   "_comment": "First draft of the Town (track-E 0.8): Tiled JSON, 60×34 tiles of 16 px. Ground is grass with a dirt square; object layer names the buildings. Edit in Tiled (P1).",
-  "type": "map", "version": "1.10", "tiledversion": "1.11.0", "orientation": "orthogonal", "renderorder": "right-down",
-  "width": 60, "height": 34, "tilewidth": 16, "tileheight": 16, "infinite": false, "nextlayerid": 5, "nextobjectid": 12,
-  "tilesets": [{ "firstgid": 1, "name": "town-ground", "tilewidth": 16, "tileheight": 16, "tilecount": 4, "columns": 4, "image": "ground.png", "imagewidth": 64, "imageheight": 16, "_comment": "gid 1 grass A, 2 grass B, 3 dirt, 4 road (from assets/sprites/tiles.ts)" }],
+  "type": "map",
+  "version": "1.10",
+  "tiledversion": "1.11.0",
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "width": 60,
+  "height": 34,
+  "tilewidth": 16,
+  "tileheight": 16,
+  "infinite": false,
+  "nextlayerid": 5,
+  "nextobjectid": 12,
+  "tilesets": [
+    {
+      "firstgid": 1,
+      "name": "town-ground",
+      "tilewidth": 16,
+      "tileheight": 16,
+      "tilecount": 4,
+      "columns": 4,
+      "image": "ground.png",
+      "imagewidth": 64,
+      "imageheight": 16,
+      "_comment": "gid 1 grass A, 2 grass B, 3 dirt, 4 road (from assets/sprites/tiles.ts)"
+    }
+  ],
   "layers": [
-    { "id": 1, "name": "ground", "type": "tilelayer", "width": 60, "height": 34, "x": 0, "y": 0, "opacity": 1, "visible": true, "encoding": "csv",
-      "_comment": "generated at load time by town/map/ground.ts until Tiled replaces it: grass everywhere, dirt square 22..38 × 12..22, road from the gate (x 0) to the square" },
-    { "id": 2, "name": "buildings", "type": "objectgroup", "x": 0, "y": 0, "opacity": 1, "visible": true, "draworder": "topdown", "objects": [
-      { "id": 1, "name": "workshop", "type": "workshop", "x": 656, "y": 112, "width": 96, "height": 80, "properties": [{ "name": "kind", "type": "string", "value": "workshop" }] },
-      { "id": 2, "name": "board", "type": "board", "x": 464, "y": 240, "width": 32, "height": 32, "properties": [{ "name": "kind", "type": "string", "value": "board" }] },
-      { "id": 3, "name": "house-1", "type": "house", "x": 192, "y": 96, "width": 64, "height": 64, "properties": [{ "name": "kind", "type": "string", "value": "house" }, { "name": "slot", "type": "int", "value": 1 }] },
-      { "id": 4, "name": "house-2", "type": "house", "x": 192, "y": 304, "width": 64, "height": 64, "properties": [{ "name": "kind", "type": "string", "value": "house" }, { "name": "slot", "type": "int", "value": 2 }] },
-      { "id": 5, "name": "house-3", "type": "house", "x": 704, "y": 320, "width": 64, "height": 64, "properties": [{ "name": "kind", "type": "string", "value": "house" }, { "name": "slot", "type": "int", "value": 3 }] },
-      { "id": 6, "name": "market", "type": "stall", "x": 352, "y": 400, "width": 160, "height": 48, "properties": [{ "name": "kind", "type": "string", "value": "stall" }] },
-      { "id": 7, "name": "gate", "type": "gate", "x": 0, "y": 224, "width": 48, "height": 64, "properties": [{ "name": "kind", "type": "string", "value": "gate" }] },
-      { "id": 8, "name": "harbor", "type": "harbor", "x": 832, "y": 440, "width": 128, "height": 96, "properties": [{ "name": "kind", "type": "string", "value": "harbor" }] }
-    ] },
-    { "id": 3, "name": "points", "type": "objectgroup", "x": 0, "y": 0, "opacity": 1, "visible": true, "draworder": "topdown", "objects": [
-      { "id": 9, "name": "square-centre", "type": "point", "point": true, "x": 480, "y": 272 },
-      { "id": 10, "name": "visitor-spawn", "type": "point", "point": true, "x": 64, "y": 256 },
-      { "id": 11, "name": "guard-post", "type": "point", "point": true, "x": 56, "y": 288 }
-    ] }
+    {
+      "id": 1,
+      "name": "ground",
+      "type": "tilelayer",
+      "width": 60,
+      "height": 34,
+      "x": 0,
+      "y": 0,
+      "opacity": 1,
+      "visible": true,
+      "encoding": "csv",
+      "_comment": "generated at load time by town/map/ground.ts until Tiled replaces it: grass everywhere, dirt square 22..38 × 12..22, road from the gate (x 0) to the square"
+    },
+    {
+      "id": 2,
+      "name": "buildings",
+      "type": "objectgroup",
+      "x": 0,
+      "y": 0,
+      "opacity": 1,
+      "visible": true,
+      "draworder": "topdown",
+      "objects": [
+        {
+          "id": 1,
+          "name": "workshop",
+          "type": "workshop",
+          "x": 580,
+          "y": 150,
+          "width": 48,
+          "height": 48,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "board",
+          "type": "board",
+          "x": 464,
+          "y": 236,
+          "width": 32,
+          "height": 32,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "board"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "house-1",
+          "type": "house",
+          "x": 268,
+          "y": 164,
+          "width": 64,
+          "height": 64,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "house"
+            },
+            {
+              "name": "slot",
+              "type": "int",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "house-2",
+          "type": "house",
+          "x": 268,
+          "y": 336,
+          "width": 64,
+          "height": 64,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "house"
+            },
+            {
+              "name": "slot",
+              "type": "int",
+              "value": 2
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "house-3",
+          "type": "house",
+          "x": 652,
+          "y": 336,
+          "width": 64,
+          "height": 64,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "house"
+            },
+            {
+              "name": "slot",
+              "type": "int",
+              "value": 3
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "market",
+          "type": "stall",
+          "x": 404,
+          "y": 372,
+          "width": 32,
+          "height": 24,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "stall"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "gate",
+          "type": "gate",
+          "x": 236,
+          "y": 226,
+          "width": 24,
+          "height": 32,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "gate"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "harbor",
+          "type": "harbor",
+          "x": 760,
+          "y": 420,
+          "width": 128,
+          "height": 96,
+          "properties": [
+            {
+              "name": "kind",
+              "type": "string",
+              "value": "harbor"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "points",
+      "type": "objectgroup",
+      "x": 0,
+      "y": 0,
+      "opacity": 1,
+      "visible": true,
+      "draworder": "topdown",
+      "objects": [
+        {
+          "id": 9,
+          "name": "square-centre",
+          "type": "point",
+          "point": true,
+          "x": 480,
+          "y": 268
+        },
+        {
+          "id": 10,
+          "name": "visitor-spawn",
+          "type": "point",
+          "point": true,
+          "x": 262,
+          "y": 268
+        },
+        {
+          "id": 11,
+          "name": "guard-post",
+          "type": "point",
+          "point": true,
+          "x": 250,
+          "y": 286
+        }
+      ]
+    }
   ]
 }

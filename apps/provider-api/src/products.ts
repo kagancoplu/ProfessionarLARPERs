@@ -28,6 +28,8 @@ export interface Product {
   retailSatsPerCredit: number
   /** GPU minutes one credit buys (gpu-h100: 60). Default 1. */
   minutesPerCredit?: number
+  /** Prices are illustrative (FINAL-IDEA §9): shown as "demo pricing" in the catalog and logs. */
+  demoPricing?: boolean
   /** BSV-21 credit token id `<txid>_<vout>`; null until `provider-cli mint`. */
   tokenId: string | null
   simulate: {

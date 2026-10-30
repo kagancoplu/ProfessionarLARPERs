@@ -4,6 +4,7 @@
   "unit": "GPU-hour",
   "retailSatsPerCredit": 50,
   "minutesPerCredit": 60,
+  "demoPricing": true,
   "tokenId": null,
   "simulate": {
     "minutesPerSecond": 60

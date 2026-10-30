@@ -2,13 +2,13 @@
  * Verification test 7 (FINAL-IDEA §12.1): walk a mainnet BSV-21 output back to
  * its deploy with verifyLineage (Arcade, WhatsOnChain fallback), no overlay.
  *
- *   npx tsx scripts/lineage-check.ts <txid_vout>
+ *   npx tsx --import @agentcoop/core/register-sdk scripts/lineage-check.ts <txid_vout>
  */
 import { verifyLineage } from '@agentcoop/core'
 
 const outpoint = process.argv[2]
 if (outpoint === undefined || !/^[0-9a-f]{64}[_.]\d+$/.test(outpoint)) {
-  console.error('usage: npx tsx scripts/lineage-check.ts <txid_vout>')
+  console.error('usage: npx tsx --import @agentcoop/core/register-sdk scripts/lineage-check.ts <txid_vout>')
   process.exit(2)
 }
 const started = Date.now()

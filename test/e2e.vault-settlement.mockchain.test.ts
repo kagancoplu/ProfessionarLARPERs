@@ -18,7 +18,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AuthFetch, Transaction } from '@agentcoop/core/sdk'
+import { AuthFetch, LockingScript, Transaction } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { WebSocket } from 'ws'
 import {
@@ -230,7 +230,14 @@ describe('vault agent in a coordinator settlement (guard 2.1 + 2.1b)', () => {
 
   it('pledges: P2PKH agent 600 (buildPledge), V 400 from the vault (guard 2.1b); the overlay counts both', async () => {
     pPledge = await buildPledge(agentP, terms, '600', 'p2pkh', undefined, { tokenIndex: await kitA.nextIndex(agentP.identityKey) })
-    vPledge = await pledgeFromVault(agentV, { vaultId: vault.record.vaultId, utxo: await vaultUtxo(), terms, credits: '400', tokenIndex: await kitV.nextIndex(agentV.identityKey), cosign, poolBEEF: await poolBEEF(terms.poolId) })
+    const vaultArgs = async () => ({ vaultId: vault.record.vaultId, utxo: await vaultUtxo(), cosign })
+    await expect(buildPledge(agentV, terms, '400', 'vault', undefined, { tokenIndex: 0 } as any)).rejects.toThrow(/needs opts.vault/)
+    await expect(buildPledge(agentV, terms, '400', 'vault', LockingScript.fromHex(terms.payScriptHex), { tokenIndex: 0, vault: await vaultArgs() })).rejects.toThrow(/not on the given vault script/)
+    // A.3.1: buildPledge(…, 'vault') delegates to pledgeFromVault (same layout, guard 2.1b at pledge time)
+    vPledge = await buildPledge(agentV, terms, '400', 'vault', LockingScript.fromHex(vault.lockingScriptHex), {
+      tokenIndex: await kitV.nextIndex(agentV.identityKey),
+      vault: { vaultId: vault.record.vaultId, utxo: await vaultUtxo(), cosign, poolBEEF: await poolBEEF(terms.poolId) }
+    })
     const tx = Transaction.fromAtomicBEEF(vPledge.beef)
     expect(tx.outputs[0].lockingScript.toHex()).toBe(vault.lockingScriptHex) // the pledge coin stays on the vault script
     expect(vPledge.satoshis).toBe(4_301) // ceil(400·10,000/1,000) + 1 + 300 buffer

@@ -11,7 +11,7 @@ Each agent has its own job (fine-tuning, evaluation, inference), and buying GPU 
 ## Try it offline
 
 ```bash
-npm run demo:k1            # provider opens a pool → 3 agents decide and pledge → one settlement tx → agents spend their credits
+npm run demo:k1            # provider opens a pool → 3 agents decide and pledge → one settlement tx → agents spend their credits → market
 npm run demo:failed-pool   # a pool that does not fill costs only the fee; the pledge coin is reused for the next pool
 ```
 
@@ -32,7 +32,7 @@ Env: `WALLET_AGENT_1..3_KEY`, `PROVIDER_API_URL`, `OVERLAY_URL`, `COOP_API_URL`,
 Before each job it runs the procurement router, cheapest option first:
 
 1. **Credits it holds:** it redeems the whole credits still missing (one credit = one GPU-hour, used by the minute) and runs the job for free.
-2. **Market:** a listing cheaper than retail (Faz 3).
+2. **Market:** listings that cover the shortfall for less than retail (below).
 3. **Pool:** it looks at the coordinator's open pools for its product and may pledge for the coming week (below).
 4. **Retail:** otherwise it pays per minute through HTTP 402 (`AuthFetch`).
 
@@ -54,6 +54,11 @@ A pledge pays for the coming week, not for the job in front of the agent: that j
 
 `buildPledge` (Track A) submits to the overlay. The agent stays on the coordinator's WS. When a `sign_request` arrives, it checks the whole settlement with `verifySettlementPlan`: its credits go to its own address, its change is correct, and the provider's credits trace back to the token deploy (`verifyLineage`). If all of that holds it signs with SIGHASH_ALL; otherwise it sends `sign_reject` with the reason. After `settled` it runs `internalizeSettlement` (to get its change back) and `TokenKit.sync` (to see its credits). After `pool_failed` nothing has been spent: the pledge coin is still in the wallet, and it is withdrawn (`cancelPledge`) before the next pledge. The weekly budget then gets back everything except the fee.
 
+### Market (`src/market.ts`)
+
+- **Sell:** after a settlement, credits beyond the 7-day need are listed in lots of up to 5, because a listing is one UTXO and sells whole. The ask is the pool price × 1.1 and is always below retail. The steps are Track A's `reserveListing` and `signListing` (SINGLE|ANYONECANPAY, so the seller can be offline), then `POST /listings` to the coordinator. There is one listing at a time; when it sells, the next lot goes up.
+- **Buy:** this is router step 2. If a job needs credits the agent does not hold, it takes the cheapest listings (never its own) that cover the shortfall, but only if they cost less than retail and fit the owner's caps. Track A's `buildSweep` traces every listing back to the deploy first, then pays every seller and delivers the credits in one transaction (T8).
+
 ### decisions.log (from `npm run demo:k1`)
 
 ```
@@ -64,6 +69,7 @@ A pledge pays for the coming week, not for the job in front of the agent: that j
 [18:37] Decision: PLEDGE 17 credits. 17 credits cost 606 sat vs 850 sat at retail (saves 29%), within budget and caps. (brain: rules)
 [18:37] Pledged 17 credits to "H100 block · 40 GPU-hours": 726 sat stay in my wallet as a pledge coin until settlement.
 [18:37] Pool "H100 block · 40 GPU-hours" filled. One settlement tx paid the provider and delivered every share: 17 credits are mine.
+[19:23] Market: bought 5 credits from 1 listing(s) for 198 sat vs 250 sat at retail (saves 21%), each traced to the token deploy before paying; one tx paid every seller.
 ```
 
 Demo prices are illustrative ("demo pricing"): the discount only shows how the mechanism works. It does not claim real savings.
