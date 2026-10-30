@@ -188,3 +188,21 @@ MSW handler'ları (`mock/handlers.ts`): `GET /pools`, `/pools/:id`, `/pools/:id/
 | Root typecheck/test kırılması | `exclude: ["apps/web"]`; mantık testleri node-güvenli |
 | Desktop origin izni (`http://localhost:5173`) | Kit'in web'i aynı yolu kullanıyor; sorun olursa STATUS |
 | Zaman | P0'da Kasaba yok; atlas yalnız `/_kit` önizlemesi |
+
+## 13. Checkpoint (Faz 0 sonu, 30.10 19:30)
+
+**Kabul kanıtı**
+- `apps/web/DESIGN.md` var (`/design-consultation`, otonom koşu; kararlar "Decisions made without user confirmation" tablosunda). Anti-slop: gstack `design-checklist.md` §1–3 kod üzerinde grep (gradyan 0, `rounded`/`border-radius` 0, `text-center` 0, blur/glow 0, yasak font 0, pazarlama metni 0, emoji-ikon 0) + 7 ekran görüntüsü (gün/gece). Bulgular düzeltildi: bağlı cüzdan çipinin gece renkleri, üst çubuk satır kırılması, akış zaman damgası sarması, sayı biçimi tutarsızlığı, `⚠` glifi. Tam `/design-review` tarayıcı döngüsü (gstack browse/bun) koşulmadı → insan listesi.
+- `npm run web:mock` açılıyor; senaryo akıyor; `/_debug` olayları ve state'i gösteriyor (e2e: ≥ 1 olay 10 sn içinde, core smoke `data-ok=true`, sahte Desktop bağlanıyor).
+- `/_kit` tasarım sistemini gün + gece paletinde gösteriyor; Phaser atlas önizlemesi 17 kare.
+- Testler: web `vitest` 10 dosya / **33 test**; kök `npm test` içinde apps/web **28 test** (saf mantık); Playwright **1/1**; `npm -w apps/web run typecheck` ve kök `npm run typecheck` temiz.
+- Build: `dist/` 3,9 MB toplam; **ilk yük ≈ 1,3 MB** (index 436 kB + sdk 830 kB; Phaser 1,19 MB ve MSW lazy chunk). Fontlar paket içi. `dist/cjs` referansı yok (tek SDK kopyası).
+- **Core smoke (tarayıcı, A'ya):** `@agentcoop/core` 111 export; `buildOpReturn` 43 B + `parseOpReturn` geri okuma ✓; `vaultLockingScript` 109 B ✓; `new TokenKit(wallet, new OverlayClient(url))` ✓; core'un `LockingScript`'i `@bsv/sdk`'nın `Script`'inin örneği (tek kopya) ✓. Vite alias yetti; `exports` "browser" koşulu **gerekmiyor**.
+- Gerçek BSV Desktop bağlantısı bu oturumda denenmedi (insan listesi).
+
+**Checkpoint soruları**
+1. Plan hâlâ iyi mi? Evet. Değişiklikler: Kasaba sahnesi P1'e; Kenney indirmesi insana; portlar `PORT` env ile (5173 bu makinede dolu).
+2. Faz bitti → STATUS Track E güncellendi.
+3. Diğer track'ler: B overlay+koordinatör `main`'de ve **canlı denendi** (`node infra/run.mjs` ile; coop/overlay/arcade yeşil, WS + SSE bağlandı; STATUS Track E); C provider-api CORS yok (istek açık); D guard uçları `origin/trackD`'de, `main`'de yok.
+4. P1 bağımlılıkları: B.P1–P3 canlı için var; ajan olay akışı yok → mock/log-relay.
+5. Arayüz değişikliği: MASTER §3.10'a ek yok; STATUS'ta kök tsconfig satırı (A) ve bilgi notları.
