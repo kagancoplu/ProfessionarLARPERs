@@ -13,7 +13,6 @@ export type ErrorCode =
   | 'LINEAGE_FAILED'
   | 'BAD_LISTING'
   | 'DEADLINE_PASSED'
-  | 'NOT_IMPLEMENTED'
 
 export class AgentCoopError extends Error {
   constructor (readonly code: ErrorCode, message: string) {

@@ -109,6 +109,8 @@ Operations guide: [docs/OPS.md](docs/OPS.md). Public deployment of the overlay a
 | **T5** | **Settlement (DvP)** | Provider SINGLE\|ACP, everyone ALL | **N inputs; provider paid and every participant's credits in one tx; pledge-list hash** | pending | `apps/coordinator/test/e2e.integration.mockchain.test.ts` |
 | T6 | Credit redeem and return | Agent / provider | BSV-21 transfer to the provider, and back | pending | `test/provider.credits.mockchain.test.ts` |
 | T7 | Retail 402 payment | Agent (AuthFetch) | BRC-29 payment to the provider | pending | `test/provider.402.mockchain.test.ts` |
+| T5v | Settlement with vault-locked credits | Agent + guard 2-of-2 | A vault agent's credits land on its vault script, not a P2PKH | pending | `test/e2e.vault-credits.mockchain.test.ts` |
+| T5-L | Settlement with offline (Lighthouse) pledges | Human SINGLE\|ACP once, guard ALL | Exact lighthouse coins, no change; humans offline during the round | pending | `test/e2e.lighthouse.mockchain.test.ts` |
 | T8 | Market sweep | Sellers SINGLE\|ACP, buyer ALL | Several sellers paid, buyer gets credits | pending | `test/market.mockchain.test.ts` |
 | T9 | Vault funding and owner withdrawal | Owner (BSV Desktop) | Vault script output; spend through the `OP_IF` branch | pending | `test/vault.mockchain.test.ts` |
 | T10 | Guard-approved payment | Agent + guard 2-of-2 | Spend through the multisig branch | pending | `test/vault.mockchain.test.ts` |
@@ -121,7 +123,8 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
-- **Open:** an agent selling its credits to escape the guard (credit outputs locked to the vault are not built yet); no reverse direction for Coop Rail.
+- **Closing:** an agent selling its credits to escape the guard. Credits can now settle onto the vault script and moving them needs agent + guard (`creditLock: 'vault'`, mock chain); the guard's `redeem`/`list` policy and the overlay's vault-aware rules are still to be wired.
+- **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
 
@@ -137,7 +140,7 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 | Component | Track | What it is | README |
 |---|---|---|---|
-| `packages/core` | A | Protocol core: pool, offer, pledge, settlement builders, `verifySettlementPlan`, `verifyLineage`, market, vault and HTLC scripts | — |
+| `packages/core` | A | Protocol core: one atomic DvP settlement per pool (provider SINGLE\|ACP offer, participants ALL), `verifySettlementPlan` that every participant and the guard run, overlay-free `verifyLineage`, signed listings and one-tx sweeps, vault-locked credits, guard-backed Lighthouse pledges for offline humans | [README](packages/core/README.md) |
 | `packages/overlay` | B | `tm_agentcoop` / `ls_agentcoop`: BSV-21 rules + pool, pledge, settlement, vault, offer records | [README](packages/overlay/README.md) |
 | `apps/coordinator` | B | Signing rounds over WebSocket, side API, audit and custody metrics | [README](apps/coordinator/README.md) |
 | `apps/provider-api`, `apps/provider-cli` | C | Simulated GPU provider (402 + credit redeem) and its BSV Desktop CLI | [api](apps/provider-api/README.md), [cli](apps/provider-cli/README.md) |
@@ -153,7 +156,7 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 - No mainnet transaction yet; validations 2–6 (BSV Desktop SINGLE\|ACP signing, vault script policy, nLockTime semantics, v1 malleability) are written and wait for satoshis.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
-- Credits are not locked to the vault (threat T-10), and Coop Rail has no reverse direction.
+- Vault-locked credits (threat T-10) work on the mock chain; the guard policy for spending them and the overlay flag are not wired yet. Coop Rail has no reverse direction.
 - The coordinator's selection is auditable but cannot be forced.
 
 ## License

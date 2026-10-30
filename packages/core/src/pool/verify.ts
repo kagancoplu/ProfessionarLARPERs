@@ -1,7 +1,7 @@
 /**
  * Participant / guard side of lock-in (track A 1.5, FINAL-IDEA §4.3 step 5):
  * check the WHOLE settlement before signing it ALL. Throws AgentCoopError.
- * Lineage of the offer's credits (verifyLineage) is wired in Faz 2.
+ * With `verifyLineage: true` the offer's credits are walked back to the deploy (no overlay trust).
  */
 import { LockingScript, Transaction } from '../sdk'
 import { decodeBsv21 } from '../kit/inscription'

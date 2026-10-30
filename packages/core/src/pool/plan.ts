@@ -57,7 +57,7 @@ export interface PlanOptions {
   exclude?: string[]
 }
 
-/** Default unlocking-script length per signer type until Track D fixes the vault value (track A 2.5). */
+/** Vault (2-of-2) unlocking-script length; equals Track D's VAULT_COSIGN_UNLOCK_LENGTH (150). */
 export const VAULT_UNLOCKING_SCRIPT_LENGTH = 1 + 74 + 74 + 1 // OP_0 dummy, 2 × (push + ≤73-byte sig), OP_FALSE branch selector
 
 /** 'vault' when the pledge record asks for vault-locked credits (only a vault pledge can); else undefined. */
