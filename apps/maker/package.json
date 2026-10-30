@@ -7,7 +7,8 @@
   "scripts": {
     "compile": "tsx src/compile.ts",
     "maker": "tsx --import @agentcoop/core/register-sdk src/main.ts",
-    "deploy": "tsx --import @agentcoop/core/register-sdk src/deploy.ts"
+    "deploy": "tsx --import @agentcoop/core/register-sdk src/deploy.ts",
+    "swap-demo": "tsx --import @agentcoop/core/register-sdk src/swap-demo.ts"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0",

@@ -95,6 +95,7 @@ Not done yet (no satoshis). The steps, each first with ≤ 1,000 sat:
 3. `npm run infra`, `npm run provider`, `npm run guard -w @agentcoop/guard`.
 4. Provider: `npm run provider-cli -- mint …` and `open-pool` from BSV Desktop.
 5. Agents: `npm run agents`. Owner: `npm run owner -w @agentcoop/owner-cli -- create-vault | policy | fund | withdraw`.
+6. Coop Rail (Base Sepolia → BSV, ≤ 1 USDC / ≤ 1,000 sat): `npm run deploy -w @agentcoop/maker -- --yes`, then `npm run swap-demo -w @agentcoop/maker -- --vault <vaultId>` (dry run: checks keys, balances, guard and vault), then the same with `--yes`. See [docs/RAIL-POC.md](docs/RAIL-POC.md).
 
 Operations guide: [docs/OPS.md](docs/OPS.md). Public deployment of the overlay and coordinator: [infra/README.md](infra/README.md).
 
