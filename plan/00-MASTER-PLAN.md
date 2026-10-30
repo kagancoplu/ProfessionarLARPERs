@@ -75,6 +75,11 @@
 | Vault anahtarları | protocol `[1,'agentcoop vault']`, keyID = vaultId, counterparty `'anyone'`, basket `agentcoop vault` | Sahip (Desktop), ajan ve guard (wallet-toolbox) |
 | Sağlayıcı gelir anahtarı | protocol `[1,'agentcoop provider']`, keyID = poolNonce, counterparty `'anyone'`, basket `agentcoop revenue` | Settlement çıktısı 0 ve kayıt bedelleri buraya; `sweep-revenue` ile default'a taşınır |
 | Overlay isimleri | topic `tm_agentcoop`, service `ls_agentcoop` (BRC-87: rakam yok) | Kredi token'ları için kit'in kuralları aynı topic içinde |
+| Teklif UTXO'su (A-P1) | kredi UTXO'su `[1,'agentcoop provider']`, keyID `offer <poolNonce>`, `'anyone'` P2PKH'ye taşınır; basket `agentcoop offers`; customInstructions `{ protocolID, keyID, counterparty, payKeyID: poolNonce, tokenId, credits }` | Token receive adresinde kalmaz → `TokenKit.sync/send` dokunmaz. `payScriptHex` = P2PKH(`[1,'agentcoop provider']`, keyID = poolNonce). Pool OP_RETURN json = terms − `poolId` + `nonce` |
+| Market anahtarları (A-P2) | listelenen kredi `[1,'agentcoop market']` keyID `list <nonce>` P2PKH, basket `agentcoop listings`; satış bedeli keyID `pay <nonce>`; aynı tx'te `OP_RETURN list { v, tokenId, credits, askSats, seller }` | Teklif UTXO'suyla aynı neden: TokenKit dokunmaz |
+| Outpoint biçimi (A-P1) | AgentCoop verisinde her yerde `txid_vout`; yalnız cüzdan çağrılarında `txid.vout` (`toWalletOutpoint`) | |
+| `pledgeListHash` (A-P1) | `sha256_hex(join(',', sort_lex(dahil outpoint'ler)))` | Seçim sırası ayrı kural (blockHeight, txid); hash zincir bilgisi gerektirmez |
+| Settlement para üstü (A-P1) | Katılımcı yayından sonra `internalizeSettlement` ile para üstünü `agentcoop` basket'ine `change:true` işaretiyle alır, harcanan pledge coin'ini `relinquishOutput` eder | "Tek aktif pledge" kontrolü `change:true` çıktıları saymaz |
 | Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | |
 | Liste (market) sighash | satıcı `SINGLE \| ANYONECANPAY \| FORKID`; alıcı `ALL \| FORKID` | Sağlayıcı teklifiyle aynı primitif |
 | Arcade | `https://arcade-v2-us-1.bsvblockchain.tech` | Yayın (EF), tx durumu, header'lar `/chaintracks/v2` |
@@ -166,6 +171,22 @@ verifyLineage(outpoint, { arcadeUrl, wocUrl }): Promise<{ ok, tokenId, amt, owne
 
 // signers
 new P2pkhWalletSigner(wallet, { protocolID, keyID })
+
+// A-P1 eklemeleri (kırıcı değil; tam imzalar packages/core/src/pool/*.ts)
+verifyOffer(offer, { sourceTx }): void                                             // çevrimdışı: kredi miktarı/token, SINGLE|ACP imzası Spend ile
+planTransaction(plan): Transaction                                                  // templateBEEF → tx
+internalizeSettlement(wallet, tx, plan, myOutpoint, pledgeInstructions): Promise<void>
+fetchChainPolicy(arcadeUrl): Promise<{ height, satsPerKb, maxTxSize? }>            // Arcade /health; planSettlement'ın `chain`'i
+// A-P2: doğrulama ve market (MASTER'daki `buildSweep(wallet, listings[]): { plan }` bununla DEĞİŞTİ; henüz kullanan yoktu)
+verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache? }): Promise<{ ok, tokenId?, amt?: bigint, ownerPkh?, depth, reason? }>
+reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint, beef }>   // signListing'den önce
+signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
+buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>
+cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · reclaimReserved(wallet, kit, outpoint, basket)
+// hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
+// parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
+//   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
+//   verifySettlementPlan(plan, offer, myOutpoint, { expectedCredits, expectedCreditPkh?, maxFeeSats?, verifyLineage? })
 ```
 
 ### 3.5 Koordinatör / yan API (B) — `COOP_API_URL`

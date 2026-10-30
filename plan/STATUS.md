@@ -17,16 +17,23 @@
 
 | Tarih | Track | Blokaj | Kimden bekleniyor | Geçici çözüm |
 |---|---|---|---|---|
+| 2026-10-30 | A | Doğrulama testi 2/3 mainnet koşusu: BSV Desktop (mainnet, açık) + ≥ 2.000 sat gereken bir laptop | D (sats) + Desktop'ı olan üye: `npx tsx scripts/spike-sighash.ts` çalıştırıp çıktıyı ve Desktop'ın kaç onay penceresi gösterdiğini A'ya/STATUS'a iletsin | Mockchain varyantı yeşil (`test/spike-sighash.mockchain.test.ts`); A Faz 1'e mockchain'de devam ediyor |
+| 2026-10-30 | A | S1 mainnet skeleton (`scripts/skeleton.ts`): `scripts/wallets.ts` `openWallet(name)` + fonlanmış `provider-api`, `agent-1`, `agent-2` (her biri ≥ 5k sat) + çalışan overlay | D.P0 (cüzdan/fon), B.P1 (overlay; yoksa kit overlay'i `OVERLAY_TOPIC=tm_tokenkit OVERLAY_SERVICE=ls_tokenkit`) | Mockchain e2e yeşil (`test/skeleton.mockchain.test.ts`); A Faz 2'ye geçiyor |
 
 ## Arayüz değişiklikleri (herkes okur)
 
 | Tarih | Track | Değişen | Neden | MASTER-PLAN güncellendi mi |
 |---|---|---|---|---|
+| 2026-10-30 | A | **Yalnız ekleme, kırıcı değil:** `OverlayClient(url, outbox?, chain?, arcadeUrl?, topic?, service?)` — son iki parametre yeni (varsayılan kit'in `tm_tokenkit`/`ls_tokenkit`); `SettlementParticipant` adlı tip (= `SettlementPlan.participants[i]`, şekil aynı); `SigningWallet = Pick<WalletInterface,'createSignature'\|'getPublicKey'>` | `tm_agentcoop`'a submit edebilmek; tiplere ad vermek | Gerek yok (§3.3 şekli aynı; OverlayClient §3'te yok) |
+| 2026-10-30 | A | **Ekleme (A-P1):** MASTER §3.2'ye teklif UTXO anahtarı/basket'i (`agentcoop offers`), outpoint biçimi (`txid_vout`), `pledgeListHash` tanımı, para üstü kuralı; §3.4'e `verifyOffer`, `planTransaction`, `internalizeSettlement`, `fetchChainPolicy` ve builder `opts` şekilleri | Faz 1 uygulaması netleştirdi | Evet (§3.2, §3.4) |
+| 2026-10-30 | A | **A-P2:** `buildSweep(wallet, kit, listings[], opts)` → `{ txid, credits, tx }` (eski taslak `buildSweep(wallet, listings[]): { plan }` idi; kullanan yoktu). Eklenen: `reserveListing`, `verifyListing`, `cancelListing`, `cancelPool`, `reclaimReserved`, `verifyLineage` opts; MASTER §3.2 market anahtarları; §3.4 hata kodları | Liste UTXO'su teklif gibi ayrı anahtara taşınmalı (TokenKit dokunmasın); sweep alıcı cüzdanıyla tek `createAction` | Evet (§3.2, §3.4) |
 
 ## Plan değişiklikleri
 
 | Tarih | Track | Faz | Değişiklik | Neden |
 |---|---|---|---|---|
+| 2026-10-30 | A | 5 (yeni) | Vault'a kilitli kredi çıktısı (`creditLock:'vault'`, `decodeBsv21Owned`, bayraklı `ownerKinds` kuralı) + Lighthouse modu (`SINGLE\|ACP` pledge, mevcut `in i ↔ out i` düzenine oturur, para üstü yok) | FINAL-IDEA §8'deki tek "Açık" non-custodial satırı kapatır; çevrimdışı insan katılımı (benimsenme). S3'ten önce başlamaz; bayrak kapalıyken davranış değişmez. B (topic kuralı bağlama), C (participant-cli lighthouse), D (guard `kind:'redeem'\|'list'`) Faz 5'te etkilenir |
+| 2026-10-30 | A | 6 (yeni) | OrdLock listeleri (1Sat Market) + covenant vault araştırması (3 saat zaman kutusu, yalnız rapor) | 1Sat ekosistemine görünürlük/likidite (benimsenme, stack); covenant guard'sız vault için yol haritası. S3'ten önce başlamaz |
 
 ## Mainnet işlemleri
 
@@ -38,8 +45,8 @@
 | # | Test | Sahip | Sonuç | Not |
 |---|---|---|---|---|
 | 1 | Overlay karışık settlement'ı kabul ediyor | B | ☐ | |
-| 2 | Desktop SINGLE\|ACP imzalıyor, Arcade kabul ediyor | A | ☐ | |
-| 3 | Desktop izin davranışı | A | ☐ | |
+| 2 | Desktop SINGLE\|ACP imzalıyor, Arcade kabul ediyor | A | ◐ | Mockchain ✓ (wallet-toolbox: SINGLE\|ACP imzalı yabancı girdi + sonradan eklenen fon/para üstü kabul; ödeme düşürülünce `Script evaluation error`). Mainnet: `scripts/spike-sighash.ts` hazır, Desktop+sats bekliyor |
+| 3 | Desktop izin davranışı | A | ☐ | Aynı script imza #1/#2 için zaman damgası basar; onay penceresi sayısını insan gözlemleyip yazar |
 | 4 | nLockTime yükseklik semantiği | D | ☐ | |
 | 5 | Vault script'i politikadan geçiyor | D | ☐ | |
 | 6 | v1 tx malleability kuralları | D | ☐ | |
@@ -50,11 +57,28 @@
 
 ## Track A — Protokol
 
-- **Faz:** P0 başlamadı
+- **Faz:** P2 ✓ mockchain (2026-10-30). Planlar: `plan/phases/A-P0.md`, `A-P1.md`, `A-P2.md`
 - **Bitenler:**
-- **Devam eden:**
-- **Bilinen sorunlar:**
+  - **P0:** kök monorepo (`package.json` sabit versiyonlar, `tsconfig*.json`, `vitest.config.ts`, `.gitignore`, `AGENTS.md`); `@agentcoop/core`: `src/types.ts` (MASTER §3.3 + §3.2 sabitleri), `src/sdk.ts` (tek CJS SDK kopyası), `src/errors.ts`, kit kopyası `src/kit/*`, `src/scripts/{opreturn,vault,htlc}.ts`, `src/signers/{sighash,P2pkhWalletSigner}.ts`; `test/helpers/mockchain.ts`; `scripts/spike-sighash.ts`.
+  - **P1 builder'ları** (`packages/core/src/pool/`): `reserve.ts` (`buildReserveAndAnnounce`), `offer.ts` (`signOffer`, `verifyOffer`), `pledge.ts` (`buildPledge`, `cancelPledge`, tek aktif pledge), `plan.ts` (`planSettlement`, `orderPledges`, `pledgeListHash`; %120, kara liste/bekleme listesi, ücret = gerçek imza boyutu × Arcade oranı), `verify.ts` (`verifySettlementPlan`, `planTransaction`), `settle.ts` (`signSettlementInput`, `assembleSettlement` + yerel Spend kontrolü, `broadcastEF`, `internalizeSettlement`), `terms.ts`; `src/util/{outpoint,spend,arcade}.ts` (`fetchChainPolicy`).
+  - **Testler:** `npm test` → 7 dosya / **38 test yeşil**; `npm run typecheck` temiz. `test/skeleton.mockchain.test.ts`: deploy → reserve+announce → SINGLE|ACP teklif → 2 pledge (600/400) → plan → her ajan tam tx'i doğrular + ALL imzalar → assemble → yayın → **kit overlay'i settlement'ı kabul etti (2 kredi çıktısı admit)** → `TokenKit.sync` 600/400 → sağlayıcıya tam P; plan imzadan sonra değişince `BAD_SIGNATURE`; dolmayan/süresi geçen havuz + `cancelPledge`.
+  - `scripts/skeleton.ts` (mainnet S1) hazır — Blokajlar'da.
+- **P2 (devam):** `packages/core/src/verify/lineage.ts` — **`verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache? })` HAZIR** → `{ ok, tokenId, amt, ownerPkh, depth, reason? }`. Overlay'siz: ataları Arcade'den (WoC yedek) çeker, txid'leri yeniden hesaplar, aynı token'ın girdilerinin imzalarını `Spend` ile doğrular, kit `rules.ts`'i yerelde uygular. `verifySettlementPlan(..., { verifyLineage: true })` bağlı. Testler: `packages/core/test/lineage.test.ts` (sahte/enflasyon/çapraz token/bozuk ata imzası/yalan veri), skeleton'da mockchain üzerinde. `scripts/lineage-check.ts <txid_vout>` (doğrulama 7, mainnet). Toplam **44 test yeşil**.
+- **P2 market** (`packages/core/src/market/listing.ts`): `reserveListing` → `signListing` (SINGLE|ACP) → `verifyListing`; `buildSweep` (her liste için önce `verifyLineage`, sonra tek `createAction`: liste i ↔ ödeme i + Σk kredi alıcıya + fon/para üstü; overlay submit); `cancelListing`, `cancelPool` (C'nin `cancel-pool`'u için), `reclaimReserved`. `test/market.mockchain.test.ts` 5/5: 2 liste tek sweep (T8), sahte liste `LINEAGE_FAILED` ile ödeme yapılmadan reddedildi, iptal kredileri geri verdi. **Toplam 9 dosya / 49 test yeşil.**
+- **Faz durumu:** P0 ✓, P1 ✓, P2 ✓ — hepsi mockchain'de; mainnet koşuları (doğrulama 2/3/7, T1–T3, T5, T8) Blokajlar'daki fon/Desktop'a bağlı.
+- **Devam eden:** P3 planı (vault yolu) — D.P1 (`VaultSigner`, guard `/cosign`) ve B.P2 (koordinatör) henüz yok → MASTER §3.7 arayüzüne karşı mock guard ile ilerlenecek.
+- **Bilinen sorunlar / öğrenilenler (herkes için):**
+  - SDK, en üstteki `OP_RETURN`'den sonraki her şeyi **tek veri chunk'ı** yapar. AgentCoop zarfını elle ayrıştırmayın; `parseOpReturn` kullanın.
+  - `WalletClient` metotları originator parametresi **almaz** (constructor'da verilir); wallet-toolbox `Wallet` alır.
+  - wallet-toolbox `createAction`, `inputs[].unlockingScript` ile verilen hazır imzayı yayından önce **kendisi doğrular**.
+  - `P2PKH().lock(x)`: `x` string ise **adres** sanılır; pkh hex için `Utils.toArray(pkh,'hex')` verin.
+  - Arcade `/health` (2026-10-30): `miningFee` 100 sat/1000 B, `maxtxsizepolicy` 100 MB → **B: doğrulama testi 8 için veri**; `fetchChainPolicy()` bunu okur.
+  - **B: doğrulama testi 1** kit overlay'inde fiilen geçti (1 token girdisi + 2 düz girdi, 2 kredi çıktısı admit; `test/skeleton.mockchain.test.ts`). `tm_agentcoop` için aynı test B'nin topic'iyle tekrarlanmalı.
 - **Diğer track'lerin benden beklediği:**
+  - B: `planSettlement`, `verifySettlementPlan`, `assembleSettlement`, `broadcastEF`, `fetchChainPolicy` **hazır** (koordinatör için). Pledge'leri overlay'den `PledgeCandidate`'e çevirmek için gereken alanlar: `outpoint, satoshis, lockingScriptHex, record (parseOpReturn(out2)), sourceTx (BEEF), blockHeight?`.
+  - C (ajan market davranışı): `reserveListing` + `signListing` → B'ye `POST /listings`; alıcı `buildSweep(wallet, kit, listings)`. B (indeks): liste tx'i out0 = kredi, out2 (varsa out1 token para üstü) = `OP_RETURN list`.
+  - C (redeem) ve D (guard DvP): `verifyLineage` hazır — `import { verifyLineage } from '@agentcoop/core'`; redeem'de ayrıca `r.ownerPkh` sağlayıcının token adresi mi kontrol edin.
+  - C: ajan akışı = `buildPledge` → (WS `sign_request`) `verifySettlementPlan` + `signSettlementInput(plan, i, new P2pkhWalletSigner(wallet, pledge.instructions))` → `internalizeSettlement` + `TokenKit.sync()`. Sağlayıcı CLI: `kit.deploy` → `buildReserveAndAnnounce` → `signOffer` → `POST /offers`.
 
 ## Track B — Overlay + Koordinatör
 

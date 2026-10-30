@@ -1,0 +1,35 @@
+/**
+ * @agentcoop/core — protocol core (Track A).
+ * Import the SDK itself via '@agentcoop/core/sdk' (single CJS copy, see sdk.ts).
+ */
+export * from './types'
+export * from './errors'
+export * from './scripts/opreturn'
+export * from './scripts/vault'
+export * from './scripts/htlc'
+export * from './signers/sighash'
+export * from './signers/P2pkhWalletSigner'
+export * from './util/outpoint'
+export * from './util/spend'
+export * from './util/arcade'
+export * from './pool/terms'
+export * from './pool/reserve'
+export * from './pool/offer'
+export * from './pool/pledge'
+export * from './pool/plan'
+export * from './pool/verify'
+export * from './pool/settle'
+export * from './verify/lineage'
+export * from './market/listing'
+
+// Starter-kit code, copied verbatim (MASTER-PLAN §4.2).
+export * from './kit/inscription'
+export * from './kit/rules'
+export * from './kit/addresses'
+export * from './kit/signer'
+export * from './kit/coinselect'
+export * from './kit/token'
+export * from './kit/overlayApi'
+export * from './kit/lookupTypes'
+export * from './kit/payments'
+export * from './kit/arcadeChainTracker'

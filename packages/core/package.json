@@ -1,0 +1,15 @@
+{
+  "name": "@agentcoop/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentCoop protocol core: types, tx builders, signers, verifiers",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sdk": "./src/sdk.ts",
+    "./types": "./src/types.ts",
+    "./kit/*": "./src/kit/*.ts",
+    "./scripts/*": "./src/scripts/*.ts",
+    "./signers/*": "./src/signers/*.ts"
+  }
+}
