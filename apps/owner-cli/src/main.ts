@@ -10,7 +10,8 @@
  * Names (agent-1, guard, provider-api, …) resolve through config/identities.json.
  * Vault files: data/vaults/<vaultId>/vault.json; each funding leaves
  * data/vaults/<vaultId>/fund-<txid>.json for the agent (apps/guard: npm run adopt).
- * withdraw needs neither the guard nor the agent.
+ * withdraw needs neither the guard nor the agent. Vault UTXOs: WhatsOnChain, Track B's overlay
+ * (OVERLAY_URL), the Desktop basket and --outpoint, each checked against the chain.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,6 +27,8 @@ const FUND_LIMIT = 100_000
 const IDENTITY_RE = /^0[23][0-9a-f]{64}$/
 
 const vaultDir = (vaultId: string): string => join(VAULTS_DIR, vaultId)
+/** Track B's overlay (second source for vault UTXOs); OVERLAY_URL= (empty) turns it off. */
+const overlayUrl = (): string | undefined => (process.env.OVERLAY_URL ?? 'http://localhost:8080') || undefined
 
 function loadVault (vaultId: string | undefined): VaultInfo {
   if (!isVaultId(vaultId)) throw new Error(`bad vaultId "${String(vaultId)}" (32 hex characters; see data/vaults/)`)
@@ -104,7 +107,7 @@ run(async () => {
     case 'withdraw': {
       const vault = loadVault(args[0])
       const { wallet } = await connectDesktop()
-      const { utxos, notes } = await findVaultUtxos(wallet, vault, { network: chain(), arcadeUrl: arcadeUrl(), outpoints: options(args, '--outpoint'), originator })
+      const { utxos, notes } = await findVaultUtxos(wallet, vault, { network: chain(), arcadeUrl: arcadeUrl(), overlayUrl: overlayUrl(), outpoints: options(args, '--outpoint'), originator })
       for (const n of notes) console.log(`  note: ${n}`)
       const total = utxos.reduce((s, u) => s + u.satoshis, 0)
       console.log(`Vault ${vault.record.vaultId}: ${utxos.length} UTXO(s), ${total} sats`)
@@ -123,12 +126,12 @@ run(async () => {
       for (const id of ids) {
         const vault = loadVault(id)
         console.log(`Vault ${id} · agent ${short(vault.record.agent)} · guard ${short(vault.record.guard)}`)
-        const { utxos, notes } = await findVaultUtxos(wallet, vault, { network: chain(), arcadeUrl: arcadeUrl(), originator })
+        const { utxos, notes } = await findVaultUtxos(wallet, vault, { network: chain(), arcadeUrl: arcadeUrl(), overlayUrl: overlayUrl(), originator })
         console.log(`  on chain: ${utxos.reduce((s, u) => s + u.satoshis, 0)} sats in ${utxos.length} UTXO(s)`)
         for (const n of notes) console.log(`  note: ${n}`)
         try {
           const s = await getVaultStatus(new AuthFetch(wallet, undefined, undefined, originator), guardUrlOf(args, vault), id)
-          console.log(`  guard: spent ${String(s.spentLast7dSats)} sats in 7 days · policy ${JSON.stringify(s.policy)}`)
+          console.log(`  guard: spent ${String(s.spentLast7dSats)} sats in 7 days · hot wallet ${String(s.hotLast24hSats ?? 0)} sats in 24 h · policy ${JSON.stringify(s.policy)}`)
         } catch (e) {
           console.log(`  guard: unreachable (${(e as Error).message}); withdraw still works without it`)
         }

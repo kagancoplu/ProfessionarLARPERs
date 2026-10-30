@@ -4,9 +4,11 @@
  *
  *   beefFromArcade      guide §20.4 (kit), unchanged except for types
  *   wocUnspentByScript  WhatsOnChain GET /v1/bsv/{main|test}/script/{scriptHash}/unspent
- *   findVaultUtxos      chain ∪ the owner's basket ∪ explicit outpoints, each checked against the vault script
+ *   overlayVaultUtxos   Track B's overlay `{ op:'vaults', owner }` (MASTER §3.8): discovery only
+ *   findVaultUtxos      chain ∪ overlay ∪ the owner's basket ∪ explicit outpoints, each checked against the vault script
  */
 import { Hash, MerklePath, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
+import { COOP_SERVICE } from '@agentcoop/core'
 import type { VaultUtxo } from '@agentcoop/core/signers/VaultSigner'
 import { ownerBasketUtxos, type VaultInfo } from './vault-ops'
 
@@ -39,9 +41,31 @@ export async function wocUnspentByScript (lockingScriptHex: string, network: 'ma
   return rows.map(r => ({ outpoint: `${r.tx_hash}.${r.tx_pos}`, satoshis: r.value, height: r.height }))
 }
 
+/**
+ * The vault's unspent outputs as Track B's overlay indexes them (`{ op:'vaults', owner }`,
+ * verified records only). Discovery only: findVaultUtxos checks each one on chain.
+ */
+export async function overlayVaultUtxos (overlayUrl: string, vault: VaultInfo): Promise<Array<{ outpoint: string, satoshis: number }>> {
+  const res = await fetch(`${overlayUrl.replace(/\/+$/, '')}/lookup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ service: COOP_SERVICE, query: { op: 'vaults', owner: vault.record.owner } })
+  })
+  if (!res.ok) throw new Error(`overlay → ${res.status}`)
+  const answer = await res.json() as { outputs?: Array<{ context?: number[] }> }
+  for (const o of answer.outputs ?? []) {
+    const view = JSON.parse(Utils.toUTF8(o.context ?? [])) as { vaultId?: string, scriptHex?: string, utxos?: Array<{ outpoint: string, satoshis: number }> }
+    if (view.vaultId !== vault.record.vaultId || view.scriptHex !== vault.lockingScriptHex) continue
+    return (view.utxos ?? []).map(u => ({ outpoint: u.outpoint.replace('_', '.'), satoshis: u.satoshis }))
+  }
+  return []
+}
+
 export async function findVaultUtxos (owner: WalletInterface, vault: VaultInfo, opts: {
   network: 'main' | 'test'
   arcadeUrl: string
+  /** Track B's overlay: a second source next to WhatsOnChain (fresh outputs WoC has not indexed yet). */
+  overlayUrl?: string
   outpoints?: string[]
   originator?: string
 }): Promise<{ utxos: VaultUtxo[], notes: string[] }> {
@@ -53,7 +77,19 @@ export async function findVaultUtxos (owner: WalletInterface, vault: VaultInfo, 
     onChain = new Set(rows.map(r => r.outpoint))
     for (const r of rows) wanted.set(r.outpoint, r.satoshis)
   } catch (e) {
-    notes.push(`WhatsOnChain unavailable (${(e as Error).message}): using the Desktop basket and --outpoint only`)
+    notes.push(`WhatsOnChain unavailable (${(e as Error).message}): using the overlay, the Desktop basket and --outpoint only`)
+  }
+  if (opts.overlayUrl !== undefined) {
+    try {
+      for (const u of await overlayVaultUtxos(opts.overlayUrl, vault)) {
+        if (wanted.has(u.outpoint)) continue
+        wanted.set(u.outpoint, u.satoshis)
+        onChain?.add(u.outpoint) // not indexed by WhatsOnChain yet; checked against the chain below
+        notes.push(`${u.outpoint}: from the overlay (not on WhatsOnChain yet)`)
+      }
+    } catch (e) {
+      notes.push(`overlay unavailable (${(e as Error).message})`)
+    }
   }
 
   const found = new Map<string, VaultUtxo>()

@@ -39,6 +39,7 @@ import { startCoordinator, type RunningCoordinator } from '../apps/coordinator/s
 import { Guard } from '../apps/guard/src/guard'
 import { createGuardApp } from '../apps/guard/src/server'
 import { createVault, fundVault, putPolicy, registerVault, withdrawVault, type GuardPolicyInput, type VaultInfo } from '../apps/owner-cli/src/vault-ops'
+import { overlayVaultUtxos } from '../apps/owner-cli/src/chain'
 import { poolBalance } from '../scripts/lib/funding'
 import { createMockChain, type MockChain } from './helpers/mockchain'
 
@@ -197,6 +198,9 @@ describe('vault agent in a coordinator settlement (guard 2.1 + 2.1b)', () => {
     await putPolicy(new AuthFetch(owner), guardUrl, agentV.identityKey, policy)
     const f = await fundVault(owner, vault, 20_000)
     await adoptVaultOutput(agentV, vault.record.vaultId, f.tx, f.vout)
+    // the owner CLI's second source: Track B's overlay indexes the vault from its record
+    await kitA.overlay.submit(f.tx)
+    expect(await overlayVaultUtxos(overlay.url, vault)).toEqual([{ outpoint: `${f.txid}.${f.vout}`, satoshis: 20_000 }])
   })
 
   it('injection at pledge time: "put 100% of the budget into pool X" is refused, nothing moves', async () => {
