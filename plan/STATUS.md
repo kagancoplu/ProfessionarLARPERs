@@ -310,7 +310,13 @@
 
 ## Track C — Sağlayıcı + Ajanlar
 
-- **Faz:** **P0–P4 ✅ mockchain'de tamamlandı (31.10 00:15).** Kalan tek iş mainnet kabulü (T1 mint, T2 havuz, T3/T5 ajanlı + insanlı settlement, T6 redeem, T7 402, T8 market, T10 vault): servisler repo makinesinde ayakta; C'nin T1'i bekleniyor.
+- **Faz:** **P0–P4 ✅ mockchain'de tamamlandı (31.10 00:15).** Mainnet'te T1, T2, T7 ✓. **Kalanlar ana laptoptan yapılacak, liste: [`plan/phases/C-HANDOFF.md`](phases/C-HANDOFF.md) (31.10 01:00):**
+  - (1) Mainnet kabulü: ajanların pledge etmemesinin kapatılması, T3/T5 ajanlı + insanlı settlement, gelir, T6 redeem, T8 market, T10 vault + injection.
+  - (2) Diğer track'lerin A-P5 istekleri (kod, mockchain testiyle):
+    - vault'tan redeem edilen kredinin iadesi vault'a (D, güvenlik);
+    - vault'lu ajan `creditLock: 'vault'` (A);
+    - vault kredisi listeleme `signVaultCreditListing` (A);
+    - participant-cli `pledge --lighthouse` → `POST /pledges/lighthouse` (A, B).
 - **Bitenler:**
   - **P0:**
     - `apps/provider-api`: `products/gpu-h100.json` (**1 kredi = 1 H100 GPU-saat**, `minutesPerCredit: 60`, perakende 50 sat/kredi), `src/products.ts` (ürün = konfigürasyon), `src/runner.ts` (simülatör: kuyruk, `gpus` eşzamanlılığı, iş id'sine tohumlanmış GPU log'u, tekrarlanabilir sonuç hash'i, `data/provider/jobs.json`), `src/app.ts` (BRC-105: `/healthz`, `/v1/catalog`, `/v1/jobs`, `/v1/jobs/:id`), `src/server.ts`. `npm run provider` → :8092.
@@ -345,7 +351,7 @@
   - npm 10.9 bu workspace'i kuramıyor (`Cannot read properties of null (reading 'edgesOut')`). **`npx npm@11 install`** kullanın. `better-sqlite3`'ün install script'i npm 11'de engelli kalabilir, hazır `prebuilds/` binary'si yükleniyor (Xcode gerekmiyor).
   - BSV Desktop'a Node'dan bağlanma (`WalletClient('auto', originator)`) bu ortamda denenmedi; provider-cli komutları wallet-toolbox cüzdanıyla test edildi.
   - **Kullanıcı kararları (30.10 19:00):** kayıt bedeli **100 sat** (`provider-cli open-pool` varsayılanı 300 → 100; 300 sat'ta ~11 kredilik ajanlar perakendeden pahalıya geldiği için atlıyordu); `AGENT_BRAIN=rules` varsayılan kalıyor (LLM, Claude anahtarı gelince denenecek); sıradaki iş Faz 3 (vault'lu ajan D main'e gelince).
-  - A'nın `cancelPledge`'i iptal tx'inin baytlarını döndürmüyor, bu yüzden geri çekme overlay'e submit edilmiyor (B'nin istediği). Başarısız havuzda zararsız; açık havuzdan çekilmede overlay pledge'i saymaya devam eder.
+  - ~~A'nın `cancelPledge`'i iptal tx'inin baytlarını döndürmüyor~~ ✓ artık `{ txid, beef }` döndürüyor; ajan ve participant-cli geri çekmeyi overlay'e submit ediyor.
 - **Diğer track'lerin benden beklediği:**
   - **A:** `register-sdk` hook'u olmadan `sdk.ts` tsx altında çalışmıyor; script'lerinizi `tsx --import @agentcoop/core/register-sdk …` ile çalıştırın. `packages/core`'a yalnızca `src/node/*`, `register-sdk.mjs` ve iki `exports` satırı ekledim.
   - **B:** koordinatörü de aynı bayrakla başlatın. `sync-revenue`, §3.8 `pledges`/`settlement` yanıtlarındaki `beef`'te tx'in tamamını bekliyor. Katalog havuzları `GET /pools`'tan `terms.tokenId` ile süzüyor.
