@@ -12,7 +12,10 @@
  *      OVERLAY_PRIVATE_KEY (hex; generated and saved to ./data/overlay.key if absent),
  *      TOKEN_WHITELIST (comma-separated token ids; empty = all tokens),
  *      CHAINTRACKS_URL or ARCADE_URL (block headers for SPV; default Arcade https://arcade-v2-us-1.bsvblockchain.tech),
- *      CHAIN_TRACKER=woc (use WhatsOnChain instead), WOC_API_KEY (optional WoC key).
+ *      CHAIN_TRACKER=woc (use WhatsOnChain instead), WOC_API_KEY (optional WoC key),
+ *      public edge (B-P5a): RATE_LIMIT (on|off), OVERLAY_RATE_LOOKUP_PER_MIN (60),
+ *      OVERLAY_RATE_SUBMIT_PER_MIN (30). Bodies: JSON 1 MB, binary (/submit BEEF) 10 MB.
+ *      GET /agentcoop/healthz: DB + last admission (overlay-express keeps its own /healthz).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -24,6 +27,8 @@ import { makeAgentCoopLookupFactory, SERVICE } from './AgentCoopLookupService'
 import { OverlayEvents, sseHandler } from './events'
 import { noopAdvertiser } from './noopAdvertiser'
 import { ResilientChainTracker } from './chainTracker'
+import { envInt, rateLimit } from './limits'
+import type { Knex } from 'knex'
 
 export const DEFAULT_CHAINTRACKS_URL = 'https://arcade-v2-us-1.bsvblockchain.tech'
 
@@ -39,6 +44,8 @@ export interface OverlayOptions {
   privateKey?: string
   whitelist?: string[]
   quiet?: boolean
+  /** Per-IP limits (B-P5a); undefined = none (tests). Loopback (the coordinator) is exempt. */
+  rateLimit?: { lookupPerMin: number, submitPerMin: number }
 }
 
 export interface RunningOverlay {
@@ -55,6 +62,14 @@ export async function startOverlay (opts: OverlayOptions): Promise<RunningOverla
     server.configureLogger(silent as typeof console)
   }
   server.configurePort(opts.port)
+  // B-P5a: 1 MB JSON (lookups), 10 MB binary (/submit; a 100-participant settlement BEEF is far below).
+  server.configureEdgePolicy({ jsonBodyLimitBytes: 1024 * 1024, binaryBodyLimitBytes: 10 * 1024 * 1024 })
+  // Registered before start() so they run before overlay-express's own middleware.
+  server.app.set('trust proxy', 'loopback')
+  if (opts.rateLimit !== undefined) {
+    server.app.use(rateLimit({ perMin: opts.rateLimit.lookupPerMin, exemptLoopback: true, match: req => req.method === 'POST' && req.path === '/lookup' }))
+    server.app.use(rateLimit({ perMin: opts.rateLimit.submitPerMin, exemptLoopback: true, match: req => req.method === 'POST' && req.path === '/submit' }))
+  }
   server.configureNetwork(opts.network ?? 'main')
   const network = opts.network ?? 'main'
   if (opts.chainTracker !== undefined) {
@@ -73,9 +88,25 @@ export async function startOverlay (opts: OverlayOptions): Promise<RunningOverla
   ))
   const events = new OverlayEvents()
   events.setMaxListeners(100)
-  server.configureLookupServiceWithKnex(SERVICE, makeAgentCoopLookupFactory(events))
+  let knex: Knex | undefined
+  server.configureLookupServiceWithKnex(SERVICE, makeAgentCoopLookupFactory(events, k => { knex = k }))
   // Registered before start() so it is matched before overlay-express's own middleware.
   server.app.get('/agentcoop/events', sseHandler(events))
+  const startedAt = Date.now()
+  server.app.get('/agentcoop/healthz', (_req, res) => {
+    void (async () => {
+      let db = false
+      try { await knex?.raw('select 1'); db = knex !== undefined } catch { db = false }
+      res.set('Cache-Control', 'no-store')
+      res.status(db ? 200 : 503).json({
+        ok: db,
+        db,
+        lastEventAt: events.lastEventAt !== undefined ? new Date(events.lastEventAt).toISOString() : null,
+        sseClients: events.streams.size,
+        uptimeS: Math.round((Date.now() - startedAt) / 1000)
+      })
+    })()
+  })
   await server.configureEngine(false) // false = no SHIP/SLAP, so no MongoDB
   await server.start()
   return {
@@ -106,7 +137,10 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
     privateKey: loadOrCreateKey('./data/overlay.key'),
     chainSource: process.env.CHAIN_TRACKER === 'woc' ? 'woc' : 'arcade',
     chaintracksUrl: process.env.CHAINTRACKS_URL ?? process.env.ARCADE_URL,
-    whitelist: (process.env.TOKEN_WHITELIST ?? '').split(',').map(s => s.trim()).filter(Boolean)
+    whitelist: (process.env.TOKEN_WHITELIST ?? '').split(',').map(s => s.trim()).filter(Boolean),
+    ...(process.env.RATE_LIMIT === 'off'
+      ? {}
+      : { rateLimit: { lookupPerMin: envInt(process.env.OVERLAY_RATE_LOOKUP_PER_MIN, 60), submitPerMin: envInt(process.env.OVERLAY_RATE_SUBMIT_PER_MIN, 30) } })
   })
   console.log(`AgentCoop overlay running at ${overlay.url}  (topic ${TOPIC}, service ${SERVICE}, SPV headers: ${process.env.CHAIN_TRACKER === 'woc' ? 'WhatsOnChain' : (process.env.CHAINTRACKS_URL ?? process.env.ARCADE_URL ?? DEFAULT_CHAINTRACKS_URL)})`)
 }

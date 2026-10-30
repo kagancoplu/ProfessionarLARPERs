@@ -25,6 +25,8 @@ export interface ApiDeps {
   height: HeightSource
   /** Pools with a signing round in progress (Faz 2 engine). */
   locking: () => ReadonlySet<string>
+  /** WS clients (healthz). */
+  feedCounts?: () => { clients: number, proven: number }
   /** Round state for a pool, when the engine runs. */
   coordinatorStatus?: (poolId: string) => CoordinatorStatus | undefined
 }
@@ -136,11 +138,22 @@ export function createApiRouter (deps: ApiDeps): Router {
     else res.json(metricsCache.value)
   }))
 
+  const startedAt = Date.now()
   r.get('/healthz', wrap(async (_req, res) => {
     let overlay = true
-    try { await deps.overlay.pools() } catch { overlay = false }
+    let openPools: number | null = null
+    try { openPools = (await deps.overlay.pools()).filter(p => p.status === 'open').length } catch { overlay = false }
     const height = await deps.height.height()
-    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null, engine: deps.coordinatorStatus !== undefined })
+    res.status(overlay ? 200 : 503).json({
+      ok: overlay,
+      overlay,
+      height: height ?? null,
+      arcade: height !== undefined,
+      engine: deps.coordinatorStatus !== undefined,
+      openPools,
+      ws: deps.feedCounts?.() ?? null,
+      uptimeS: Math.round((Date.now() - startedAt) / 1000)
+    })
   }))
 
   return r

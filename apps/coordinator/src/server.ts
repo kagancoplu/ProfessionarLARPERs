@@ -8,7 +8,9 @@
  *
  * Env: PORT (8090), OVERLAY_URL (http://localhost:8080), ARCADE_URL (block
  * height for `failed`), COORDINATOR_DB (./data/coordinator.db), COORDINATOR_POLL_MS (5000),
- * ROUND_TIMEOUT_MS (60000), MAX_ROUNDS (3), SPENT_CHECK (woc|none), NETWORK (main|test).
+ * ROUND_TIMEOUT_MS (60000), MAX_ROUNDS (3), SPENT_CHECK (woc|none), NETWORK (main|test),
+ * public edge (B-P5a): RATE_LIMIT (on|off), RATE_GET_PER_MIN (120), RATE_POST_PER_MIN (10),
+ * WS_MAX_PER_IP (20), WS_MAX_CLIENTS (1000), WS_MAX_MSGS_PER_10S (40).
  */
 import { createServer, type Server } from 'node:http'
 import { resolve } from 'node:path'
@@ -20,6 +22,7 @@ import { configFromEnv, type CoordinatorConfig } from './config'
 import { CoordinatorEngine } from './engine'
 import { subscribeOverlayEvents } from './events'
 import { jsonLogger, type Logger } from './log'
+import { rateLimit } from '../../../packages/overlay/src/limits'
 import { coreProtocol, type SettlementProtocol } from './protocol'
 import { noSpentChecker, WocSpentChecker, type SpentChecker } from './spent'
 import { OverlayLookup } from './overlay'
@@ -51,20 +54,28 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
     store,
     height: opts.height ?? new ArcadeHeight(config.arcadeUrl),
     locking: () => engine?.locking() ?? new Set<string>(),
+    feedCounts: () => feed.counts(),
     ...(opts.protocol !== undefined ? { coordinatorStatus: (poolId: string) => engine?.status(poolId) } : {})
   }
   const app = express()
+  // Behind Caddy (B-P5a): req.ip is the client from X-Forwarded-For; direct local callers stay loopback.
+  app.set('trust proxy', 'loopback')
+  app.disable('x-powered-by')
   app.use((req, res, next) => {
-    // Read endpoints are public (Faz 5 tightens CORS and adds rate limits).
+    // Public API: anyone may read; POSTs verify signatures and unspent outputs themselves.
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
     if (req.method === 'OPTIONS') { res.sendStatus(204); return }
     next()
   })
+  if (config.rateLimit !== undefined) {
+    app.use(rateLimit({ perMin: config.rateLimit.getPerMin, exemptLoopback: true, match: req => req.method === 'GET' }))
+    app.use(rateLimit({ perMin: config.rateLimit.postPerMin, exemptLoopback: true, match: req => req.method === 'POST' }))
+  }
   app.use(createApiRouter(deps))
   const server = createServer(app)
-  const feed = new Feed(server, deps, config.pollMs)
+  const feed = new Feed(server, deps, config.pollMs, config.feedLimits)
   if (opts.protocol !== undefined) {
     engine = new CoordinatorEngine({
       overlay: deps.overlay,

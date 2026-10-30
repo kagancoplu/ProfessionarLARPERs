@@ -2,11 +2,13 @@
  * TEST-ONLY agent on the coordinator's WS that behaves like Track C's agents
  * should: on `sign_request` it checks the plan with Track A's
  * verifySettlementPlan (lineage included) and signs its input with
- * signSettlementInput. `silent` never answers (griefing / offline agent).
+ * signSettlementInput. `silent` never answers (griefing / offline agent);
+ * `delayMs` waits before answering.
  */
 import { P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan, type buildPledge, type Offer, type SettlementPlan } from '@agentcoop/core'
 import type { Transaction, WalletInterface } from '@agentcoop/core/sdk'
-import { WebSocket } from 'ws'
+import type { WebSocket } from 'ws'
+import { connectCoordinator } from '../../src/client'
 
 export interface AgentBot { ws: WebSocket, messages: any[], plans: SettlementPlan[] }
 
@@ -16,17 +18,13 @@ export async function startAgentBot (
   identity: string,
   pledge: Awaited<ReturnType<typeof buildPledge>>,
   fetchTx: (txid: string) => Promise<Transaction>,
-  opts: { silent?: boolean } = {}
+  opts: { silent?: boolean, delayMs?: number } = {}
 ): Promise<AgentBot> {
-  const ws = new WebSocket(`${coopUrl.replace('http', 'ws')}/ws`)
-  const messages: any[] = []
   const plans: SettlementPlan[] = []
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
-  ws.on('message', d => {
-    const msg = JSON.parse(d.toString())
-    messages.push(msg)
+  const onMessage = (msg: any): void => {
     if (msg.type !== 'sign_request' || opts.silent === true) return
     void (async () => {
+      if (opts.delayMs !== undefined) await new Promise(resolve => setTimeout(resolve, opts.delayMs))
       const offer = await (await fetch(`${coopUrl}/offers/${msg.poolId}`)).json() as Offer
       try {
         await verifySettlementPlan(msg.plan, offer, pledge.outpoint, {
@@ -43,7 +41,10 @@ export async function startAgentBot (
       const unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, new P2pkhWalletSigner(wallet, { protocolID: pledge.instructions.protocolID, keyID: pledge.instructions.keyID }))
       ws.send(JSON.stringify({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: msg.yourInputIndex, unlockingScriptHex: unlock.toHex() }))
     })()
-  })
-  ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [] }))
-  return { ws, messages, plans }
+  }
+  // Proven hello (B-P5a): the coordinator only sends sign_request to sessions that signed its challenge.
+  const session = await connectCoordinator(coopUrl, wallet, { onMessage })
+  if (session.identity !== identity) throw new Error('agent bot: wallet identity mismatch')
+  const ws = session.ws
+  return { ws, messages: session.messages, plans }
 }
