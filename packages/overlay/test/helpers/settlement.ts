@@ -43,12 +43,12 @@ export interface Coin {
   key: KeyRef
 }
 
-const p2pkhFor = async (wallet: WalletInterface, key: KeyRef): Promise<LockingScript> => {
+export const p2pkhFor = async (wallet: WalletInterface, key: KeyRef): Promise<LockingScript> => {
   const { publicKey } = await wallet.getPublicKey({ ...key, counterparty: 'anyone', forSelf: true })
   return new P2PKH().lock(PublicKey.fromString(publicKey).toAddress())
 }
 
-const coinFrom = (atomicBeef: number[] | Uint8Array, lockingScript: LockingScript, key: KeyRef): Coin => {
+export const coinFrom = (atomicBeef: number[] | Uint8Array, lockingScript: LockingScript, key: KeyRef): Coin => {
   const tx = Transaction.fromAtomicBEEF(Array.from(atomicBeef))
   const vout = tx.outputs.findIndex(o => o.lockingScript.toHex() === lockingScript.toHex())
   if (vout === -1) throw new Error('output not found by locking script')

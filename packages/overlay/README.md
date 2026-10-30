@@ -2,7 +2,7 @@
 
 AgentCoop's overlay: topic **`tm_agentcoop`**, lookup service **`ls_agentcoop`**. It is the BSV-21 overlay from the starter kit (`docs/starter/bsv21-token-kit/overlay/`), copied and renamed. The token rules (`src/kit/rules.ts`) are the kit's, unchanged: a credit output is admitted only if it descends, input by input, from its deploy.
 
-Status: **Track B, Faz 0**. Faz 1 adds AgentCoop records (pools, pledges, settlements, offers, listings, vaults) to the same topic. See `plan/track-B-overlay-coordinator.md`.
+Status: **Track B, Faz 1**: AgentCoop records (pools, pledges, settlements) are indexed in the same topic. Listings and vaults are stored raw until Faz 3. See `plan/track-B-overlay-coordinator.md` and `plan/phases/B-P1.md`.
 
 ## Run
 
@@ -12,7 +12,7 @@ Node 22 or newer (`nvm use 22`).
 cd packages/overlay
 npm install
 npm run overlay          # http://localhost:8080
-npm test                 # mock chain: validation test 1 (mixed settlement) and the size model
+npm test                 # mock chain: validation test 1, the size model, pool/pledge/settlement indexing
 npm run arcade-policy    # validation test 8: Arcade policy + settlement size/fee table
 ```
 
@@ -42,7 +42,22 @@ curl -s -X POST http://localhost:8080/lookup -H 'Content-Type: application/json'
   -d '{"service":"ls_agentcoop","query":{"op":"identity","identityKey":"03…"}}'
 ```
 
-Queries in Faz 0 (the kit's, MASTER §3.8): `identity`, `utxos`, `token`, `tokens`, `outpoint`, `history`. Each returned output has a BEEF and a UTF-8 JSON `context` (`tokenId`, `amt`, `ownerPkh`, `spent`, `spendingTxid`, `index`, `sym`, `dec`). Faz 1 adds `pools`, `pool`, `pledges`, `settlement`, `listings`, `vaults`.
+Queries (MASTER §3.8). Each returned output carries a BEEF and a UTF-8 JSON `context`.
+
+| Query | Output → `context` |
+|---|---|
+| `{ op:'pools', status? }` / `{ op:'pool', poolId }` | the pool's OP_RETURN record → `PoolView`: `poolId`, `terms` (with `poolId`), `status` (`open`/`settled`/`cancelled`), `pledgedCredits`, `pledgeCount`, `target`, `settledTxid?`, `invalidReason?` |
+| `{ op:'pledges', poolId, includeSpent?, includeInvalid? }` | pledge coins → `PledgeView` (`valid`, `invalidReason?`, `spent`, `spendingTxid?`); order: height, then txid |
+| `{ op:'settlement', poolId }` | the settle record → `{ poolId, txid, pledgeListHash, inputs }` |
+| kit: `identity`, `utxos`, `token`, `tokens`, `outpoint`, `history` | credit outputs → `tokenId`, `amt`, `ownerPkh`, `spent`, `spendingTxid`, `index`, `sym`, `dec` |
+
+Types: `src/views.ts` (no runtime imports, safe to import from other packages).
+
+### How records are indexed
+
+- **Topic manager** (`src/AgentCoopTopicManager.ts`): the kit's credit rules, unchanged, plus the first well-formed `OP_FALSE OP_RETURN "agentcoop" <op> <json>` output (all json values strings, `src/records.ts`). That record output is admitted (0 sat, never spent) because lookup answers must point at stored outputs. For a pledge, the pledge coin (out0) is admitted too. Every previous topic coin is retained, so cancelled and settled pledges stay as history.
+- **Lookup** (`whole-tx` mode) stores pools, pledges and settlements. Whether a pledge counts is decided **at query time** against its pool's terms, so arrival order does not matter: pool `open`; `minCredits ≤ credits ≤ N`; out1 pays at least `feeSats` to `payScriptHex`; out0 ≥ `ceil(credits × priceSats / N) + 1`.
+- A settle record counts only if the transaction spends the pool's credit UTXO at input 0. A pool whose credit UTXO is spent by anything else is `cancelled`.
 
 ## Validation results
 
