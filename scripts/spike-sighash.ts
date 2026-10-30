@@ -1,7 +1,7 @@
 /**
  * Verification tests 2 + 3 (FINAL-IDEA §12.1) on MAINNET with BSV Desktop.
  *
- *   npx tsx scripts/spike-sighash.ts            (BSV Desktop open and unlocked, ≥ 2,000 sats)
+ *   npx tsx --import @agentcoop/core/register-sdk scripts/spike-sighash.ts            (BSV Desktop open and unlocked, ≥ 2,000 sats)
  *
  * 1. Reserve a 1,000-sat coin on a derived pledge key ([1,'agentcoop pledge'],
  *    basket 'agentcoop').

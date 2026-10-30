@@ -24,7 +24,10 @@
     "web": "npm -w apps/web run dev",
     "web:mock": "npm -w apps/web run dev:mock",
     "web:build": "npm -w apps/web run build",
-    "web:test": "npm -w apps/web test"
+    "web:test": "npm -w apps/web test",
+    "infra": "node infra/run.mjs",
+    "overlay": "npm run overlay -w @agentcoop/overlay",
+    "coordinator": "npm run coordinator -w @agentcoop/coordinator"
   },
   "dependencies": {
     "@bsv/402-pay": "0.3.3",

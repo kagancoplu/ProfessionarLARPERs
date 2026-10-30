@@ -2,9 +2,9 @@
  * Walking skeleton on MAINNET (track A 1.7, sync point S1): one provider and two
  * agents, server wallets only. Same flow as test/skeleton.mockchain.test.ts.
  *
- *   OVERLAY_URL=http://localhost:8080 npx tsx scripts/skeleton.ts
+ *   OVERLAY_URL=http://localhost:8080 npx tsx --import @agentcoop/core/register-sdk scripts/skeleton.ts
  *
- * Needs Track D's scripts/wallets.ts (`openWallet(name)` → funded wallet-toolbox
+ * Needs Track D's scripts/wallets.ts (`openWallet(name)` → `{ wallet, close }`, funded wallet-toolbox
  * wallets 'provider-api', 'agent-1', 'agent-2', MASTER-PLAN §6.2) and a running
  * token overlay (Track B's tm_agentcoop, or the kit's `npm run overlay` with
  * OVERLAY_TOPIC=tm_tokenkit OVERLAY_SERVICE=ls_tokenkit). Small amounts:
@@ -29,8 +29,12 @@ const log = (what: string, txid: string): void => console.log(`${what.padEnd(28)
 
 async function main (): Promise<void> {
   const walletsModule = './wallets.ts' // Track D (MASTER-PLAN §6.2); loaded at runtime so typecheck does not depend on it
-  const { openWallet } = await import(walletsModule) as { openWallet: (name: string) => Promise<WalletInterface> }
-  const [provider, agent1, agent2] = await Promise.all(['provider-api', 'agent-1', 'agent-2'].map(openWallet))
+  const { openWallet } = await import(walletsModule) as { openWallet: (name: string) => Promise<{ wallet: WalletInterface, close: () => Promise<void> }> }
+  const opened = await Promise.all(['provider-api', 'agent-1', 'agent-2'].map(async n => await openWallet(n)))
+  try { await run(...opened.map(o => o.wallet) as [WalletInterface, WalletInterface, WalletInterface]) } finally { for (const o of opened) await o.close() }
+}
+
+async function run (provider: WalletInterface, agent1: WalletInterface, agent2: WalletInterface): Promise<void> {
   const overlay = (): OverlayClient => new OverlayClient(OVERLAY, undefined, 'main', ARCADE, TOPIC, SERVICE)
   const kitP = new TokenKit(provider, overlay())
   const kits = [new TokenKit(agent1, overlay()), new TokenKit(agent2, overlay())]

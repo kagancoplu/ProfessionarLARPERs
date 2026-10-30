@@ -6,11 +6,14 @@
  *   out 2   OP_RETURN agentcoop pledge { PledgeRecord }
  *
  * One active pledge per basket (blind-hash-signing damage bound, FINAL-IDEA §4.9).
+ * A vault pledge (signer 'vault', track A 3.1) has the same layout with the coin on
+ * the vault script; it is built by Track D's pledgeFromVault (agent + guard 2-of-2).
  */
 import { Beef, LockingScript, Random, Transaction, Utils, type WalletInterface } from '../sdk'
 import { AgentCoopError } from '../errors'
 import { buildOpReturn } from '../scripts/opreturn'
 import { signP2pkhWithScope } from '../signers/sighash'
+import { pledgeFromVault, type Cosigner, type VaultPledge, type VaultUtxo } from '../signers/VaultSigner'
 import { PLEDGE_BASKET, PLEDGE_PROTOCOL, P2PKH_UNLOCKING_SCRIPT_LENGTH, type PledgeRecord, type PoolTerms } from '../types'
 import { coopOutpoint, parseOutpoint, toWalletOutpoint } from '../util/outpoint'
 import { derivedP2pkhHex } from './reserve'
@@ -30,16 +33,32 @@ export const DEFAULT_PLEDGE_BUFFER_SATS = 300
 export const pledgeAmount = (terms: PoolTerms, credits: string, bufferSats = DEFAULT_PLEDGE_BUFFER_SATS): number =>
   Number(creditsCost(terms, credits)) + 1 + bufferSats
 
+export interface PledgeOptions { tokenIndex: number, originator?: string, bufferSats?: number, allowMultiple?: boolean }
+export interface P2pkhPledge { txid: string, outpoint: string, record: PledgeRecord, instructions: PledgeInstructions, satoshis: number, beef: number[] }
+/** What a vault pledge needs besides the terms: the vault UTXO it spends and the guard's co-signer. */
+export interface VaultPledgeOptions extends PledgeOptions {
+  vault: { vaultId: string, utxo: VaultUtxo, cosign: Cosigner, poolBEEF?: number[] | string }
+}
+
+export async function buildPledge (wallet: WalletInterface, terms: PoolTerms, credits: string, signer: 'vault', vaultScript: LockingScript | undefined, opts: VaultPledgeOptions): Promise<VaultPledge>
+// Last, so ReturnType<typeof buildPledge> stays the P2PKH pledge for existing callers.
+export async function buildPledge (wallet: WalletInterface, terms: PoolTerms, credits: string, signer: 'p2pkh', vaultScript?: undefined, opts?: PledgeOptions): Promise<P2pkhPledge>
 export async function buildPledge (
   wallet: WalletInterface,
   terms: PoolTerms,
   credits: string,
   signer: 'p2pkh' | 'vault',
   vaultScript?: LockingScript,
-  opts: { tokenIndex: number, originator?: string, bufferSats?: number, allowMultiple?: boolean } = { tokenIndex: 0 }
-): Promise<{ txid: string, outpoint: string, record: PledgeRecord, instructions: PledgeInstructions, satoshis: number, beef: number[] }> {
+  opts: PledgeOptions | VaultPledgeOptions = { tokenIndex: 0 }
+): Promise<P2pkhPledge | VaultPledge> {
   validateTerms(terms)
-  if (signer === 'vault' || vaultScript !== undefined) throw new AgentCoopError('NOT_IMPLEMENTED', 'vault pledges arrive in track A Faz 3')
+  if (signer === 'vault') {
+    if (!('vault' in opts)) throw new AgentCoopError('BAD_PLEDGE', 'a vault pledge needs opts.vault { vaultId, utxo, cosign }')
+    const { vaultId, utxo, cosign, poolBEEF } = opts.vault
+    if (vaultScript !== undefined && vaultScript.toHex() !== utxo.lockingScriptHex) throw new AgentCoopError('BAD_PLEDGE', `vault UTXO ${utxo.outpoint} is not on the given vault script`)
+    return await pledgeFromVault(wallet, { vaultId, utxo, terms, credits, tokenIndex: opts.tokenIndex, cosign, poolBEEF, bufferSats: opts.bufferSats, allowMultiple: opts.allowMultiple, originator: opts.originator })
+  }
+  if (vaultScript !== undefined) throw new AgentCoopError('BAD_PLEDGE', 'vaultScript is only for signer \'vault\'')
   if (BigInt(credits) < BigInt(terms.minCredits) || BigInt(credits) > BigInt(terms.credits)) throw new AgentCoopError('BAD_PLEDGE', `credits must be in ${terms.minCredits}..${terms.credits}`)
   if (opts.allowMultiple !== true) {
     // Settlement change also lands in this basket (marked change:true); it is not a pledge.

@@ -201,6 +201,8 @@ cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · recla
 publishOffer(wallet, offer, originator?): Promise<{ txid, beef }> · offerFromRecord(record, terms, poolTx): Offer · offerRecordOf(offer)
 // hata kodları (AgentCoopError.code): BAD_OP_RETURN, BAD_TERMS, BAD_OFFER, BAD_PLEDGE, BAD_PLAN, BAD_SIGNATURE, BAD_LISTING, LINEAGE_FAILED, DEADLINE_PASSED, NOT_IMPLEMENTED
 // parametre şekilleri: buildPledge(..., opts: { tokenIndex, originator?, bufferSats?, allowMultiple? })
+//   signer 'vault' (A.3.1): opts.vault: { vaultId, utxo: VaultUtxo, cosign: Cosigner, poolBEEF? } zorunlu; vaultScript verilirse utxo'nun script'i olmalı.
+//   D'nin pledgeFromVault'una devreder → VaultPledge { txid, outpoint, record, satoshis, beef, instructions: VaultPledgeInstructions }
 //   planSettlement(offer, PledgeCandidate[], { height, satsPerKb, offerSourceTx }, { round?, exclude? })
 //   verifySettlementPlan(plan, offer, myOutpoint, { expectedCredits, expectedCreditPkh?, maxFeeSats?, verifyLineage? })
 ```
