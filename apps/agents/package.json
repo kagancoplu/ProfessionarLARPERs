@@ -10,7 +10,8 @@
   "dependencies": {
     "@agentcoop/core": "*",
     "@anthropic-ai/sdk": "1.3.0",
-    "ws": "8.22.0"
+    "ws": "8.22.0",
+    "@agentcoop/coordinator": "0.1.0"
   },
   "devDependencies": {
     "@types/ws": "8.18.1"

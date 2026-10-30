@@ -6,6 +6,8 @@
  *   coord.    locks in → every agent checks the whole settlement and signs
  *   chain     ONE transaction pays the provider and delivers every share
  *   agents    redeem credits and run their GPU jobs on them
+ *   market    an agent lists credits it no longer needs; another one, short
+ *             for a big job, buys them in one tx instead of paying retail
  *
  * Every transaction is real and verified; only the chain is simulated.
  * Logs: data/demo-k1/agents/<name>/{decisions,activity}.log
@@ -44,6 +46,17 @@ try {
   for (const a of agents) {
     for (const need of nextJobs(a.agent.profile, 2)) await a.procurement.runJob(need)
   }
+
+  step('6. Market: credits an agent will not use go to one that needs them')
+  const [finetune, evalAgent] = agents
+  note('eval\'s owner pauses the nightly suite for the rest of the week → its forecast drops')
+  evalAgent.agent.profile.history.dailyMinutes = new Array(14).fill(20)
+  await evalAgent.procurement.considerListing()
+  note('finetune has a big job coming and too few credits left')
+  const owned = Number(await finetune.agent.ownedCredits())
+  const prepaid = await finetune.agent.prepaidMinutes()
+  // A job worth what it holds plus 5 more credits: exactly one listed lot short.
+  await finetune.procurement.runJob({ kind: 'finetune', minutes: prepaid + (owned + 5) * 60 })
   await summary(agents, out)
 } finally {
   await stack.close()

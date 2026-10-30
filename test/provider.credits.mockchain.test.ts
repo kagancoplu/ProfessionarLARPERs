@@ -112,7 +112,8 @@ describe('provider-cli mint', () => {
 describe('credits at the provider (one credit = one GPU-hour, used by the minute)', () => {
   it('advertises the credit token, its unit and where to redeem it', async () => {
     const catalog = await agent.catalog()
-    expect(catalog.products[0]).toMatchObject({ tokenId, unit: 'GPU-hour', minutesPerCredit: 60, retailSatsPerCredit: 50 })
+    expect(catalog.products[0]).toMatchObject({ tokenId, unit: 'GPU-hour', minutesPerCredit: 60, retailSatsPerCredit: 50, demoPricing: true })
+    expect(catalog.pricingNote).toMatch(/^demo pricing:/)
     expect(catalog.credits).toEqual({ maxRedeem: 20, maxPending: 20, redeemTo: server })
     expect(await agent.ownedCredits()).toBe(100n)
   })

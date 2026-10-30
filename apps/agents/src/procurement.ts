@@ -2,7 +2,7 @@
  * Procurement router (track C 2.2): how the agent gets the GPU its work needs,
  * cheapest first:
  *   (a) credits it already holds → redeem + run the job for free
- *   (b) a market listing cheaper than retail (Faz 3: not yet)
+ *   (b) market listings that cover the shortfall for less than retail (market.ts)
  *   (c) an open pool the brain says yes to → pledge for the coming week
  *   (d) otherwise retail (HTTP 402)
  *
@@ -13,6 +13,7 @@ import type { PoolTerms } from '@agentcoop/core'
 import type { Agent } from './agent'
 import { describe, enforcePolicy, poolCost, type Brain, type Decision, type DecisionContext, type PoolOpportunity } from './brain'
 import { forecastNeed } from './forecast'
+import type { Market } from './market'
 import type { PoolParticipant } from './participant'
 import type { JobView } from './providerClient'
 import type { JobNeed } from './workload'
@@ -33,6 +34,8 @@ export interface ProcurementOptions {
   brain: Brain
   /** Pool side; without it the agent only uses credits and retail. */
   participant?: PoolParticipant
+  /** Listings: buy cheaper than retail, sell credits beyond the need. */
+  market?: Market
   coopApiUrl?: string
 }
 
@@ -129,13 +132,42 @@ export class Procurement {
 
   /** (a)/(b)/(d) for the job at hand; (c) only explains where a pledge stands. */
   async runJob (need: JobNeed): Promise<JobView> {
-    const { agent, participant } = this.opts
+    const { agent, participant, market } = this.opts
+    let marketNote = market === undefined ? 'off' : 'nothing cheaper than retail'
+    if (market !== undefined) {
+      // (b) The shortfall in whole credits, if the provider's redeem cap lets credits pay for this job at all.
+      const product = await agent.product()
+      const catalog = await agent.catalog()
+      if (product.tokenId !== null) {
+        const mpc = product.minutesPerCredit ?? 1
+        const prepaid = await agent.prepaidMinutes()
+        const missing = Math.ceil((need.minutes - prepaid) / mpc)
+        const room = Math.min(catalog.credits.maxRedeem, Math.floor((catalog.credits.maxPending * mpc - prepaid) / mpc))
+        const owned = missing > 0 ? Number(await agent.ownedCredits()) : 0
+        if (missing > owned && missing <= room) {
+          try {
+            const bought = await market.buy(missing - owned)
+            if (bought !== undefined) marketNote = `bought ${bought.credits}`
+          } catch (e) {
+            marketNote = `failed (${(e as Error).message})`
+          }
+        } else if (missing > room) marketNote = 'job too big for the redeem cap'
+      }
+    }
     const job = await agent.runJob(need)
     if (job.payment.method === 'sats') {
       const pool = participant?.busy === true ? `pledged ${participant.active!.credits} to "${participant.active!.label}", not settled yet` : 'no pledge waiting'
-      agent.log.info(`Route: credits ✗ → market ✗ (Faz 3) → pool: ${pool} → retail.`)
+      agent.log.info(`Route: credits ✗ → market: ${marketNote} → pool: ${pool} → retail.`)
     }
     return job
+  }
+
+  /** Sell what the forecast says the agent will not use (priced off the last pool it bought in). */
+  async considerListing (): Promise<void> {
+    const { participant, market } = this.opts
+    if (market === undefined) return
+    const settled = participant?.history.filter(p => p.status === 'settled').at(-1)
+    await market.considerListing(settled?.pricePerCredit)
   }
 
   /** One step of the agent's day: look at pools, then do the next piece of work. */
@@ -145,6 +177,12 @@ export class Procurement {
     } catch (e) {
       this.opts.agent.log.info(`Pool check failed: ${(e as Error).message}`)
     }
-    return await this.runJob(need)
+    const job = await this.runJob(need)
+    try {
+      await this.considerListing()
+    } catch (e) {
+      this.opts.agent.log.info(`Listing failed: ${(e as Error).message}`)
+    }
+    return job
   }
 }

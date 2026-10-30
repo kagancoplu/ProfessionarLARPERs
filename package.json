@@ -27,7 +27,8 @@
     "web:test": "npm -w apps/web test",
     "infra": "node infra/run.mjs",
     "overlay": "npm run overlay -w @agentcoop/overlay",
-    "coordinator": "npm run coordinator -w @agentcoop/coordinator"
+    "coordinator": "npm run coordinator -w @agentcoop/coordinator",
+    "participant-cli": "tsx --import @agentcoop/core/register-sdk apps/participant-cli/src/cli.ts"
   },
   "dependencies": {
     "@bsv/402-pay": "0.3.3",

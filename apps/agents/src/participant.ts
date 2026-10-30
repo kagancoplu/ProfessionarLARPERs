@@ -32,6 +32,8 @@ export interface ActivePledge {
   tokenIndex: number
   instructions: PledgeInstructions
   status: PledgeStatus
+  /** What the pool charges per credit (P / N): the market ask is based on it. */
+  pricePerCredit: number
   /** The last plan this agent signed (needed to take its change back). */
   plan?: SettlementPlan
   settledTxid?: string
@@ -117,6 +119,13 @@ export class PoolParticipant {
     return this.active !== undefined && (this.active.status === 'pending' || this.active.status === 'signed')
   }
 
+  /** Take over a pledge made earlier (e.g. by `participant-cli pledge` in another process) to sign its round. */
+  adopt (pledge: ActivePledge): void {
+    if (this.busy && this.active!.outpoint !== pledge.outpoint) throw new Error(`already following pledge ${this.active!.outpoint}`)
+    this.active = pledge
+    if (!this.history.includes(pledge)) this.history.push(pledge)
+  }
+
   async pledge (terms: PoolTerms, credits: number): Promise<ActivePledge> {
     if (this.busy) throw new Error(`already pledged to ${this.active!.poolId}`)
     // A failed (or left-out) pledge's coin is still in the wallet: withdraw it first.
@@ -132,7 +141,10 @@ export class PoolParticipant {
     const tokenIndex = await this.opts.kit.nextIndex(me)
     const p = await buildPledge(this.opts.wallet, terms, String(credits), 'p2pkh', undefined, { tokenIndex })
     await this.opts.kit.overlay.submit(p.beef)
-    this.active = { poolId: terms.poolId, label: terms.label, outpoint: p.outpoint, credits: p.record.credits, tokenIndex, instructions: p.instructions, status: 'pending' }
+    this.active = {
+      poolId: terms.poolId, label: terms.label, outpoint: p.outpoint, credits: p.record.credits, tokenIndex, instructions: p.instructions,
+      status: 'pending', pricePerCredit: Number(terms.priceSats) / Number(terms.credits)
+    }
     this.history.push(this.active)
     this.opts.log.decision(`Pledged ${credits} credits to "${terms.label}": ${p.satoshis.toLocaleString('en-US')} sat stay in my wallet as a pledge coin until settlement. https://whatsonchain.com/tx/${p.txid}`)
     return this.active
