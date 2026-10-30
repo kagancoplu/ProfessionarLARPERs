@@ -3,7 +3,7 @@
  *
  *   whoami
  *   mint --sym GPUMIN --amt 100000 --dec 0 [--product gpu-h100]
- *   open-pool --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
+ *   open-pool --credits 1000 --price 25000 --deadline +144 --fee 100 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
  *   post-offer <poolId>   register a signed offer with the coordinator again
  *   cancel-pool <poolId>
  *   list-pools
@@ -26,7 +26,7 @@ loadDotEnv()
 
 const USAGE = `usage: provider-cli <whoami|mint|open-pool|post-offer|cancel-pool|list-pools|sync-revenue|sweep-revenue> [options]
   mint        --sym GPUMIN --amt 100000 --dec 0 [--product gpu-h100]
-  open-pool   --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
+  open-pool   --credits 1000 --price 25000 --deadline +144 --fee 100 --label "8×H100 · 1 week" [--min 10] [--product gpu-h100]
   post-offer  <poolId>
   cancel-pool <poolId>`
 
@@ -41,7 +41,7 @@ async function main (): Promise<void> {
       credits: { type: 'string' },
       price: { type: 'string' },
       deadline: { type: 'string', default: '+144' },
-      fee: { type: 'string', default: '300' },
+      fee: { type: 'string', default: '100' }, // registration fee (sats); 100 keeps small pledges cheaper than retail
       min: { type: 'string', default: '1' },
       label: { type: 'string' }
     }

@@ -3,7 +3,7 @@
 ```bash
 npm run provider-cli -- whoami
 npm run provider-cli -- mint --sym GPUMIN --amt 100000 --dec 0
-npm run provider-cli -- open-pool --credits 1000 --price 25000 --deadline +144 --fee 300 --label "8×H100 · 1 week" --min 10
+npm run provider-cli -- open-pool --credits 1000 --price 25000 --deadline +144 --fee 100 --label "8×H100 · 1 week" --min 10
 npm run provider-cli -- post-offer <poolId>
 npm run provider-cli -- list-pools
 npm run provider-cli -- cancel-pool <poolId>

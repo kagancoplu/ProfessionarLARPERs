@@ -81,6 +81,12 @@
 
 **Kabul:** `npm run demo:k1` mockchain'de ve mainnet'te uçtan uca; `decisions.log` anlamlı; dolmayan havuz senaryosu mainnet'te; S2 C ✓.
 
+**Uygulama notları (30.10, Faz 2 sonu):**
+- 2.2 router: havuz adımı önümüzdeki hafta içindir; o an bekleyen iş krediyle ya da perakendeyle koşar. Market adımı (b) Faz 3'te.
+- 2.3 beyin: `AGENT_BRAIN=rules` varsayılan. `llm` = `claude-opus-5-5`, JSON-schema yapılandırılmış çıktı, `fallbacks: 'default'`; sağlayıcı metni veri olarak geçiyor; refusal/hata/şema dışı yanıtta kurallara düşüyor. Her iki beynin üstünde kod olarak `enforcePolicy` (tavanlar, havuz sınırları, ihtiyacın 2 katından fazlası yok). Havuz tam dolmadan settle olmadığı için ajan, ihtiyacının en fazla max(2, %25) üstüne çıkarak havuzu kapatabiliyor ya da havuz minimumuna yuvarlayabiliyor (yedek krediler Faz 3'te markette satılır).
+- 2.6/2.7 demolar `scripts/` yerine **`apps/agents/src/demo/`** altında (`harness.ts`, `k1.ts`, `failed-pool.ts`); kök script'ler `npm run demo:k1`, `npm run demo:failed-pool`. İkisi de tek süreçte mockchain üzerinde, gerçek bileşenlerle (B overlay + koordinatör, provider-api, provider-cli, ajanlar). Mainnet K1 = `node infra/run.mjs` + `npm run provider` + `provider-cli mint/open-pool` + `npm run agents`.
+- Dolmayan havuz: tek-aktif-pledge kuralı yüzünden ajan yeni havuzdan önce `cancelPledge` ile coin'ini geri alıyor; bütçeye bedel dışındaki kısım iade ediliyor.
+
 ### ✋ Checkpoint (Faz 2 sonu)
 1. **Plan hâlâ iyi mi?** LLM kararları tutarsızsa `rules` modunu varsayılan yap ve LLM'i "açıklama üretici" olarak kullan; bunu plana yaz. Koordinatör turunda zaman aşımı sorun olduysa B ile MASTER §3.2'yi güncelle.
 2. **Bu faz bitti** → STATUS Track C.

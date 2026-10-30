@@ -8,6 +8,11 @@
     "start": "tsx --import @agentcoop/core/register-sdk src/run.ts"
   },
   "dependencies": {
-    "@agentcoop/core": "*"
+    "@agentcoop/core": "*",
+    "@anthropic-ai/sdk": "1.3.0",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
   }
 }
