@@ -1,0 +1,13 @@
+{
+  "name": "@agentcoop/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentCoop agents: workload profiles, provider client, procurement",
+  "scripts": {
+    "start": "tsx --import @agentcoop/core/register-sdk src/run.ts"
+  },
+  "dependencies": {
+    "@agentcoop/core": "*"
+  }
+}

@@ -20,7 +20,7 @@ import { configFromEnv, type CoordinatorConfig } from './config'
 import { CoordinatorEngine } from './engine'
 import { subscribeOverlayEvents } from './events'
 import { jsonLogger, type Logger } from './log'
-import type { SettlementProtocol } from './protocol'
+import { coreProtocol, type SettlementProtocol } from './protocol'
 import { noSpentChecker, WocSpentChecker, type SpentChecker } from './spent'
 import { OverlayLookup } from './overlay'
 import { CoordinatorStore } from './store'
@@ -113,7 +113,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = configFromEnv()
-  const c = await startCoordinator(config)
-  // Track A's protocol is wired here once @agentcoop/core exists (plan/phases/B-P2.md §2).
+  // Track A's protocol: planSettlement / assembleSettlement / broadcastEF (Arcade) from @agentcoop/core.
+  const c = await startCoordinator(config, { protocol: coreProtocol({ arcadeUrl: config.arcadeUrl }) })
   console.log(`AgentCoop coordinator at ${c.url} (overlay ${config.overlayUrl}, WS ${c.url.replace('http', 'ws')}/ws, signing rounds: ${c.engine !== undefined ? 'on' : 'off (no settlement protocol yet)'})`)
 }

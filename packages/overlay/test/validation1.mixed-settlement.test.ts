@@ -12,10 +12,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Transaction, UnlockingScript } from '@bsv/sdk'
+import { Transaction, UnlockingScript } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { startOverlay, type RunningOverlay } from '../src/server'
-import { createMockChain, type MockChain } from './helpers/mockchain'
+import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
 import {
   SCOPE_ALL,
   SCOPE_SINGLE_ACP,

@@ -1,0 +1,21 @@
+{
+  "name": "eval",
+  "description": "Runs the evaluation suite on weekdays: medium, regular GPU jobs",
+  "walletEnv": "WALLET_AGENT_2_KEY",
+  "product": "gpu-h100",
+  "mode": "p2pkh",
+  "workload": {
+    "kind": "eval",
+    "jobsPerDay": 4,
+    "minutesPerJob": [15, 45],
+    "activeWeekdays": [1, 2, 3, 4, 5]
+  },
+  "history": {
+    "dailyMinutes": [118, 131, 104, 126, 122, 0, 0, 115, 140, 109, 121, 133, 0, 0]
+  },
+  "budget": {
+    "weeklyBudgetSats": 40000,
+    "maxPerPoolSats": 20000,
+    "allowProviders": []
+  }
+}

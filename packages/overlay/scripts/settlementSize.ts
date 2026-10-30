@@ -3,8 +3,8 @@
  * real FINAL-IDEA §4.4 layout and real script shapes, using maximum-length
  * signatures, and measures the serialized size. No byte counts are assumed.
  */
-import { OP, P2PKH, Script, Transaction, UnlockingScript, Utils, type LockingScript } from '@bsv/sdk'
-import { buildBsv21Script } from '../src/kit/inscription'
+import { OP, P2PKH, Script, Transaction, UnlockingScript, Utils, type LockingScript } from '@agentcoop/core/sdk'
+import { buildBsv21Script } from '@agentcoop/core'
 
 /** `OP_FALSE OP_RETURN "agentcoop" <op> <json>` (MASTER §3.2). Local stand-in for A's buildOpReturn. */
 export const agentcoopOpReturn = (op: string, json: Record<string, string>): LockingScript =>

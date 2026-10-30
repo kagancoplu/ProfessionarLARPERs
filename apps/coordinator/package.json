@@ -8,11 +8,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "coordinator": "tsx src/server.ts",
-    "test": "vitest run",
+    "coordinator": "tsx --import @agentcoop/core/register-sdk src/server.ts",
+    "test": "cd ../.. && vitest run apps/coordinator",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@agentcoop/core": "0.1.0",
     "@bsv/sdk": "3.2.1",
     "better-sqlite3": "13.0.3",
     "express": "5.3.0",

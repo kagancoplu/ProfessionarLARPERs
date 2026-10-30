@@ -1,0 +1,11 @@
+{
+  "id": "gpu-h100",
+  "label": "H100 GPU-hour",
+  "unit": "GPU-hour",
+  "retailSatsPerCredit": 50,
+  "minutesPerCredit": 60,
+  "tokenId": null,
+  "simulate": {
+    "minutesPerSecond": 60
+  }
+}

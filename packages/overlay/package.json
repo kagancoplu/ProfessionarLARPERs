@@ -8,12 +8,13 @@
     "node": ">=22"
   },
   "scripts": {
-    "overlay": "tsx src/server.ts",
-    "test": "vitest run",
+    "overlay": "tsx --import @agentcoop/core/register-sdk src/server.ts",
+    "test": "cd ../.. && vitest run packages/overlay",
     "typecheck": "tsc --noEmit",
-    "arcade-policy": "tsx scripts/arcadePolicy.ts"
+    "arcade-policy": "tsx --import @agentcoop/core/register-sdk scripts/arcadePolicy.ts"
   },
   "dependencies": {
+    "@agentcoop/core": "0.1.0",
     "@bsv/overlay": "2.6.4",
     "@bsv/overlay-express": "2.7.4",
     "@bsv/sdk": "3.2.1",

@@ -181,8 +181,11 @@ describe('failed pool: nothing moves', () => {
     const later = await chain.services.getHeight()
     expect(() => planSettlement(offer, [candidate(p)], { ...chainInfo, height: later })).toThrow(/DEADLINE_PASSED/)
 
-    const txid = await cancelPledge(agent, p.outpoint)
+    const { txid, beef } = await cancelPledge(agent, p.outpoint)
     expect(txid).toMatch(/^[0-9a-f]{64}$/)
+    const withdrawal = Transaction.fromAtomicBEEF(beef)
+    expect(withdrawal.id('hex')).toBe(txid)
+    expect(withdrawal.inputs.some(i => `${i.sourceTXID ?? i.sourceTransaction?.id('hex')}_${i.sourceOutputIndex}` === p.outpoint)).toBe(true)
     const left = await agent.listOutputs({ basket: PLEDGE_BASKET })
     expect(left.outputs.filter(o => o.spendable).map(o => o.outpoint)).not.toContain(p.outpoint.replace('_', '.'))
   })

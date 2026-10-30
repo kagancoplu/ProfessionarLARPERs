@@ -69,10 +69,19 @@ describe('planSettlement', () => {
     expect(fee).toBeGreaterThan(0)
   })
 
-  it('ignores pledges beyond 120% of the target, blacklisted ones, and under-funded coins', async () => {
+  it('finds an exact fill the first 120% window missed (B blocker: 300, 300, 600, 400)', async () => {
+    const { offer, offerSourceTx } = await makeOffer()
+    const [a, b, c, d] = [await pledge(offer.terms, '300', 4000, 1), await pledge(offer.terms, '300', 4000, 2), await pledge(offer.terms, '600', 7000, 3), await pledge(offer.terms, '400', 5000, 4)]
+    // Window 300 + 300 + 600 = 1200 had no exact 1000; the earliest-first fill is 300 + 300 + 400.
+    expect(planSettlement(offer, [a, b, c, d], chainOf(offerSourceTx)).participants.map(p => p.outpoint)).toEqual([a.outpoint, b.outpoint, d.outpoint])
+    // When the earliest pledge cannot be part of any fill, it is passed over: 300, 600, 400 → 600 + 400.
+    expect(planSettlement(offer, [a, c, d], chainOf(offerSourceTx)).participants.map(p => p.outpoint)).toEqual([c.outpoint, d.outpoint])
+  })
+
+  it('keeps later pledges as the waitlist, skips blacklisted ones and under-funded coins', async () => {
     const { offer, offerSourceTx } = await makeOffer()
     const early = await pledge(offer.terms, '1000', 12000, 1)
-    const cappedOut = await pledge(offer.terms, '1000', 12000, 2) // 2000 > 1200
+    const cappedOut = await pledge(offer.terms, '1000', 12000, 2) // waitlisted: the first pledge already fills N
     expect(planSettlement(offer, [early, cappedOut], chainOf(offerSourceTx)).participants.map(p => p.outpoint)).toEqual([early.outpoint])
     // Blacklisting the first pledge lets the waitlisted one take its place (griefing rule, FINAL-IDEA §4.5).
     expect(planSettlement(offer, [early, cappedOut], chainOf(offerSourceTx), { exclude: [early.outpoint], round: 2 }).participants.map(p => p.outpoint)).toEqual([cappedOut.outpoint])

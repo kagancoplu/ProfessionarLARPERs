@@ -1,0 +1,21 @@
+{
+  "name": "inference",
+  "description": "Serves a small model all day: many tiny GPU jobs, usually at retail",
+  "walletEnv": "WALLET_AGENT_3_KEY",
+  "product": "gpu-h100",
+  "mode": "p2pkh",
+  "workload": {
+    "kind": "inference",
+    "jobsPerDay": 24,
+    "minutesPerJob": [2, 6],
+    "activeWeekdays": [1, 2, 3, 4, 5, 6, 0]
+  },
+  "history": {
+    "dailyMinutes": [96, 102, 88, 110, 93, 85, 79, 99, 104, 91, 107, 95, 83, 81]
+  },
+  "budget": {
+    "weeklyBudgetSats": 50000,
+    "maxPerPoolSats": 10000,
+    "allowProviders": []
+  }
+}

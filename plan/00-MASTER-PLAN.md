@@ -20,7 +20,7 @@
 
 | Karar | Sonuç |
 |---|---|
-| Ana senaryo | **Simüle GPU sağlayıcısı.** Ürün: "H100 GPU-dakika kredisi". Havuz: bir GPU bloğu. İşler (fine-tune, eval, inference) simüle edilir, ama ödeme, kredi ve settlement gerçek ve zincir üstünde |
+| Ana senaryo | **Simüle GPU sağlayıcısı.** Ürün: "H100 GPU-saat kredisi" (1 kredi = 1 GPU-saat, dakika bazında tüketilir; C, 30.10). Havuz: bir GPU bloğu. İşler (fine-tune, eval, inference) simüle edilir, ama ödeme, kredi ve settlement gerçek ve zincir üstünde |
 | SmartRoute | İlk etapta **yok**. Sağlayıcı katmanı "ürün = konfigürasyon" olacak şekilde yazılır; SmartRoute sonradan ikinci sağlayıcı olarak takılabilir |
 | Mandate Vault | **Tam kapsam** (K2) |
 | Coop Rail | **Zaman kutulu PoC**: Base Sepolia, en fazla 4 saat, canlı demoda değil, kayıtla belgelenir. Başarılı olursa README'de "deneysel" |
@@ -64,7 +64,7 @@
 └─ test/                  uçtan uca mockchain senaryoları (herkes ekler)
 ```
 
-**ESM/CJS kuralı:** wallet-toolbox CJS'dir. Testlerde kit'in `vitest.config.ts` alias'ı kullanılır. Çalışma zamanında wallet-toolbox kullanan her app (`agents`, `provider-api`, `coordinator`, `guard`, `maker`) `@bsv/sdk`'yı **tek bir yerden** import eder: `packages/core/src/sdk.ts` → `export * from '@bsv/sdk'` ve tsconfig `paths` ile CJS build'e yönlendirilir. A bunu P0'da kurar; herkes `@agentcoop/core/sdk` üzerinden import eder. Hata belirtisi: `script[serializedBytes] is not a function`.
+**ESM/CJS kuralı:** wallet-toolbox CJS'dir. SDK **yalnızca `@agentcoop/core/sdk` üzerinden** import edilir (`packages/core/src/sdk.ts` CJS build'i yeniden export eder). Testlerde kök `vitest.config.ts` alias'ı `@bsv/sdk`'yı aynı CJS dosyasına yönlendirir. Çalışma zamanında (tsx/Node) wallet-toolbox kullanan her app ve script **`tsx --import @agentcoop/core/register-sdk <dosya>`** ile başlatılır: senkron Node hook'u (`packages/core/register-sdk.mjs`, `module.registerHooks`) SDK'nın CJS girişine yapılan her ESM importunu (`sdk.ts`'in re-export'u veya çıplak `@bsv/sdk`) export listesi yükleme anında okunan bir ESM sarmalayıcıya yönlendirir; sarmalayıcı wallet-toolbox'ın `require` ettiği kopyanın aynısını verir. *(C, 30.10: hook olmadan `tsx` altında `import { Transaction } from '@agentcoop/core/sdk'` → `does not provide an export named 'Transaction'`, çünkü Node CJS build'in named export'larını statik olarak göremiyor; vitest alias'ı yüzünden testlerde görünmüyordu. Hook'la tek kopya doğrulandı.)* Hata belirtisi: `script[serializedBytes] is not a function`.
 
 > **Doğrulama notu (D, 2026-10-30 16:20; tsx 4.23 + Node 24, `@bsv/sdk` 3.2.1, wallet-toolbox 2.14.9).** (a) `"type":"module"` bir pakette tsx altında `import { PrivateKey } from '@bsv/sdk'` ESM build'i yüklüyor, wallet-toolbox ise CJS build'i: `PrivateKey === require('@bsv/sdk').PrivateKey` → **false** (iki kopya). (b) tsconfig `paths` ile `@bsv/sdk` → `dist/cjs/mod.js` tsx'te uygulanıyor, ama ESM'den **isimli** import başarısız oluyor (`does not provide an export named 'PrivateKey'`). Yani yukarıdaki yöntem tsx çalışma zamanında olduğu gibi çalışmıyor. (c) **Çalışan yol:** wallet-toolbox kullanan paket **CommonJS** olarak çalışır (`package.json`'da `"type"` yok; tsx import'ları `require`'a çevirir → tek kopya, **true**). Tip denetimi için tsconfig `"module": "NodeNext", "moduleResolution": "NodeNext"` (bizim kod da wallet-toolbox da `dist/cjs` tiplerini görür). Top-level await yerine `main().catch(…)`. Örnek: `scripts/package.json`, `scripts/tsconfig.json`. Testlerde kit'in vitest alias'ı aynen çalışıyor. A, `@agentcoop/core` için hangi yolu seçtiğini STATUS'a yazar.
 >
@@ -89,7 +89,7 @@
 | Settlement sighash | sağlayıcı girdisi `SIGHASH_SINGLE \| ANYONECANPAY \| FORKID`; katılımcı girdileri `SIGHASH_ALL \| FORKID` | BIP-143 ön görüntüsü SINGLE\|ACP'de de tx `version`, `lockTime` ve girdinin `sequence`'ını içerir: teklif `version=1`, `lockTime=0`, in0 `sequence=0xffffffff` ile imzalanır ve **settlement bu değerlerle kurulmalı**, yoksa teklif geçersiz olur (B.P1). Koordinatörün `verifyOffer`'ı bu değerlerle doğrular |
 | Liste (market) sighash | satıcı `SINGLE \| ANYONECANPAY \| FORKID`; alıcı `ALL \| FORKID` | Sağlayıcı teklifiyle aynı primitif |
 | Arcade | `https://arcade-v2-us-1.bsvblockchain.tech` | Yayın (EF), tx durumu, header'lar `/chaintracks/v2` |
-| Redeem sınırı | tek seferde ≤ 20 kredi, ajan başına bekleyen ≤ 20 kredi | §4.7 |
+| Redeem sınırı | tek seferde ≤ 20 kredi, ajan başına bekleyen ≤ 20 kredi | §4.7. gpu-h100'de 1 kredi = 1 GPU-saat, yani bekleyen ≤ 20 GPU-saat (≈ bir fine-tune oturumu). Bekleyen bakiye dakika olarak tutulur |
 | Koordinatör sıralaması | `(blockHeight asc, txid asc)`; mine edilmemişler en sonda `txid asc` | OP_RETURN `settle.pledgeListHash = sha256(join(outpoints sorted))` |
 | Fazla dolum / tur | hedefin %120'sine kadar pledge kabul; en fazla 3 imza turu; tur zaman aşımı 60 sn | İmzalamayan outpoint kara listeye |
 
@@ -164,8 +164,8 @@ htlcLockingScript(hash, agentPub, guardPub, makerPub): LockingScript     // D do
 buildReserveAndAnnounce(wallet, kitTokenKit, terms): Promise<{ txid, poolId }>   // N krediyi tek UTXO'ya al + OP_RETURN pool
 signOffer(wallet, outpoint, terms): Promise<Offer>                                 // SINGLE|ACP
 buildPledge(wallet, terms, credits, signer:'p2pkh'|'vault', vaultScript?): Promise<{ txid, outpoint }>
-cancelPledge(wallet, outpoint): Promise<string>                                   // iptal tx'i tm_agentcoop'a submit edilir (B.P1)
-planSettlement(offer, pledges, chain): SettlementPlan                              // deterministik sıralama, ücret, para üstü
+cancelPledge(wallet, outpoint): Promise<{ txid, beef }>                           // beef = AtomicBEEF; çağıran tm_agentcoop'a submit eder (B.P1)
+planSettlement(offer, pledges, chain): SettlementPlan                              // deterministik: kural sırasında tam N yapan sözlükçe-ilk alt küme; ücret, para üstü
 verifySettlementPlan(plan, offer, myOutpoint, opts): Promise<void>                 // DvP kontrolü + verifyLineage; hata fırlatır
 signSettlementInput(plan, inputIndex, signer: InputSigner): Promise<UnlockingScript>
 assembleSettlement(plan, unlockingScripts): Transaction
@@ -221,14 +221,15 @@ cancelListing(wallet, kit, outpoint) · cancelPool(wallet, kit, poolId) · recla
 
 | Yöntem | Yol | Ücret | Ne yapar |
 |---|---|---|---|
-| `GET` | `/v1/catalog` | 0 | ürün, `retailSatsPerCredit`, açık havuzlar (COOP_API'den) |
-| `POST` | `/v1/jobs` `{ kind, minutes }` | `minutes × retail`, ön ödemeli bakiye yetiyorsa **0** | simüle işi kuyruğa al; `{ jobId }` |
+| `GET` | `/healthz` | 0 (auth yok) | canlılık |
+| `GET` | `/v1/catalog` | 0 | `provider.server`, ürünler (`retailSatsPerCredit`, `minutesPerCredit`, `tokenId`), `credits: { maxRedeem, maxPending, redeemTo }` (`redeemTo` = provider-api kimliği, kredilerin gönderileceği yer), açık havuzlar (COOP_API'den) |
+| `POST` | `/v1/jobs` `{ kind, minutes, product? }` | `ceil(minutes × retailSatsPerCredit / minutesPerCredit)` sat (dakika bazında); ön ödemeli bakiye `minutes`'ı karşılıyorsa **0** (bakiyeden dakika düşülür) | simüle işi kuyruğa al; `{ jobId }` |
 | `GET` | `/v1/jobs/:id` | 0 | durum, "GPU log", sonuç hash'i |
-| `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | 0 (auth zorunlu) | BSV-21 transferini doğrula (`verifyLineage` + çıktı sağlayıcının token adresine mi), ≤ 20 kredi, bakiyeye yaz |
-| `POST` | `/v1/credits/return` `{ credits }` | 0 (auth) | kullanılmayan krediyi token olarak geri gönder (kit `TokenKit.send`) |
-| `GET` | `/v1/credits/balance` | 0 (auth) | ön ödemeli bakiye |
+| `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | 0 (auth zorunlu) | BSV-21 transferini doğrula: ürünün token'ı, çıktı provider-api'nin token adreslerinden birine kilitli, ≤ 20 kredi ve bekleyen ≤ 20, **gönderen = çağıran** (tx çağıranın kendi token çıktılarını harcıyor; overlay'de gördüğü transferi başkası sahiplenemez), soy (`verifyLineage`; A.P2'ye kadar overlay), tek kullanım. `bsv21` basket'ine al, bakiyeye yaz. Hata kodları: `ERR_WRONG_TOKEN`, `ERR_NOT_OURS`, `ERR_REDEEM_LIMIT`, `ERR_NOT_SENDER` (403), `ERR_BAD_LINEAGE`, `ERR_REDEEM_REPLAYED` (409) |
+| `POST` | `/v1/credits/return` `{ credits, product? }` | 0 (auth) | kullanılmayan **tam** krediyi token olarak geri gönder (kit `TokenKit.send`); bir krediden küçük artık ön ödemeli kalır. `{ txid, credits, prepaidMinutes }` |
+| `GET` | `/v1/credits/balance` | 0 (auth) | ön ödemeli bakiye: ürün başına `{ minutesPerCredit, prepaidMinutes, returnableCredits }` |
 
-Ürün konfigürasyonu `apps/provider-api/products/<id>.json`: `{ id, label, unit, retailSatsPerCredit, tokenId, simulate: { minutesPerSecond } }`. SmartRoute ileride ayrı bir `products/` kaydı ve ayrı bir "runner" olur.
+Ürün konfigürasyonu `apps/provider-api/products/<id>.json`: `{ id, label, unit, retailSatsPerCredit, minutesPerCredit?, tokenId, simulate: { minutesPerSecond, gpus? } }` (`minutesPerCredit` = bir kredinin kaç GPU-dakika olduğu, varsayılan 1; **gpu-h100: 60**. Redeem edilen kredi bakiyeye `credits × minutesPerCredit` dakika ekler, işler dakika düşer. `gpus` = aynı anda koşan iş sayısı, varsayılan 8). SmartRoute ileride ayrı bir `products/` kaydı ve ayrı bir "runner" olur.
 
 ### 3.7 Guard API (D) — `GUARD_URL`
 

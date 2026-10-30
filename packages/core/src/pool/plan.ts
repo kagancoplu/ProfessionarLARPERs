@@ -17,7 +17,7 @@ import { buildBsv21Script } from '../kit/inscription'
 import { receivePkh } from '../kit/addresses'
 import { AgentCoopError } from '../errors'
 import { buildOpReturn } from '../scripts/opreturn'
-import { OVERFILL_PERCENT, P2PKH_UNLOCKING_SCRIPT_LENGTH, type Offer, type PledgeRecord, type SettlementParticipant, type SettlementPlan } from '../types'
+import { P2PKH_UNLOCKING_SCRIPT_LENGTH, type Offer, type PledgeRecord, type SettlementParticipant, type SettlementPlan } from '../types'
 import { parseOutpoint } from '../util/outpoint'
 import { creditsCost, termsHash, validateTerms } from './terms'
 
@@ -111,14 +111,43 @@ function signedSize (tx: Transaction, chosen: PledgeCandidate[]): number {
   return size
 }
 
-/** Greedy in order: take a pledge while the running total stays ≤ N; stop at exactly N. */
+/** Cap on stored subset sums; beyond it the search falls back to greedy (still deterministic). */
+export const MAX_SUBSET_SUMS = 200_000
+
+/**
+ * The lexicographically first subset, in rule order, that sums to exactly N:
+ * take a pledge only if the pledges after it can still complete the rest.
+ * Earlier pledges keep priority, and a fill is found whenever one exists
+ * (300, 300, 600, 400 with N = 1000 → 600 + 400).
+ */
 function pickExact (ordered: PledgeCandidate[], n: bigint): PledgeCandidate[] | null {
+  const ks = ordered.map(p => BigInt(p.record.credits))
+  // reach[i] = sums ≤ N reachable with pledges i..end.
+  const reach: Array<Set<bigint>> = new Array(ks.length + 1)
+  reach[ks.length] = new Set([0n])
+  let stored = 1
+  for (let i = ks.length - 1; i >= 0; i--) {
+    const next = new Set(reach[i + 1])
+    for (const s of reach[i + 1]) if (s + ks[i] <= n) next.add(s + ks[i])
+    stored += next.size
+    if (stored > MAX_SUBSET_SUMS) return pickGreedy(ordered, ks, n)
+    reach[i] = next
+  }
+  if (!reach[0].has(n)) return null
+  const out: PledgeCandidate[] = []
+  let rest = n
+  for (let i = 0; i < ks.length && rest > 0n; i++) {
+    if (ks[i] <= rest && reach[i + 1].has(rest - ks[i])) { out.push(ordered[i]); rest -= ks[i] }
+  }
+  return out
+}
+
+function pickGreedy (ordered: PledgeCandidate[], ks: bigint[], n: bigint): PledgeCandidate[] | null {
   const out: PledgeCandidate[] = []
   let sum = 0n
-  for (const p of ordered) {
-    const k = BigInt(p.record.credits)
-    if (sum + k > n) continue
-    out.push(p); sum += k
+  for (let i = 0; i < ks.length; i++) {
+    if (sum + ks[i] > n) continue
+    out.push(ordered[i]); sum += ks[i]
     if (sum === n) return out
   }
   return null
@@ -133,25 +162,17 @@ export function planSettlement (offer: Offer, pledges: PledgeCandidate[], chain:
   const round = opts.round ?? 1
   const exclude = new Set(opts.exclude ?? [])
 
-  // Eligible pledges in rule order. Up to 120% of the target is considered; the
-  // window is recomputed after dropping coins that cannot cover their share + fee.
-  const cap = n * BigInt(OVERFILL_PERCENT) / 100n
+  // Eligible pledges in rule order. Every eligible pledge is searched; the 120%
+  // overfill (OVERFILL_PERCENT) is the coordinator's acceptance limit, not a
+  // planning window, so pledges past the first fill act as the waitlist. Coins
+  // that cannot cover their share + fee are dropped and the search reruns.
   const ordered = orderPledges(pledges).filter(p => {
     const k = BigInt(p.record.credits)
     return !exclude.has(p.outpoint) && p.record.poolId === t.poolId && p.record.v === '1' && k >= BigInt(t.minCredits) && k <= n
   })
   const dropped = new Set<PledgeCandidate>()
   for (;;) {
-    let running = 0n
-    const pool: PledgeCandidate[] = []
-    for (const p of ordered) {
-      if (dropped.has(p)) continue
-      const k = BigInt(p.record.credits)
-      if (running + k > cap) continue
-      running += k
-      pool.push(p)
-    }
-    const chosen = pickExact(pool, n)
+    const chosen = pickExact(ordered.filter(p => !dropped.has(p)), n)
     if (chosen === null) throw new AgentCoopError('BAD_PLAN', `pledges cannot fill exactly ${t.credits} credits`)
     const zero = chosen.map(() => 0)
     const size = signedSize(buildTemplate(offer, chain, chosen, zero, round).tx, chosen)

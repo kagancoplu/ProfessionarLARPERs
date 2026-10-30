@@ -1,0 +1,21 @@
+{
+  "name": "finetune",
+  "description": "Fine-tunes a customer model every few days: large, sparse GPU jobs",
+  "walletEnv": "WALLET_AGENT_1_KEY",
+  "product": "gpu-h100",
+  "mode": "p2pkh",
+  "workload": {
+    "kind": "finetune",
+    "jobsPerDay": 0.4,
+    "minutesPerJob": [240, 480],
+    "activeWeekdays": [1, 2, 3, 4, 5, 6, 0]
+  },
+  "history": {
+    "dailyMinutes": [0, 420, 0, 0, 360, 0, 0, 480, 0, 0, 300, 0, 0, 390]
+  },
+  "budget": {
+    "weeklyBudgetSats": 120000,
+    "maxPerPoolSats": 60000,
+    "allowProviders": []
+  }
+}

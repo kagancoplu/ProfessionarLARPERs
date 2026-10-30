@@ -14,7 +14,10 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "provider": "tsx --import @agentcoop/core/register-sdk apps/provider-api/src/server.ts",
+    "provider-cli": "tsx --import @agentcoop/core/register-sdk apps/provider-cli/src/cli.ts",
+    "agent": "tsx --import @agentcoop/core/register-sdk apps/agents/src/run.ts"
   },
   "dependencies": {
     "@bsv/402-pay": "0.3.3",

@@ -4,7 +4,7 @@ Runs the overlay (`packages/overlay`) and the coordinator (`apps/coordinator`) t
 
 ```bash
 nvm use 22
-(cd packages/overlay && npm install) && (cd apps/coordinator && npm install)
+npm install                 # repo root (npm workspaces)
 node infra/run.mjs          # overlay :8080, coordinator :8090 (WS /ws); Ctrl+C stops both
 ```
 

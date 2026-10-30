@@ -3,7 +3,7 @@
  * No runtime imports, so other packages (apps/coordinator, C's agents) can
  * import these types without pulling in a second copy of the SDK.
  */
-import type { PoolTerms } from './stub/types'
+import type { PoolTerms } from '@agentcoop/core'
 
 /** What the chain says about a pool. `failed` and `locking` are derived by the coordinator API. */
 export type PoolStatus = 'open' | 'settled' | 'cancelled'

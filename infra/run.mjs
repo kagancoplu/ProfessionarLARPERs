@@ -58,13 +58,14 @@ let stopping = false
 const children = new Map()
 
 function start (svc, backoff = 1_000) {
-  const tsx = join(svc.cwd, 'node_modules', '.bin', 'tsx')
+  const tsx = join(root, 'node_modules', '.bin', 'tsx') // npm workspaces: dependencies live at the root
   if (!existsSync(tsx)) {
-    console.error(`[${svc.name}] ${tsx} missing: run npm install in ${svc.cwd}`)
+    console.error(`[${svc.name}] ${tsx} missing: run npm install at the repo root`)
     process.exit(1)
   }
   const startedAt = Date.now()
-  const child = spawn(tsx, ['src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  // --import register-sdk: one runtime copy of @bsv/sdk under tsx (packages/core/register-sdk.mjs, MASTER §3.1)
+  const child = spawn(tsx, ['--import', '@agentcoop/core/register-sdk', 'src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
   children.set(svc.name, child)
   const prefix = (stream, out) => {
     let buf = ''

@@ -1,0 +1,13 @@
+{
+  "name": "@agentcoop/provider-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider operator CLI on BSV Desktop: mint, open-pool, cancel-pool, list-pools, sync-revenue, sweep-revenue",
+  "scripts": {
+    "start": "tsx --import @agentcoop/core/register-sdk src/cli.ts"
+  },
+  "dependencies": {
+    "@agentcoop/core": "*"
+  }
+}

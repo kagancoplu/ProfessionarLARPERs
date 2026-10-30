@@ -7,8 +7,11 @@
  * terms?) happen at query time in the lookup service, so the order in which
  * transactions reach the overlay does not matter.
  */
-import { isTokenId } from './kit/inscription'
-import type { PledgeRecord, PoolTerms, SettleRecord } from './stub/types'
+import { isTokenId } from '@agentcoop/core'
+import type { PledgeRecord, PoolTerms } from '@agentcoop/core'
+
+/** OP_RETURN op=settle (FINAL-IDEA §4.4; MASTER §3.2 `settle.pledgeListHash`). */
+export interface SettleRecord { v: '1', poolId: string, pledgeListHash: string }
 
 export interface VaultRecord { v: '1', vaultId: string, owner: string, agent: string, guard: string }
 

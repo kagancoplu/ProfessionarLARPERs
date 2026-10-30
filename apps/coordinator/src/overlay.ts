@@ -3,7 +3,7 @@
  * the overlay; it never needs to be trusted for credit validity (participants
  * check lineage themselves, FINAL-IDEA §4.3).
  */
-import { Transaction, Utils } from '@bsv/sdk'
+import { Transaction, Utils } from '@agentcoop/core/sdk'
 import type { PledgeView, PoolView, SettlementView } from '../../../packages/overlay/src/views'
 
 export const SERVICE = 'ls_agentcoop'
@@ -75,16 +75,16 @@ export class OverlayLookup {
   }
 
   /** The credit output a pool's offer spends (out0 of the pool tx), as the overlay holds it. */
-  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string, tx: Transaction } | undefined> {
     return await this.tokenOutput(poolId)
   }
 
   /** An admitted credit (BSV-21) output by outpoint "txid_vout", with its token id, amount and spent flag. */
-  async tokenOutput (outpoint: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+  async tokenOutput (outpoint: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string, tx: Transaction } | undefined> {
     const [txid, vout] = outpoint.split('_')
     const [r] = await this.lookup<{ spent: boolean, tokenId: string, amt: string }>({ op: 'outpoint', txid, vout: Number(vout) })
     if (r === undefined) return undefined
     const out = r.tx.outputs[r.outputIndex]
-    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent, tokenId: r.context.tokenId, amt: r.context.amt }
+    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent, tokenId: r.context.tokenId, amt: r.context.amt, tx: r.tx }
   }
 }

@@ -8,7 +8,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import knexFactory, { type Knex } from 'knex'
-import type { Listing, Offer } from '../../../packages/overlay/src/stub/types'
+import type { Listing, Offer } from '@agentcoop/core'
 
 export class CoordinatorStore {
   private constructor (readonly knex: Knex) {}
