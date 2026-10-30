@@ -156,8 +156,8 @@ htlcLockingScript(hash, agentPub, guardPub, makerPub): LockingScript     // D do
 buildReserveAndAnnounce(wallet, kitTokenKit, terms): Promise<{ txid, poolId }>   // N krediyi tek UTXO'ya al + OP_RETURN pool
 signOffer(wallet, outpoint, terms): Promise<Offer>                                 // SINGLE|ACP
 buildPledge(wallet, terms, credits, signer:'p2pkh'|'vault', vaultScript?): Promise<{ txid, outpoint }>
-cancelPledge(wallet, outpoint): Promise<string>                                   // iptal tx'i tm_agentcoop'a submit edilir (B.P1)
-planSettlement(offer, pledges, chain): SettlementPlan                              // deterministik sıralama, ücret, para üstü
+cancelPledge(wallet, outpoint): Promise<{ txid, beef }>                           // beef = AtomicBEEF; çağıran tm_agentcoop'a submit eder (B.P1)
+planSettlement(offer, pledges, chain): SettlementPlan                              // deterministik: kural sırasında tam N yapan sözlükçe-ilk alt küme; ücret, para üstü
 verifySettlementPlan(plan, offer, myOutpoint, opts): Promise<void>                 // DvP kontrolü + verifyLineage; hata fırlatır
 signSettlementInput(plan, inputIndex, signer: InputSigner): Promise<UnlockingScript>
 assembleSettlement(plan, unlockingScripts): Transaction

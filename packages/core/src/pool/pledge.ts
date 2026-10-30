@@ -68,8 +68,11 @@ export async function buildPledge (
   return { txid: res.txid, outpoint: coopOutpoint(res.txid, vout), record, instructions, satoshis, beef: Array.from(res.tx) }
 }
 
-/** Withdraw (T4): spend the pledge coin back into the wallet's own funds. The pool's progress drops. */
-export async function cancelPledge (wallet: WalletInterface, outpoint: string, opts: { originator?: string } = {}): Promise<string> {
+/**
+ * Withdraw (T4): spend the pledge coin back into the wallet's own funds. The pool's progress drops.
+ * `beef` is the withdrawal as AtomicBEEF; submit it to tm_agentcoop so the overlay drops the pledge.
+ */
+export async function cancelPledge (wallet: WalletInterface, outpoint: string, opts: { originator?: string } = {}): Promise<{ txid: string, beef: number[] }> {
   const { txid, vout } = parseOutpoint(outpoint)
   const res = await wallet.listOutputs({ basket: PLEDGE_BASKET, include: 'entire transactions', includeCustomInstructions: true, limit: 1000 }, opts.originator)
   const entry = res.outputs.find(o => o.outpoint === toWalletOutpoint(outpoint))
@@ -92,6 +95,6 @@ export async function cancelPledge (wallet: WalletInterface, outpoint: string, o
   if (tx.inputs[i].sourceTransaction === undefined) tx.inputs[i].sourceTransaction = Beef.fromBinary(beef).findTxid(txid)?.tx
   const unlock = await signP2pkhWithScope(wallet, tx, i, { protocolID: ins.protocolID, keyID: ins.keyID }, undefined, opts.originator)
   const signed = await wallet.signAction({ reference: signable.reference, spends: { [i]: { unlockingScript: unlock.toHex() } }, options: { acceptDelayedBroadcast: false } }, opts.originator)
-  if (signed.txid === undefined) throw new Error('wallet did not complete the withdrawal')
-  return signed.txid
+  if (signed.txid === undefined || signed.tx === undefined) throw new Error('wallet did not complete the withdrawal')
+  return { txid: signed.txid, beef: Array.from(signed.tx) }
 }
