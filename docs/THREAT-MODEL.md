@@ -1,0 +1,71 @@
+# AgentCoop — Non-custodial design and threat model
+
+This expands [FINAL-IDEA §8](../FINAL-IDEA.md) (Turkish design doc). For every threat it lists the control, where the control is enforced in code, and the test that exercises it. Test names are quoted exactly as they appear in the test files, so you can grep for them. Run everything with `npm test` (mock chain, no wallet or sats needed).
+
+**Status of the evidence (30 Oct 2026):** every control below is tested on the wallet-toolbox **mock chain** with the real components (Track B's overlay and coordinator, Track A's builders, Track D's guard). **No control has been observed on mainnet yet** (no satoshis so far); the mainnet column is filled in as the runs happen.
+
+Status words: **Closed** = the attack cannot succeed. **Detectable** = it can happen, but anyone can prove it from the chain. **Open, bounded** = residual trust, with a stated maximum loss. **Open** = not addressed yet.
+
+## 1. The threats (FINAL-IDEA §8)
+
+| # | Threat | Control | Enforced in | Tested in (test name) | Status | Mainnet |
+|---|---|---|---|---|---|---|
+| T-1 | The coordinator tries to steal | The coordinator has no key and no money. Every participant rebuilds the whole settlement from the plan, checks it, and signs `SIGHASH_ALL`; the provider's offer is `SINGLE\|ANYONECANPAY` and can only pay the provider its price | `packages/core/src/pool/verify.ts` (`verifySettlementPlan`), `apps/guard/src/settle.ts` | `test/skeleton.mockchain.test.ts` › "a coordinator that alters the plan after signing gets nothing valid"; `test/e2e.vault-settlement.mockchain.test.ts` › "a coordinator that tampers with V's credit output gets no guard signature"; `apps/coordinator/test/e2e.audit-metrics.mockchain.test.ts` › "3. /metrics counts settlements and participants and computes custodiedSats = 0" | Closed | ☐ |
+| T-2 | The coordinator (or the overlay) shows fake credits as valid | Participants and the guard check the credit input's lineage themselves with `verifyLineage` (ancestors from Arcade/WhatsOnChain, BSV-21 rules run locally); the overlay is only for discovery | `packages/core/src/verify/lineage.ts` | `packages/core/test/lineage.test.ts` › "refuses a "transfer" minted from plain sats", "refuses inflation, a bad signature on an ancestor, and fetched data that does not hash to the txid"; `test/skeleton.mockchain.test.ts` › "verifyLineage: the agent checks the offer credits back to the deploy itself (no overlay)"; `apps/guard/test/pledge.test.ts` › "P3/P6: no pool transaction, another pool, failed lineage" | Closed | ☐ |
+| T-3 | The coordinator's power to choose (censorship, favouritism) | Deterministic order, the pledge-list hash in the settlement's OP_RETURN, an audit endpoint that re-derives the selection from the chain, and anyone can run a coordinator (the offer is published on chain) | `packages/core/src/pool/plan.ts`, `apps/coordinator/src/audit.ts`, `apps/coordinator/src/offers.ts` | `packages/core/test/pool.plan.test.ts` › "is deterministic: input order does not change the plan"; `apps/coordinator/test/e2e.audit-metrics.mockchain.test.ts` › "2. a settlement that skips the first pledge with no declared reason is flagged"; `apps/coordinator/test/e2e.second-coordinator.mockchain.test.ts` › "pool A: the offer exists only on chain (after a bogus record); coordinator 2 finds it and settles" | **Detectable**, not prevented | ☐ |
+| T-4 | The provider takes the money and sends no credits | Impossible: payment and delivery are outputs of the same transaction (delivery versus payment) | `packages/core/src/pool/plan.ts`, `settle.ts` | `test/skeleton.mockchain.test.ts` › "T5: assemble, broadcast, overlay admits the credits; agents receive them and their change"; `apps/coordinator/test/e2e.integration.mockchain.test.ts` | Closed | ☐ |
+| T-5 | The provider delivers credits but not the service | Residual trust, as with any prepayment. Credits can be resold on the market (an exit), on-chain reputation, later a provider bond | `packages/core/src/market/listing.ts` | `test/market.mockchain.test.ts` › "T8: the buyer sweeps both listings in one transaction; sellers are paid in it" (the exit works) | **Open** (residual trust) | ☐ |
+| T-6 | A redeemed balance is held off chain by the provider | Redeem capped at one session (≤ 20 credits); unused whole credits come back as tokens via `/v1/credits/return` | `apps/provider-api/src/redeem.ts`, `credits.ts` | `test/provider.credits.mockchain.test.ts` › "refuses a redeem of more than 20 credits", "returns unused whole credits as tokens" | **Open, bounded** (≤ 20 credits per agent) | ☐ |
+| T-7 | A participant walks away at lock-in (griefing, Sybil) | Non-refundable registration fee, waiting list up to 120 %, at most 3 rounds, outpoint blacklist | `apps/coordinator/src/engine.ts`, `packages/core/src/pool/plan.ts` | `apps/coordinator/test/e2e.coordinator.mockchain.test.ts` › "2. waiting list: the silent first pledge is blacklisted; round 2 settles from the waiting list", "3. a bad signature and a sign_reject are blacklisted with their reasons", "4. after 3 failed rounds the coordinator gives up and the pool stays open" | **Made costly**, residual risk | ☐ |
+| T-8 | Fake credits (BSV-21 forgery) | Overlay rules (source, inflation, cross-token) plus `verifyLineage` on the client | `packages/core/src/kit/rules.ts`, `lineage.ts` | `packages/core/test/rules.test.ts` › "FORGERY: rejects a "transfer" of a real token minted from plain sats", "FORGERY: refuses a token input the overlay never admitted", "FORGERY: an admitted input of token X cannot fund outputs of token Y"; `test/market.mockchain.test.ts` › "a fake listing (credits minted from plain sats) is refused before the buyer pays anything" | Closed | ☐ |
+| T-9 | The agent is prompt-injected | The guard enforces the owner's policy (provider allowlist with payee proofs, per-pool and weekly caps) before it co-signs; the vault script needs agent + guard; the owner can withdraw at any time | `apps/guard/src/policy.ts`, `pool.ts`, `settle.ts` | `test/vault.mockchain.test.ts` › "4. prompt injection: payment to a provider outside the allowlist → 403, nothing signed or broadcast"; `test/e2e.vault-settlement.mockchain.test.ts` › "injection at pledge time: "put 100% of the budget into pool X" is refused, nothing moves"; `apps/guard/test/pledge.test.ts` › "P5: "100% of the budget into the allowed pool" and splitting across pools hit the caps"; demo `npm run demo-injection -w @agentcoop/scripts` | Closed (within the vault) | ☐ |
+| T-10 | The agent sells its credits on the market and so escapes the guard | Amounts are small; closing it needs credit outputs locked to the vault (Track A Faz 5, `creditLock: 'vault'`), not built yet | — | — | **Open** | — |
+| T-11 | The guard is compromised | The guard alone cannot move funds (2-of-2 with the agent); the owner's exit path needs neither | `packages/core/src/scripts/vault.ts` | `test/vault.mockchain.test.ts` › "6. the chain itself refuses anything short of agent + guard", "8. the owner withdraws alone (OP_IF branch), without guard or agent" | Closed | ☐ (validation 5) |
+| T-12 | Agent and guard are compromised together | Loss is bounded by the vault balance; the owner loads a weekly budget, the guard's rolling caps apply | `apps/guard/src/policy.ts`, `store.ts` | `apps/guard/test/vault.script.test.ts` › "G10–G12: fee, per-payment and weekly caps"; `test/vault.mockchain.test.ts` › "5. caps and forgeries are refused" | **Open, bounded** (vault balance) | ☐ |
+| T-13 | BRC-100 "blind hash signing" | The guard computes the sighash itself and needs the agent's signature on it; agents verify the whole tx before signing; at most one active pledge, so the exposure is the `agentcoop` basket | `apps/guard/src/guard.ts` (G5), `packages/core/src/pool/pledge.ts` | `apps/guard/test/vault.script.test.ts` › "G5: the agent must have signed the sighash the guard computes"; `test/skeleton.mockchain.test.ts` › "T3: agent 1 pledges 600, agent 2 pledges 400; a second active pledge is refused" | **Open, bounded** | ☐ |
+| T-14 | A Coop Rail claim bypasses the vault policy | The claim branch is agent + guard 2-of-2; the guard only signs a claim whose sats land in the agent's registered vault | `apps/guard/src/rail.ts`, `packages/core/src/scripts/htlc.ts` | `test/e2e.rail.mockchain.test.ts` › "the agent refuses a refund it should not sign; the guard refuses claims that skip the vault or belong to someone else" | Closed | ☐ |
+| T-15 | The HTLC counterparty disappears | BSV side: a height-based refund pre-signed before funding (version 1 tx); Base side: the contract's timeout refund | `apps/maker/src/rail.ts`, `contracts/` | `test/e2e.rail.mockchain.test.ts` › "refund path: the agent never claims; the maker's pre-signed refund is valid and spends the HTLC back"; `apps/maker/test/htlc.evm.test.ts` › "after the timeout: claim reverts, refund returns the tokens to the sender" | Closed on the mock chain; **depends on validations 4 and 6** (nLockTime height semantics, v1 malleability) | ☐ |
+| T-16 | No reverse direction for the HTLC | The maker rebalances inventory by hand; an agent in an unfilled pool keeps its BSV in the vault | — | — | **Open** (Faz 5 A path) | — |
+| T-17 | A 402 payment is replayed | The payment middleware's replay store (shared and atomic with more than one process); redeem transfers are single-use | `apps/provider-api/src/app.ts`, `redeem.ts` | `test/provider.402.mockchain.test.ts` › "answers 402 with the price, and refuses a replayed payment (409)"; `test/provider.credits.mockchain.test.ts` › "refuses to redeem the same transfer twice (409)" | Closed | ☐ |
+
+### Added after FINAL-IDEA §8
+
+| # | Threat | Control | Enforced in | Tested in | Status |
+|---|---|---|---|---|---|
+| T-18 | Someone says `hello` on the coordinator's WebSocket with a victim's identity and rejects the victim's input, so the victim is blacklisted | `hello` must carry a signature over a per-connection nonce bound to the host; only proven sessions get `sign_request` or may answer one (Track B, Faz 5) | `apps/coordinator/src/auth.ts`, `ws.ts` | `apps/coordinator/test/e2e.public-edge.mockchain.test.ts` › "a signed nonce proves the identity; a hello without sig is a watcher", "an attacker using the victim's identity without proof gets no sign_request and cannot reject for the victim" | Closed |
+| T-19 | A public coordinator or overlay is flooded | Per-IP HTTP limits, WebSocket connection and message caps, body limits | `packages/overlay/src/limits.ts`, `apps/coordinator/src/ws.ts` | `apps/coordinator/test/e2e.public-edge.mockchain.test.ts` › "limits GET and POST per client IP behind the proxy; loopback is exempt", "WS: at most maxPerIp connections per client IP; a flooding connection is closed" | Bounded |
+
+## 2. Guard checks → threats
+
+The Mandate Vault guard ([apps/guard/README.md](../apps/guard/README.md)) refuses to co-sign unless every check passes. Test files: `apps/guard/test/vault.script.test.ts` (G), `apps/guard/test/pledge.test.ts` (P), `test/e2e.vault-settlement.mockchain.test.ts` (S), `test/vault.mockchain.test.ts` (H), `test/e2e.rail.mockchain.test.ts` (R).
+
+| Check | Refuses | Threat |
+|---|---|---|
+| G1 source txid matches the prevout | amount lies about other inputs | T-13 |
+| G3 the input is a registered vault of this agent, one per tx | the guard as a signing oracle | T-11 |
+| G4 final transactions only | pre-signed future spends that dodge the weekly window | T-12 |
+| G5 the guard computes the sighash; the agent must have signed it | blind signing, tampering after the agent signed | T-13 |
+| G6 a policy exists | default deny | T-9 |
+| G7/G8 payee proof + allowlist | an injected payment to an attacker | T-9 |
+| G9 unlisted outputs ≤ the agent's own inputs | vault money to a third party | T-9, T-12 |
+| G10–G12 fee, per-payment, weekly caps | draining | T-12 |
+| G13 one request at a time, decision log | racing two requests under a cap | T-12 |
+| P1–P2 pledge layout and record name this agent | a pledge for someone else | T-9 |
+| P3–P4 pool tx bound by txid; provider allowed, revenue and offer keys are the provider's | a pool that claims an allowed provider | T-9 |
+| P5 fee + coin within `maxPerPoolSats`, coin reserved in the weekly cap | "100 % of the budget into one pool" | T-9 |
+| P6 `verifyLineage` of the offer's credits | a fee for fake credits | T-2, T-8 |
+| S1–S4 the guard rebuilds the settlement from the plan; terms and expected credits from the chain | trusting the coordinator's description | T-1 |
+| S5 provider proofs at settlement time | a provider the owner revoked after the pledge | T-9 |
+| S6 Track A's `verifySettlementPlan` + `verifyLineage` | coordinator theft, fake credits | T-1, T-2 |
+| S7 caps on the real cost | a policy tightened between pledge and settlement | T-12 |
+| H1–H3 hot wallet: the output is the agent's own BRC-29 key, rolling 24 h cap | a third party disguised as a top-up | T-12 |
+| R the HTLC names this guard and agent; the sats land in the agent's vault | a claim that bypasses the vault | T-14 |
+
+## 3. What still needs mainnet
+
+- Validation 5: the vault script (`OP_IF` + bare 2-of-2) passes Arcade's policy; BSV Desktop signs the owner branch.
+- Validations 4 and 6: nLockTime height semantics and v1 malleability rules (Coop Rail refunds, T-15).
+- Validations 2 and 3: BSV Desktop signs `SIGHASH_SINGLE|ANYONECANPAY` offers and how many approval windows it shows.
+- One real settlement (T5) with a vault participant, and its audit `consistent` on a public coordinator.
+
+Each run's txid goes to `plan/STATUS.md` "Mainnet işlemleri", and the Mainnet column above is ticked from there.
