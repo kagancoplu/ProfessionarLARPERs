@@ -8,7 +8,7 @@
 | Senkron | Durum | Tarih | Not |
 |---|---|---|---|
 | S0 | ☐ | | |
-| S1 walking skeleton | ☐ | | txid: |
+| S1 walking skeleton | ✅ | 2026-10-30 21:35 | mainnet, `scripts/skeleton.ts` (kullanıcının MacBook'u, D oturumuyla; overlay + koordinatör `infra/run.mjs`). T5 txid: [6d320c9af8…](https://whatsonchain.com/tx/6d320c9af886bd2514da2c4af0ed0c64477840e08564fb8b8e381270aa5b2763); ajan kredileri overlay 600/400 = basket 600/400 |
 | S2 K1 entegre | ☐ | | |
 | S3 K2 entegre | ☐ | | |
 | S4 freeze | ☐ | | |
@@ -22,7 +22,6 @@
 | 30.10 20:45 | D → **B** (bilgi; trackD'de yazıldı, B cevapladı) | İki B testi Node 22.22'de aralıklı düşüyordu: ölçek "100 participants" (`ECONNRESET`, `TokenKit.nextIndex`) ve public-edge "impersonation attack" | B | **B düzeltti (20:45):** (1) 100 ajan tek test sürecinde event loop'u bloklayınca kapanmış keep-alive soketi yeniden kullanılıyordu; test yardımcısı `retrySocket` idempotent overlay/HTTP çağrılarını soket hatasında yeniden deniyor (koordinatörün kendi lookup'ı zaten deniyordu). (2) Saldırgan tur açılmadan spam'e başlayıp testin 10 mesaj/10 sn sınırını aşıyor, bağlantısı kapanıyordu; artık `round_start`'tan sonra ≤ 5 mesaj. Tam paket 2/2 koşuda B testleri yeşil. **A (öneri):** kit `OverlayClient.lookup` soket hatasında yeniden denemiyor; ayrı süreçteki ajanlarda nadir ama mümkün |
 | 30.10 20:30 | B → **E** (bilgi) | `main` @ `76fc8da` (E P1) üzerinde `apps/web/test/ground.test.ts` "reads buildings and points from the Tiled draft" düşüyor: `WORKSHOP.w` 96, test 48 bekliyor (Tiled taslağı ile test uyuşmuyor). Kök `npm test` bu yüzden kırmızı; B'nin birleştirmesi `apps/web`'e dokunmadı | E | — |
 | 2026-10-30 | A | Doğrulama testi 2/3 mainnet koşusu: BSV Desktop (mainnet, açık) + ≥ 2.000 sat gereken bir laptop | D (sats) + Desktop'ı olan üye: `npx tsx --import @agentcoop/core/register-sdk scripts/spike-sighash.ts` çalıştırıp çıktıyı ve Desktop'ın kaç onay penceresi gösterdiğini A'ya/STATUS'a iletsin | Mockchain varyantı yeşil (`test/spike-sighash.mockchain.test.ts`); A Faz 1'e mockchain'de devam ediyor |
-| 2026-10-30 | A | S1 mainnet skeleton (`scripts/skeleton.ts`): `scripts/wallets.ts` `openWallet(name)` + fonlanmış `provider-api`, `agent-1`, `agent-2` (her biri ≥ 5k sat) + çalışan overlay | D.P0 (cüzdan/fon), B.P1 (overlay; yoksa kit overlay'i `OVERLAY_TOPIC=tm_tokenkit OVERLAY_SERVICE=ls_tokenkit`) | Mockchain e2e yeşil (`test/skeleton.mockchain.test.ts`); A Faz 2'ye geçiyor |
 
 ## Arayüz değişiklikleri (herkes okur)
 
@@ -121,6 +120,11 @@
 
 | Tarih | Tip (T1–T11) | txid | Track | Not |
 |---|---|---|---|---|
+| 2026-10-30 21:35 | T1 | [762e6b083728f9cd653b938e2947a92e50d0a92218351b1c64b0fe1e696e089f](https://whatsonchain.com/tx/762e6b083728f9cd653b938e2947a92e50d0a92218351b1c64b0fe1e696e089f) | A (D oturumu koştu) | S1: sağlayıcı (`provider-api`) 1.000 kredi deploy+mint (`AGENTCOOP`) |
+| 2026-10-30 21:35 | T2 | [9118788a77efb3854878d47c1edb199d03ecbf00ab8e3da32b0a907c8f18c77c](https://whatsonchain.com/tx/9118788a77efb3854878d47c1edb199d03ecbf00ab8e3da32b0a907c8f18c77c) | A (D oturumu koştu) | S1: kredileri ayır + havuz ilanı (N = 1.000, P = 1.000 sat) |
+| 2026-10-30 21:35 | T3 | [00f50d70bd5aa27c5e5333c92462ba9997cb57037ef9101df2c9ec4a0f423aef](https://whatsonchain.com/tx/00f50d70bd5aa27c5e5333c92462ba9997cb57037ef9101df2c9ec4a0f423aef) | A (D oturumu koştu) | S1: `agent-1` 600 kredi pledge |
+| 2026-10-30 21:35 | T3 | [00d78d5789320dfc120b2e5361bb7d709a0d2eacee1b37c0497f08d5c82cde7a](https://whatsonchain.com/tx/00d78d5789320dfc120b2e5361bb7d709a0d2eacee1b37c0497f08d5c82cde7a) | A (D oturumu koştu) | S1: `agent-2` 400 kredi pledge |
+| 2026-10-30 21:35 | **T5** | [6d320c9af886bd2514da2c4af0ed0c64477840e08564fb8b8e381270aa5b2763](https://whatsonchain.com/tx/6d320c9af886bd2514da2c4af0ed0c64477840e08564fb8b8e381270aa5b2763) | A (D oturumu koştu) | **S1: settlement (DvP)**: sağlayıcıya P, ajanlara 600 / 400 kredi tek tx'te; overlay ve basket 600/400 |
 | 2026-10-30 21:32 | FUND | [6243ff00ed4e9c195f0e6c0f35c060125c50b750bf457d27b14976ab9638812e](https://whatsonchain.com/tx/6243ff00ed4e9c195f0e6c0f35c060125c50b750bf457d27b14976ab9638812e) | D | Treasury Desktop → `agent-1` 49.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |
 | 2026-10-30 21:32 | FUND | [038549cc372c9c10e5f047334c37f18d9856dcbdeb91fdeec6457266406a99c2](https://whatsonchain.com/tx/038549cc372c9c10e5f047334c37f18d9856dcbdeb91fdeec6457266406a99c2) | D | Treasury Desktop → `agent-2` 50.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |
 | 2026-10-30 21:32 | FUND | [d406402edeaa7f9122d923dadcb7674399312ce858809e2b2cacdad603d34039](https://whatsonchain.com/tx/d406402edeaa7f9122d923dadcb7674399312ce858809e2b2cacdad603d34039) | D | Treasury Desktop → `provider-api` 20.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |

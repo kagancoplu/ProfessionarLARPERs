@@ -4,7 +4,7 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
-> Status (30 Oct, evening): every flow below runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`: 55 files, 267 tests). **No mainnet transaction yet**: we are waiting for satoshis. The example transaction table fills in as the mainnet runs happen.
+> Status (30 Oct, 22:35 CET): the first end-to-end run is **on mainnet** (one pool, two agents, one settlement: see T1–T5 below). Every other flow runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`: 61 files, 312 tests); the rest of the example transaction table fills in as the mainnet runs happen.
 
 ## What it does
 
@@ -103,11 +103,11 @@ Operations guide: [docs/OPS.md](docs/OPS.md). Public deployment of the overlay a
 
 | # | Transaction | Signed by | What you see on chain | Mainnet txid | Mock-chain test |
 |---|---|---|---|---|---|
-| T1 | Credit token deploy | Provider (BSV Desktop) | BSV-21 deploy+mint (also on BananaBlocks) | pending | `test/skeleton.mockchain.test.ts` |
-| T2 | Pool announcement, credits reserved | Provider | N-credit UTXO + `OP_RETURN agentcoop pool` | pending | `test/skeleton.mockchain.test.ts` |
-| T3 | Pledge | Agent / person | Pledge coin, registration fee to the provider, `OP_RETURN agentcoop pledge` | pending | `test/skeleton.mockchain.test.ts` |
+| T1 | Credit token deploy | Provider (BSV Desktop) | BSV-21 deploy+mint (also on BananaBlocks) | [762e6b0837…](https://whatsonchain.com/tx/762e6b083728f9cd653b938e2947a92e50d0a92218351b1c64b0fe1e696e089f) | `test/skeleton.mockchain.test.ts` |
+| T2 | Pool announcement, credits reserved | Provider | N-credit UTXO + `OP_RETURN agentcoop pool` | [9118788a77…](https://whatsonchain.com/tx/9118788a77efb3854878d47c1edb199d03ecbf00ab8e3da32b0a907c8f18c77c) | `test/skeleton.mockchain.test.ts` |
+| T3 | Pledge | Agent / person | Pledge coin, registration fee to the provider, `OP_RETURN agentcoop pledge` | [00f50d70bd…](https://whatsonchain.com/tx/00f50d70bd5aa27c5e5333c92462ba9997cb57037ef9101df2c9ec4a0f423aef), [00d78d5789…](https://whatsonchain.com/tx/00d78d5789320dfc120b2e5361bb7d709a0d2eacee1b37c0497f08d5c82cde7a) | `test/skeleton.mockchain.test.ts` |
 | T4 | Pledge cancel | Pledge owner | The coin spent back to its owner | pending | `test/skeleton.mockchain.test.ts` |
-| **T5** | **Settlement (DvP)** | Provider SINGLE\|ACP, everyone ALL | **N inputs; provider paid and every participant's credits in one tx; pledge-list hash** | pending | `apps/coordinator/test/e2e.integration.mockchain.test.ts` |
+| **T5** | **Settlement (DvP)** | Provider SINGLE\|ACP, everyone ALL | **N inputs; provider paid and every participant's credits in one tx; pledge-list hash** | [6d320c9af8…](https://whatsonchain.com/tx/6d320c9af886bd2514da2c4af0ed0c64477840e08564fb8b8e381270aa5b2763) | `apps/coordinator/test/e2e.integration.mockchain.test.ts` |
 | T6 | Credit redeem and return | Agent / provider | BSV-21 transfer to the provider, and back | pending | `test/provider.credits.mockchain.test.ts` |
 | T7 | Retail 402 payment | Agent (AuthFetch) | BRC-29 payment to the provider | pending | `test/provider.402.mockchain.test.ts` |
 | T8 | Market sweep | Sellers SINGLE\|ACP, buyer ALL | Several sellers paid, buyer gets credits | pending | `test/market.mockchain.test.ts` |
@@ -153,7 +153,7 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 ## Known limitations
 
-- No mainnet transaction yet; validations 2–6 (BSV Desktop SINGLE\|ACP signing, vault script policy, nLockTime semantics, v1 malleability) are written and wait for satoshis.
+- On mainnet so far: the first end-to-end run (T1–T5) with server wallets for the provider and both agents. The BSV Desktop flows (provider, owner, human participant) and validations 2–6 (Desktop SINGLE\|ACP signing, vault script policy, nLockTime, v1 malleability) are the next runs.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
 - A provider's credit return sends vault-redeemed credits to the agent's own address (bounded, threat T-10); Coop Rail has no reverse direction.
 - The coordinator's selection is auditable but cannot be forced.
