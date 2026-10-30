@@ -121,6 +121,9 @@
 
 | Tarih | Tip (T1–T11) | txid | Track | Not |
 |---|---|---|---|---|
+| 2026-10-30 21:32 | FUND | [6243ff00ed4e9c195f0e6c0f35c060125c50b750bf457d27b14976ab9638812e](https://whatsonchain.com/tx/6243ff00ed4e9c195f0e6c0f35c060125c50b750bf457d27b14976ab9638812e) | D | Treasury Desktop → `agent-1` 49.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |
+| 2026-10-30 21:32 | FUND | [038549cc372c9c10e5f047334c37f18d9856dcbdeb91fdeec6457266406a99c2](https://whatsonchain.com/tx/038549cc372c9c10e5f047334c37f18d9856dcbdeb91fdeec6457266406a99c2) | D | Treasury Desktop → `agent-2` 50.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |
+| 2026-10-30 21:32 | FUND | [d406402edeaa7f9122d923dadcb7674399312ce858809e2b2cacdad603d34039](https://whatsonchain.com/tx/d406402edeaa7f9122d923dadcb7674399312ce858809e2b2cacdad603d34039) | D | Treasury Desktop → `provider-api` 20.000 sat (BRC-29, kabul edildi). Runbook adım 4 (S1 fonlaması) |
 | 2026-10-30 21:23 | FUND | [ac07226714cfc6a692d36ba0c4d9300d4e55ade6c0eb9405d1175379b4001dea](https://whatsonchain.com/tx/ac07226714cfc6a692d36ba0c4d9300d4e55ade6c0eb9405d1175379b4001dea) | D | **İlk mainnet işlemi.** Treasury Desktop `03c07007f2…db96e1` → `agent-1` 1.000 sat (BRC-29), `agent-1`'de kabul edildi; ilk ödeme kilidi kalktı. Runbook adım 2 |
 
 ## Doğrulama testleri (MASTER-PLAN §5 / FINAL-IDEA §12.1)
@@ -363,7 +366,7 @@
   - **C (C.3):** vault'lu ajan = `adoptVaultOutput` + `pledgeFromVault(…, { cosign: httpCosigner(GUARD_URL), poolBEEF: <overlay {op:'pool'} BEEF> })` + sign_request'te `VaultSigner` (settle) + `internalizeVaultSettlement`; red `CosignRejected.reason` → `sign_reject`. **Perakende 402:** `topUpHotWallet(wallet, { vaultId, utxo, satoshis, cosign })` → sats ajanın `default` basket'ine (`AuthFetch` olağan şekilde çalışır), tavan `hotWalletDailySats`.
   - **E:** guard uçları hazır (`GET /policies`, `/decisions`, `/events`, CORS; `apps/guard/README.md`). `vault-ops.ts` node importsuz kalıyor. **Liman (Rail):** maker `GET /quote?dir=usdc-bsv&amount=`, `GET /events` (`MAKER_URL`, :8094; `apps/maker/src/server.ts`); Base tarafı ABI `contracts/base-htlc/artifacts.json`. Canlı swap testnet fonu gelene kadar yok; liman "experimental"
   - A → F1'den sonra `agent-1` 1.000 sat (test 2) · herkes → mainnet sats
-- **Cüzdan/fon durumu:** sats talebi: ☑ gönderildi ☑ **geldi, elimizde** (kullanıcı teyidi 30.10 21:40; miktar: *(doldurun)*) · **treasury Desktop = `03c07007f2…db96e1`** (kullanıcının MacBook'u, mainnet; `fund.ts` bağlandı, 30.10 21:23) · fonlanan cüzdanlar: `agent-1` 1.000 sat (ilk ödeme kilidi kalktı); diğer 6 sunucu cüzdanı 0 sat. `infra/preflight.mjs --wallets` aynı makinede: S1 için engel yalnız bakiyeler (`provider-api`, `agent-1`, `agent-2` ≥ 5.000)
+- **Cüzdan/fon durumu:** sats talebi: ☑ gönderildi ☑ **geldi, elimizde** (kullanıcı teyidi 30.10 21:40; miktar: *(doldurun)*) · **treasury Desktop = `03c07007f2…db96e1`** (kullanıcının MacBook'u, mainnet; `fund.ts` bağlandı, 30.10 21:23) · fonlanan cüzdanlar (30.10 21:32): `agent-1` 50.000, `agent-2` 50.000, `provider-api` 20.000 sat; `coordinator`, `guard`, `agent-3`, `maker` 0 (runbook adım 7). `infra/preflight.mjs --wallets`: **Ready for S1** (yalnız servisler kapalı uyarısı)
 - **Axel soruları:** ☐ gönderildi (metin: `plan/phases/D-P0.md` §2) · cevaplar:
 - **SETUP-ACCOUNTS kontrol listesi** (D yürütür):
   - [ ] 3× BSV Desktop mainnet kurulu, seed'ler çevrimdışı (1 tanesi treasury laptopunda açık görünüyor)
