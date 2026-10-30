@@ -51,12 +51,40 @@ export class OverlayLookup {
     return (await this.lookup<SettlementView>({ op: 'settlement', poolId }))[0]?.context
   }
 
-  /** The credit output a pool's offer spends (out0 of the pool tx), as the overlay holds it. */
-  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean } | undefined> {
+  /** Valid unspent pledges in coordinator order, with their transactions (BEEF ancestry) for the settlement template. */
+  async pledgeCandidates (poolId: string): Promise<Array<{ view: PledgeView, sourceTx: Transaction }>> {
+    return (await this.lookup<PledgeView>({ op: 'pledges', poolId })).map(r => ({ view: r.context, sourceTx: r.tx }))
+  }
+
+  /** The pool transaction (out0 = the credit UTXO the offer spends). */
+  async poolTx (poolId: string): Promise<Transaction | undefined> {
     const [txid, vout] = poolId.split('_')
-    const [r] = await this.lookup<{ spent: boolean }>({ op: 'outpoint', txid, vout: Number(vout) })
+    return (await this.lookup({ op: 'outpoint', txid, vout: Number(vout) }))[0]?.tx
+  }
+
+  /** POST /submit to tm_agentcoop (BEEF). */
+  async submit (beef: number[]): Promise<Record<string, unknown>> {
+    const res = await fetch(`${this.url}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Topics': JSON.stringify(['tm_agentcoop']) },
+      body: new Uint8Array(beef)
+    })
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>
+    if (!res.ok) throw new OverlayUnavailableError(`overlay submit failed (${res.status}): ${JSON.stringify(body)}`)
+    return body
+  }
+
+  /** The credit output a pool's offer spends (out0 of the pool tx), as the overlay holds it. */
+  async creditOutput (poolId: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+    return await this.tokenOutput(poolId)
+  }
+
+  /** An admitted credit (BSV-21) output by outpoint "txid_vout", with its token id, amount and spent flag. */
+  async tokenOutput (outpoint: string): Promise<{ lockingScriptHex: string, satoshis: number, spent: boolean, tokenId: string, amt: string } | undefined> {
+    const [txid, vout] = outpoint.split('_')
+    const [r] = await this.lookup<{ spent: boolean, tokenId: string, amt: string }>({ op: 'outpoint', txid, vout: Number(vout) })
     if (r === undefined) return undefined
     const out = r.tx.outputs[r.outputIndex]
-    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent }
+    return { lockingScriptHex: out.lockingScript.toHex(), satoshis: out.satoshis ?? 0, spent: r.context.spent, tokenId: r.context.tokenId, amt: r.context.amt }
   }
 }

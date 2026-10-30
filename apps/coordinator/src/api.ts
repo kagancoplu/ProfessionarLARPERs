@@ -5,15 +5,17 @@
  * round is running, Faz 2) and `hasOffer`.
  */
 import express, { type Router } from 'express'
-import type { Offer } from '../../../packages/overlay/src/stub/types'
+import type { Listing, Offer } from '../../../packages/overlay/src/stub/types'
 import type { PoolView } from '../../../packages/overlay/src/views'
 import type { HeightSource } from './chain'
+import type { CoordinatorStatus } from './engine'
 import { OverlayUnavailableError, type OverlayLookup } from './overlay'
 import type { CoordinatorStore } from './store'
 import { OfferError, verifyOffer } from './verifyOffer'
+import { normalizeOutpoint, verifyListing } from './verifyListing'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
-export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true }
+export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
 
 export interface ApiDeps {
   overlay: OverlayLookup
@@ -21,6 +23,8 @@ export interface ApiDeps {
   height: HeightSource
   /** Pools with a signing round in progress (Faz 2 engine). */
   locking: () => ReadonlySet<string>
+  /** Round state for a pool, when the engine runs. */
+  coordinatorStatus?: (poolId: string) => CoordinatorStatus | undefined
 }
 
 const POOL_ID_RE = /^[0-9a-f]{64}_\d+$/
@@ -33,7 +37,14 @@ export async function derivePools (deps: ApiDeps, views: PoolView[]): Promise<Ap
     let status: ApiPoolStatus = v.status
     if (v.status === 'open' && locking.has(v.poolId)) status = 'locking'
     else if (v.status === 'open' && height !== undefined && height >= Number(v.terms.deadlineHeight)) status = 'failed'
-    return { ...v, status, hasOffer: offers.has(v.poolId), ...(height !== undefined ? { height } : { heightUnknown: true as const }) }
+    const coordinator = deps.coordinatorStatus?.(v.poolId)
+    return {
+      ...v,
+      status,
+      hasOffer: offers.has(v.poolId),
+      ...(height !== undefined ? { height } : { heightUnknown: true as const }),
+      ...(coordinator !== undefined ? { coordinator } : {})
+    }
   })
 }
 
@@ -86,11 +97,37 @@ export function createApiRouter (deps: ApiDeps): Router {
     res.json(await deps.overlay.pledges(poolIdParam(req), { includeSpent: all, includeInvalid: all }))
   }))
 
+  r.post('/listings', wrap(async (req, res) => {
+    const listing = req.body as Listing
+    const outpoint = typeof listing?.outpoint === 'string' ? normalizeOutpoint(listing.outpoint) : ''
+    const credit = /^[0-9a-f]{64}_\d+$/.test(outpoint) ? await deps.overlay.tokenOutput(outpoint) : undefined
+    const verified = verifyListing(listing, credit)
+    await deps.store.saveListing(verified)
+    res.status(201).json({ outpoint: verified.outpoint, accepted: true })
+  }))
+
+  /** Unspent listings, cheapest per credit first; spent ones (swept or cancelled) are dropped. */
+  r.get('/listings', wrap(async (req, res) => {
+    const tokenId = typeof req.query.tokenId === 'string' ? req.query.tokenId : undefined
+    const live: Listing[] = []
+    for (const l of await deps.store.listings(tokenId)) {
+      const credit = await deps.overlay.tokenOutput(l.outpoint)
+      if (credit === undefined || credit.spent) { await deps.store.deleteListing(l.outpoint); continue }
+      live.push(l)
+    }
+    live.sort((a, b) => {
+      const x = BigInt(a.askSats) * BigInt(b.credits)
+      const y = BigInt(b.askSats) * BigInt(a.credits)
+      return x < y ? -1 : x > y ? 1 : 0
+    })
+    res.json(live)
+  }))
+
   r.get('/healthz', wrap(async (_req, res) => {
     let overlay = true
     try { await deps.overlay.pools() } catch { overlay = false }
     const height = await deps.height.height()
-    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null })
+    res.status(overlay ? 200 : 503).json({ ok: overlay, overlay, height: height ?? null, engine: deps.coordinatorStatus !== undefined })
   }))
 
   return r

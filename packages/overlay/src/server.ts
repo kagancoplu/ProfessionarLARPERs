@@ -5,7 +5,8 @@
  *
  * One process, one SQLite file, no MongoDB, no Docker. Standard overlay
  * endpoints: POST /submit (x-topics: ["tm_agentcoop"]) and POST /lookup
- * (service "ls_agentcoop").
+ * (service "ls_agentcoop"), plus GET /agentcoop/events (Server-Sent Events:
+ * one event per admission and per spend).
  *
  * Env: PORT (8080), OVERLAY_DB (./data/overlay.db), NETWORK (main|test),
  *      OVERLAY_PRIVATE_KEY (hex; generated and saved to ./data/overlay.key if absent),
@@ -19,7 +20,8 @@ import { fileURLToPath } from 'node:url'
 import OverlayExpress from '@bsv/overlay-express'
 import { PrivateKey, type ChainTracker } from '@bsv/sdk'
 import { AgentCoopTopicManager, TOPIC } from './AgentCoopTopicManager'
-import { createAgentCoopLookupService, SERVICE } from './AgentCoopLookupService'
+import { makeAgentCoopLookupFactory, SERVICE } from './AgentCoopLookupService'
+import { OverlayEvents, sseHandler } from './events'
 import { noopAdvertiser } from './noopAdvertiser'
 import { ResilientChainTracker } from './chainTracker'
 
@@ -41,6 +43,7 @@ export interface OverlayOptions {
 
 export interface RunningOverlay {
   url: string
+  events: OverlayEvents
   close: () => Promise<void>
 }
 
@@ -68,12 +71,20 @@ export async function startOverlay (opts: OverlayOptions): Promise<RunningOverla
   server.configureTopicManager(TOPIC, new AgentCoopTopicManager(
     opts.whitelist !== undefined && opts.whitelist.length > 0 ? { whitelist: new Set(opts.whitelist) } : {}
   ))
-  server.configureLookupServiceWithKnex(SERVICE, createAgentCoopLookupService)
+  const events = new OverlayEvents()
+  events.setMaxListeners(100)
+  server.configureLookupServiceWithKnex(SERVICE, makeAgentCoopLookupFactory(events))
+  // Registered before start() so it is matched before overlay-express's own middleware.
+  server.app.get('/agentcoop/events', sseHandler(events))
   await server.configureEngine(false) // false = no SHIP/SLAP, so no MongoDB
   await server.start()
   return {
     url: `http://localhost:${opts.port}`,
-    close: async () => { await server.close() }
+    events,
+    close: async () => {
+      events.close()
+      await server.close()
+    }
   }
 }
 
