@@ -33,11 +33,13 @@ import {
   httpCosigner,
   listVaultUtxos,
   spendFromVault,
+  topUpHotWallet,
   type Cosigner,
   type VaultUtxo
 } from '@agentcoop/core/signers/VaultSigner'
 import { parseOpReturn } from '@agentcoop/core'
 import { createVault, fundVault, getVaultStatus, putPolicy, registerVault, withdrawVault, type VaultInfo } from '../apps/owner-cli/src/vault-ops'
+import { hotWalletScript } from '@agentcoop/core/scripts/vault'
 import { Guard, inProcessCosigner } from '../apps/guard/src/guard'
 import { createGuardApp } from '../apps/guard/src/server'
 
@@ -222,5 +224,33 @@ describe('Mandate Vault (mock chain)', () => {
     expect(gained).toBeLessThanOrEqual(6_500)
     // the vault UTXO is gone: an agent spend of it is now a double spend
     await expect(spendFromVault(agent, { vaultId: vault.record.vaultId, utxo: utxos[0], outputs: [pay(provider, 'pool-1', 100)], cosign })).rejects.toThrow(/broadcast of .* failed/)
+    // D-P2: and the agent's basket no longer offers it as spendable (relinquished)
+    expect(await listVaultUtxos(agent, vault.record.vaultId)).toEqual([])
+  })
+
+  it('9. D-P2.2 hot wallet: vault → the agent\'s default basket under hotWalletDailySats; nobody else can be the recipient', async () => {
+    const f = await fundVault(owner, vault, 5_000)
+    await adoptVaultOutput(agent, vault.record.vaultId, f.tx, f.vout)
+    await putPolicy(new AuthFetch(owner), url, agent.identityKey, {
+      allowProviders: [provider.identityKey], maxPerPoolSats: 3_000, weeklyCapSats: 50_000, maxFeeSats: 500, hotWalletDailySats: 2_000
+    })
+    const before = (await poolBalance(agent)).spendableSatoshis
+    const top = await topUpHotWallet(agent, { vaultId: vault.record.vaultId, utxo: await vaultUtxo(), satoshis: 1_500, cosign })
+    expect(top.changeVout).toBe(1)
+    // +1,500 in the default basket, minus the miner fee the agent's wallet paid from its own funds
+    const gained = (await poolBalance(agent)).spendableSatoshis - before
+    expect(gained).toBeGreaterThan(1_400)
+    expect(gained).toBeLessThanOrEqual(1_500)
+    expect((await listVaultUtxos(agent, vault.record.vaultId)).map(u => u.satoshis)).toEqual([3_500])
+    expect(logs.at(-1)).toMatch(/ALLOW pay\/hot .* hot=1500/)
+
+    // the daily cap is rolling: a second top-up would make 2,500 > 2,000
+    expect(await refusal(topUpHotWallet(agent, { vaultId: vault.record.vaultId, utxo: await vaultUtxo(), satoshis: 1_000, cosign }))).toBe('hotWalletDailySats exceeded (1500 + 1000 > 2000)')
+    // a "hot wallet" output that pays someone else is not a hot wallet
+    const thief = { lockingScript: hotWalletScript(stranger.identityKey, 'AAAA', 'BBBB').toHex(), satoshis: 100, hot: { derivationPrefix: 'AAAA', derivationSuffix: 'BBBB' } }
+    expect(await refusal(spendFromVault(agent, { vaultId: vault.record.vaultId, utxo: await vaultUtxo(), outputs: [thief], cosign }))).toBe('hot wallet proof mismatch at vout 0')
+    const status = await getVaultStatus(new AuthFetch(owner), url, vault.record.vaultId)
+    expect(status.hotLast24hSats).toBe(1_500)
+    expect((await listVaultUtxos(agent, vault.record.vaultId)).map(u => u.satoshis)).toEqual([3_500])
   })
 })

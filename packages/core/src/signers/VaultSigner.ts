@@ -10,15 +10,26 @@
  * needs the source transaction of EVERY input: the guard computes the fee and
  * the vault's outflow from them.
  *
- * Agent flows (createAction + signAction, like A's buildPledge 'vault' path):
- *   adoptVaultOutput  take a vault output the owner funded into the agent's basket
- *   spendFromVault    pay from one vault UTXO; change goes back to the vault script
+ * Agent flows (createAction + signAction):
+ *   adoptVaultOutput           take a vault output the owner funded into the agent's basket
+ *   spendFromVault             pay from one vault UTXO; change goes back to the vault script
+ *   pledgeFromVault            a vault pledge in A.3.1's layout (guard 2.1b), reference for buildPledge(…,'vault')
+ *   cancelVaultPledge          the pledge coin back into the vault
+ *   internalizeVaultSettlement after a settlement: change into the vault basket, pledge coin dropped
+ *   topUpHotWallet             vault → the agent's default basket, under hotWalletDailySats (D-P2.2)
  */
-import { Transaction, Utils, type CreateActionOutput, type SignActionResult, type UnlockingScript, type WalletInterface } from '../sdk'
-import { VAULT_BASKET, VAULT_PROTOCOL, type InputSigner } from '../types'
+import { Random, Transaction, Utils, type CreateActionOutput, type SignActionResult, type UnlockingScript, type WalletInterface } from '../sdk'
+import { AgentCoopError } from '../errors'
+import { buildOpReturn } from '../scripts/opreturn'
+import { pledgeAmount } from '../pool/pledge'
+import { validateTerms } from '../pool/terms'
+import { coopOutpoint, toWalletOutpoint } from '../util/outpoint'
+import { PLEDGE_BASKET, VAULT_BASKET, VAULT_PROTOCOL, type InputSigner, type PledgeRecord, type PoolTerms, type SettlementPlan } from '../types'
 import {
+  ANYONE_IDENTITY_KEY,
   VAULT_COSIGN_UNLOCK_LENGTH,
   VAULT_OWNER_UNLOCK_LENGTH,
+  hotWalletScript,
   parseVaultLockingScript,
   toChecksigSignature,
   vaultCosignUnlock,
@@ -39,17 +50,31 @@ export interface PayeeProof {
   keyID: string
 }
 
+/** Proof that output `vout` is a BRC-29 payment from 'anyone' to the vault's own agent (its hot wallet, D-P2.2). */
+export interface HotWalletProof {
+  vout: number
+  derivationPrefix: string
+  derivationSuffix: string
+}
+
 export interface CosignContext {
   kind: CosignKind
+  /** settle: the plan's pool (required). */
   poolId?: string
+  /** settle: cross-checks against the pledge record on chain. */
   expectedCredits?: string
   tokenId?: string
   payees?: PayeeProof[]
+  /** pay, when the transaction is a vault pledge: the pool transaction (AtomicBEEF, BEEF or raw; hex or bytes). Else the guard fetches it. */
+  poolBEEF?: number[] | string
+  /** pay: outputs that top up the agent's hot wallet. */
+  hotWallet?: HotWalletProof[]
 }
 
 export interface CosignRequest {
-  /** AtomicBEEF of the transaction to sign, with every input's source transaction (number[] or hex). */
-  txBEEF: number[] | string
+  /** AtomicBEEF of the transaction to sign, with every input's source transaction (number[] or hex). Not sent for 'settle'. */
+  txBEEF?: number[] | string
+  /** 'settle': the SettlementPlan; the guard builds the transaction from it (planTransaction). */
   plan?: unknown
   inputIndex: number
   /** The agent's identity key. */
@@ -116,7 +141,7 @@ export interface VaultSignerOptions {
   cosign: Cosigner
   /** Sent to the guard; a function gets the transaction being signed. */
   context: CosignContext | ((tx: Transaction, inputIndex: number) => CosignContext)
-  /** SettlementPlan for context.kind 'settle' (D-P2). */
+  /** SettlementPlan for context.kind 'settle': sent instead of the transaction. */
   plan?: unknown
   originator?: string
 }
@@ -137,8 +162,8 @@ export class VaultSigner implements InputSigner {
     const sigAgent = await signVaultInput(this.wallet, sighash, vaultId, originator)
     const context = typeof this.opts.context === 'function' ? this.opts.context(tx, inputIndex) : this.opts.context
     const { signatureHex } = await this.opts.cosign({
-      txBEEF: Utils.toHex(tx.toAtomicBEEF(true)),
-      ...(this.opts.plan !== undefined ? { plan: this.opts.plan } : {}),
+      // settle: the guard rebuilds the transaction from the plan itself
+      ...(this.opts.plan !== undefined ? { plan: this.opts.plan } : { txBEEF: Utils.toHex(tx.toAtomicBEEF(true)) }),
       inputIndex,
       agent,
       agentSignatureHex: Utils.toHex(sigAgent),
@@ -224,6 +249,12 @@ export interface VaultSpendOutput {
   outputDescription?: string
   /** Set for a payment to a provider's revenue key: becomes a PayeeProof for the guard. */
   payee?: { provider: string, keyID: string }
+  /** Set for a hot-wallet top-up (BRC-29 from 'anyone' to the agent): becomes a HotWalletProof. */
+  hot?: { derivationPrefix: string, derivationSuffix: string }
+  /** Track the output in the agent's wallet (e.g. a vault pledge coin in 'agentcoop'). */
+  basket?: string
+  customInstructions?: string
+  tags?: string[]
 }
 
 export interface VaultSpendResult {
@@ -239,6 +270,9 @@ export interface VaultSpendResult {
  * Outputs keep their order (randomizeOutputs: false); the rest of the UTXO
  * returns to the vault script. The agent's wallet adds its own input for the
  * miner fee. On a guard refusal the action is aborted and CosignRejected thrown.
+ * If the broadcast fails (typically: the owner already withdrew the UTXO), the
+ * UTXO is dropped from the agent's basket (relinquishOutput); `npm run adopt`
+ * takes it back if it turns out to be unspent.
  */
 export async function spendFromVault (wallet: WalletInterface, args: {
   vaultId: string
@@ -246,13 +280,22 @@ export async function spendFromVault (wallet: WalletInterface, args: {
   outputs: VaultSpendOutput[]
   cosign: Cosigner
   description?: string
+  /** Extra context for the guard (e.g. poolBEEF for a pledge). */
+  context?: Omit<CosignContext, 'kind' | 'payees' | 'hotWallet'>
   originator?: string
 }): Promise<VaultSpendResult> {
-  const { vaultId, utxo, outputs, originator } = args
-  const paid = outputs.reduce((s, o) => s + o.satoshis, 0)
+  const { vaultId, utxo, originator } = args
+  const paid = args.outputs.reduce((s, o) => s + o.satoshis, 0)
   const change = utxo.satoshis - paid
   if (change < 0) throw new Error(`vault UTXO ${utxo.outpoint} holds ${utxo.satoshis} sats, outputs need ${paid}`)
-  const all: CreateActionOutput[] = outputs.map(o => ({ lockingScript: o.lockingScript, satoshis: o.satoshis, outputDescription: o.outputDescription ?? 'AgentCoop vault payment' }))
+  const all: CreateActionOutput[] = args.outputs.map(o => ({
+    lockingScript: o.lockingScript,
+    satoshis: o.satoshis,
+    outputDescription: o.outputDescription ?? 'AgentCoop vault payment',
+    ...(o.basket !== undefined ? { basket: o.basket } : {}),
+    ...(o.customInstructions !== undefined ? { customInstructions: o.customInstructions } : {}),
+    ...(o.tags !== undefined ? { tags: o.tags } : {})
+  }))
   if (change > 0) {
     all.push({ lockingScript: utxo.lockingScriptHex, satoshis: change, outputDescription: 'AgentCoop vault change', basket: VAULT_BASKET, customInstructions: instructions(vaultId, 'agent'), tags: [vaultTag(vaultId)] })
   }
@@ -265,19 +308,161 @@ export async function spendFromVault (wallet: WalletInterface, args: {
   }, originator)
   const signable = created.signableTransaction
   if (signable === undefined) throw new Error('createAction returned no signable transaction')
+  let signed: SignActionResult
   try {
     const tx = Transaction.fromAtomicBEEF(signable.tx)
     const [txid, vout] = utxo.outpoint.split('.')
     const vi = tx.inputs.findIndex(i => (i.sourceTXID ?? i.sourceTransaction?.id('hex')) === txid && i.sourceOutputIndex === Number(vout))
     if (vi < 0) throw new Error('vault input missing from the signable transaction')
     all.forEach((o, i) => { if (tx.outputs[i]?.lockingScript.toHex() !== o.lockingScript) throw new Error(`output ${i} moved`) })
-    const payees: PayeeProof[] = outputs.flatMap((o, i) => o.payee !== undefined ? [{ vout: i, ...o.payee }] : [])
-    const signer = new VaultSigner(wallet, { vaultId, cosign: args.cosign, context: { kind: 'pay', payees }, originator })
+    const payees: PayeeProof[] = args.outputs.flatMap((o, i) => o.payee !== undefined ? [{ vout: i, ...o.payee }] : [])
+    const hotWallet: HotWalletProof[] = args.outputs.flatMap((o, i) => o.hot !== undefined ? [{ vout: i, ...o.hot }] : [])
+    const context: CosignContext = { ...args.context, kind: 'pay', payees, ...(hotWallet.length > 0 ? { hotWallet } : {}) }
+    const signer = new VaultSigner(wallet, { vaultId, cosign: args.cosign, context, originator })
     const unlockingScript = await signer.sign(tx, vi)
-    const signed = broadcastResult(await wallet.signAction({ reference: signable.reference, spends: { [vi]: { unlockingScript: unlockingScript.toHex() } } }, originator))
-    return { ...signed, ...(change > 0 ? { changeVout: outputs.length } : {}) }
+    signed = await wallet.signAction({ reference: signable.reference, spends: { [vi]: { unlockingScript: unlockingScript.toHex() } } }, originator)
   } catch (e) {
     await wallet.abortAction({ reference: signable.reference }, originator).catch(() => {})
     throw e
   }
+  try {
+    const result = broadcastResult(signed)
+    return { ...result, ...(change > 0 ? { changeVout: args.outputs.length } : {}) }
+  } catch (e) {
+    await wallet.relinquishOutput({ basket: VAULT_BASKET, output: utxo.outpoint }, originator).catch(() => {})
+    throw new Error(`${(e as Error).message}; ${utxo.outpoint} dropped from the agent's '${VAULT_BASKET}' basket (npm run adopt takes it back if it is still unspent)`)
+  }
+}
+
+// ── vault pledges (2.1b; A.3.1 layout) ───────────────────────────────────────
+
+/** customInstructions of a vault pledge coin in the agent's 'agentcoop' basket. */
+export interface VaultPledgeInstructions {
+  signer: 'vault'
+  vaultId: string
+  poolId: string
+  protocolID: typeof VAULT_PROTOCOL
+  keyID: string
+  counterparty: 'anyone'
+}
+
+export interface VaultPledge {
+  txid: string
+  /** "txid_vout" of the pledge coin (always vout 0). */
+  outpoint: string
+  record: PledgeRecord
+  satoshis: number
+  /** AtomicBEEF: submit it to tm_agentcoop. */
+  beef: number[]
+  instructions: VaultPledgeInstructions
+}
+
+/**
+ * Pledge to a pool from the vault, in A.3.1's layout so the guard can check it at
+ * pledge time (D-P2 §7.2): out0 pledge coin on the vault script, out1 feeSats →
+ * payScriptHex, out2 OP_RETURN pledge { signer:'vault' }, then change to the vault.
+ * The coin stays spendable by the owner. One active pledge per 'agentcoop' basket.
+ * `poolBEEF` (the pool transaction, e.g. from the overlay's pool lookup) saves the guard a fetch.
+ */
+export async function pledgeFromVault (wallet: WalletInterface, args: {
+  vaultId: string
+  utxo: VaultUtxo
+  terms: PoolTerms
+  credits: string
+  tokenIndex: number
+  cosign: Cosigner
+  poolBEEF?: number[] | string
+  bufferSats?: number
+  allowMultiple?: boolean
+  originator?: string
+}): Promise<VaultPledge> {
+  const { terms, credits, vaultId, originator } = args
+  validateTerms(terms)
+  if (BigInt(credits) < BigInt(terms.minCredits) || BigInt(credits) > BigInt(terms.credits)) throw new AgentCoopError('BAD_PLEDGE', `credits must be in ${terms.minCredits}..${terms.credits}`)
+  if (args.allowMultiple !== true) {
+    const active = await wallet.listOutputs({ basket: PLEDGE_BASKET, includeCustomInstructions: true, limit: 1000 }, originator)
+    const isPledge = (ci?: string): boolean => { try { return ci === undefined || JSON.parse(ci).change !== true } catch { return true } }
+    if (active.outputs.some(o => o.spendable && isPledge(o.customInstructions))) throw new AgentCoopError('BAD_PLEDGE', `an active pledge already exists in '${PLEDGE_BASKET}' (one at a time)`)
+  }
+  const { publicKey: participant } = await wallet.getPublicKey({ identityKey: true }, originator)
+  const satoshis = pledgeAmount(terms, credits, args.bufferSats)
+  const record: PledgeRecord = { v: '1', poolId: terms.poolId, credits, participant, tokenIndex: String(args.tokenIndex), signer: 'vault' }
+  const ins: VaultPledgeInstructions = { signer: 'vault', vaultId, poolId: terms.poolId, protocolID: VAULT_PROTOCOL, keyID: vaultId, counterparty: 'anyone' }
+  const res = await spendFromVault(wallet, {
+    vaultId,
+    utxo: args.utxo,
+    cosign: args.cosign,
+    description: 'AgentCoop: pledge to pool from vault',
+    ...(args.poolBEEF !== undefined ? { context: { poolBEEF: args.poolBEEF } } : {}),
+    outputs: [
+      { lockingScript: args.utxo.lockingScriptHex, satoshis, outputDescription: 'AgentCoop pledge coin (vault)', basket: PLEDGE_BASKET, customInstructions: JSON.stringify(ins), tags: ['agentcoop', `pool:${terms.poolId}`, vaultTag(vaultId)] },
+      { lockingScript: terms.payScriptHex, satoshis: Number(terms.feeSats), outputDescription: 'AgentCoop registration fee' },
+      { lockingScript: buildOpReturn('pledge', record).toHex(), satoshis: 0, outputDescription: 'AgentCoop pledge record' }
+    ],
+    originator
+  })
+  return { txid: res.txid, outpoint: coopOutpoint(res.txid, 0), record, satoshis, beef: res.tx, instructions: ins }
+}
+
+/** Withdraw a vault pledge: the whole coin returns to the vault script (guard: resolves the pledge's reservation). */
+export async function cancelVaultPledge (wallet: WalletInterface, pledge: Pick<VaultPledge, 'outpoint' | 'beef' | 'instructions'>, cosign: Cosigner, originator?: string): Promise<VaultSpendResult> {
+  const tx = Transaction.fromAtomicBEEF(pledge.beef)
+  const utxo: VaultUtxo = { outpoint: toWalletOutpoint(pledge.outpoint), satoshis: tx.outputs[0].satoshis ?? 0, lockingScriptHex: tx.outputs[0].lockingScript.toHex(), beef: pledge.beef }
+  const res = await spendFromVault(wallet, { vaultId: pledge.instructions.vaultId, utxo, outputs: [], cosign, description: 'AgentCoop: withdraw vault pledge', originator })
+  await wallet.relinquishOutput({ basket: PLEDGE_BASKET, output: utxo.outpoint }, originator).catch(() => undefined)
+  return res
+}
+
+/**
+ * After a settlement with a vault pledge: the change (back on the vault script)
+ * goes into the agent's vault basket, the spent pledge coin leaves 'agentcoop'.
+ * Credits arrive via TokenKit.sync() as for any participant.
+ */
+export async function internalizeVaultSettlement (wallet: WalletInterface, tx: Transaction, plan: SettlementPlan, myOutpoint: string, vaultId: string, originator?: string): Promise<void> {
+  const j = plan.participants.findIndex(p => p.outpoint === myOutpoint)
+  if (j === -1) throw new AgentCoopError('BAD_PLAN', `${myOutpoint} is not in the plan`)
+  const vout = plan.participants.length + 1 + j
+  if (parseVaultLockingScript(tx.outputs[vout]?.lockingScript ?? '') === null) throw new AgentCoopError('BAD_PLAN', `change ${vout} is not on a vault script`)
+  await wallet.internalizeAction({
+    tx: tx.toAtomicBEEF(),
+    outputs: [{ outputIndex: vout, protocol: 'basket insertion', insertionRemittance: { basket: VAULT_BASKET, customInstructions: instructions(vaultId, 'agent'), tags: [vaultTag(vaultId)] } }],
+    labels: ['agentcoop'],
+    description: 'AgentCoop settlement change (vault)'
+  }, originator)
+  await wallet.relinquishOutput({ basket: PLEDGE_BASKET, output: toWalletOutpoint(myOutpoint) }, originator).catch(() => undefined)
+}
+
+// ── hot wallet (D-P2.2) ──────────────────────────────────────────────────────
+
+/**
+ * Move `satoshis` from the vault to the agent's own `default` basket (its hot
+ * wallet for retail 402 calls), as a BRC-29 payment from 'anyone' that the guard
+ * can attribute to this agent; capped by the owner's hotWalletDailySats.
+ */
+export async function topUpHotWallet (wallet: WalletInterface, args: {
+  vaultId: string
+  utxo: VaultUtxo
+  satoshis: number
+  cosign: Cosigner
+  originator?: string
+}): Promise<VaultSpendResult & { satoshis: number }> {
+  const { originator } = args
+  if (!Number.isSafeInteger(args.satoshis) || args.satoshis < 1) throw new Error(`invalid amount: ${args.satoshis}`)
+  const { publicKey: me } = await wallet.getPublicKey({ identityKey: true }, originator)
+  const derivationPrefix = Utils.toBase64(Random(16))
+  const derivationSuffix = Utils.toBase64(Random(16))
+  const res = await spendFromVault(wallet, {
+    vaultId: args.vaultId,
+    utxo: args.utxo,
+    cosign: args.cosign,
+    description: 'AgentCoop: hot wallet top-up',
+    outputs: [{ lockingScript: hotWalletScript(me, derivationPrefix, derivationSuffix).toHex(), satoshis: args.satoshis, outputDescription: 'AgentCoop hot wallet', hot: { derivationPrefix, derivationSuffix } }],
+    originator
+  })
+  await wallet.internalizeAction({
+    tx: res.tx,
+    outputs: [{ outputIndex: 0, protocol: 'wallet payment', paymentRemittance: { derivationPrefix, derivationSuffix, senderIdentityKey: ANYONE_IDENTITY_KEY } }],
+    description: 'AgentCoop hot wallet top-up'
+  }, originator)
+  return { ...res, satoshis: args.satoshis }
 }

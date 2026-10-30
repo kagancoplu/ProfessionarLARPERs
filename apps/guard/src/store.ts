@@ -2,20 +2,41 @@
  * Guard state: vault registrations, owner policies, the spending ledger
  * (data/guard/state.json, written atomically) and the decision log
  * (data/guard/decisions.jsonl). Without a directory everything stays in memory (tests).
+ *
+ * Ledger (D-P2 §4.8): one entry per key. A key is the vault input ("txid.vout",
+ * only one transaction spending it can be mined) or `reserve:<vault input>` for
+ * a pledge coin committed to a pool. The first spend of that pledge coin
+ * (settlement, cancel) replaces the reservation; later ones keep the largest.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { WEEK_MS, type GuardPolicy, type RegisteredVault } from './policy'
 
+export type LedgerKind = 'pay' | 'pledge' | 'reserve' | 'settle' | 'resolve'
+
 export interface LedgerEntry {
   owner: string
   agent: string
   vaultId: string
-  /** The vault input ("txid.vout"): only one transaction spending it can ever be mined. */
+  /** Ledger key: the vault input ("txid.vout") or `reserve:<vault input>`. D-P1 name kept for stored state. */
   outpoint: string
+  /** What the vault loses (counts against weeklyCapSats). */
   outflowSats: number
   at: string
+  /** Absent in D-P1 entries (= 'pay'). */
+  kind?: LedgerKind
+  /** Pool this entry commits sats to, and how many (counts against maxPerPoolSats). */
+  poolId?: string
+  poolSats?: number
+  /** Sats sent to the agent's hot wallet (counts against hotWalletDailySats over 24 h). */
+  hotSats?: number
 }
+
+/** What the policy engine asks the guard to record. */
+export type LedgerDraft = Omit<LedgerEntry, 'owner' | 'agent' | 'vaultId' | 'at'>
+
+export const DAY_MS = 24 * 60 * 60 * 1000
+export const reserveKey = (vaultOutpoint: string): string => `reserve:${vaultOutpoint}`
 
 export interface Decision {
   at: string
@@ -28,6 +49,10 @@ export interface Decision {
   outflowSats?: number
   paidSats?: number
   feeSats?: number
+  poolId?: string
+  /** 2.1b: the pledge coin committed to the pool. */
+  committedSats?: number
+  hotSats?: number
 }
 
 interface GuardState {
@@ -80,22 +105,64 @@ export class GuardStore {
     this.save()
   }
 
-  /** Outflow of (owner, agent) within the last 7 days, the largest entry per vault outpoint. */
-  spentInWindow (owner: string, agent: string, now: number, excludeOutpoint?: string): number {
-    const since = now - WEEK_MS
-    const byOutpoint = new Map<string, number>()
+  /** Entries of (owner, agent) since `since`, one per key (the largest, for D-P1 state with duplicates). */
+  private window (owner: string, agent: string, since: number, exclude: string | string[] = []): LedgerEntry[] {
+    const ex = new Set(Array.isArray(exclude) ? exclude : [exclude])
+    const byKey = new Map<string, LedgerEntry>()
     for (const l of this.state.ledger) {
-      if (l.owner !== owner || l.agent !== agent || l.outpoint === excludeOutpoint || Date.parse(l.at) < since) continue
-      byOutpoint.set(l.outpoint, Math.max(byOutpoint.get(l.outpoint) ?? 0, l.outflowSats))
+      if (l.owner !== owner || l.agent !== agent || ex.has(l.outpoint) || Date.parse(l.at) < since) continue
+      const prev = byKey.get(l.outpoint)
+      if (prev === undefined || l.outflowSats > prev.outflowSats) byKey.set(l.outpoint, l)
     }
-    return [...byOutpoint.values()].reduce((s, v) => s + v, 0)
+    return [...byKey.values()]
   }
 
-  /** Record a co-signed spend. A second signature for the same vault input keeps the larger outflow (one entry per outpoint). */
+  /** Outflow of (owner, agent) within the last 7 days, one entry per key. */
+  spentInWindow (owner: string, agent: string, now: number, exclude: string | string[] = []): number {
+    return this.window(owner, agent, now - WEEK_MS, exclude).reduce((s, l) => s + l.outflowSats, 0)
+  }
+
+  /** Sats (owner, agent) committed to `poolId` within the last 7 days (fees, reservations, settlements). */
+  poolSpent (owner: string, agent: string, poolId: string, now: number, exclude: string | string[] = []): number {
+    return this.window(owner, agent, now - WEEK_MS, exclude).filter(l => l.poolId === poolId).reduce((s, l) => s + (l.poolSats ?? 0), 0)
+  }
+
+  /** Sats sent to the agent's hot wallet within the last 24 hours. */
+  hotSpent (owner: string, agent: string, now: number, exclude: string | string[] = []): number {
+    return this.window(owner, agent, now - DAY_MS, exclude).reduce((s, l) => s + (l.hotSats ?? 0), 0)
+  }
+
+  /** The reservation key among `vaultOutpoints` (the inputs of a pledge transaction), if the guard reserved one. */
+  findReservation (owner: string, agent: string, vaultOutpoints: string[], now: number): string | undefined {
+    const since = now - WEEK_MS
+    const keys = new Set(vaultOutpoints.map(reserveKey))
+    return this.state.ledger.find(l => l.owner === owner && l.agent === agent && keys.has(l.outpoint) && Date.parse(l.at) >= since)?.outpoint
+  }
+
+  /**
+   * Record a co-signed spend. Same key: a reservation is replaced by its first
+   * resolution (settlement or cancel); otherwise the larger amounts are kept
+   * (a second signature for the same vault input is not counted twice).
+   */
   recordSpend (entry: LedgerEntry, now: number): void {
     const since = now - WEEK_MS
-    const kept = this.state.ledger.filter(l => Date.parse(l.at) >= since && !(l.outpoint === entry.outpoint && l.outflowSats <= entry.outflowSats))
-    if (!kept.some(l => l.outpoint === entry.outpoint)) kept.push(entry)
+    const kept = this.state.ledger.filter(l => Date.parse(l.at) >= since && l.outpoint !== entry.outpoint)
+    const same = this.state.ledger.filter(l => Date.parse(l.at) >= since && l.outpoint === entry.outpoint)
+    let next = entry
+    if (same.length > 0 && !(same.every(l => l.kind === 'reserve') && entry.kind !== 'reserve')) {
+      const max = (f: (l: LedgerEntry) => number | undefined): number => Math.max(...[...same, entry].map(l => f(l) ?? 0))
+      const prev = same.reduce((a, b) => (b.outflowSats > a.outflowSats ? b : a))
+      next = {
+        ...prev,
+        ...(entry.outflowSats >= prev.outflowSats ? entry : {}),
+        outflowSats: max(l => l.outflowSats),
+        ...(max(l => l.poolSats) > 0 ? { poolSats: max(l => l.poolSats) } : {}),
+        ...(max(l => l.hotSats) > 0 ? { hotSats: max(l => l.hotSats) } : {})
+      }
+    } else if (same.length > 0) {
+      next = { ...entry, poolId: entry.poolId ?? same[0].poolId } // resolution keeps the reservation's pool
+    }
+    kept.push(next)
     this.state.ledger = kept
     this.save()
   }

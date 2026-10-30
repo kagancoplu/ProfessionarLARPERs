@@ -5,7 +5,7 @@
   "type": "module",
   "description": "AgentCoop vault owner CLI (BSV Desktop): create-vault, fund, policy, withdraw, status (Track D)",
   "scripts": {
-    "owner": "tsx src/main.ts"
+    "owner": "tsx --import @agentcoop/core/register-sdk src/main.ts"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0"

@@ -22,6 +22,7 @@ import {
   LockingScript,
   OP,
   P2PKH,
+  PrivateKey,
   PublicKey,
   Random,
   Script,
@@ -33,6 +34,7 @@ import {
 } from '../sdk'
 import { PROVIDER_PROTOCOL, SIGHASH_ALL_FORKID, VAULT_PROTOCOL } from '../types'
 import { buildOpReturn } from './opreturn'
+import { BRC29_PROTOCOL } from '../kit/payments'
 
 /** Sighash for every vault signature: SIGHASH_ALL | SIGHASH_FORKID (0x41). */
 export const VAULT_SIGHASH = SIGHASH_ALL_FORKID
@@ -193,3 +195,14 @@ export const vaultCosignUnlock = (sigAgent: number[], sigGuard: number[]): Unloc
  */
 export const providerPayScript = (provider: string, keyID: string): LockingScript =>
   new P2PKH().lock(new KeyDeriver('anyone').derivePublicKey(PROVIDER_PROTOCOL, keyID, pubHex(provider)).toAddress())
+
+/** The 'anyone' identity (public key 1·G): sender of the guard-approved hot-wallet payments (D-P2 §4.10). */
+export const ANYONE_IDENTITY_KEY = new PrivateKey(1).toPublicKey().toString()
+
+/**
+ * P2PKH of the agent's BRC-29 key for a payment from 'anyone' (keyID `<prefix> <suffix>`):
+ * anyone can recompute it from the agent's identity key, only the agent can spend it.
+ * The agent takes it in with internalizeAction (wallet payment, senderIdentityKey = ANYONE_IDENTITY_KEY).
+ */
+export const hotWalletScript = (agent: string, derivationPrefix: string, derivationSuffix: string): LockingScript =>
+  new P2PKH().lock(new KeyDeriver('anyone').derivePublicKey(BRC29_PROTOCOL, `${derivationPrefix} ${derivationSuffix}`, pubHex(agent)).toAddress())

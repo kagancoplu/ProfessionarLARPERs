@@ -5,9 +5,9 @@
   "type": "module",
   "description": "AgentCoop Mandate Vault guard: policy engine and co-signer for agent + guard 2-of-2 vault spends (Track D)",
   "scripts": {
-    "guard": "tsx src/main.ts",
-    "adopt": "tsx src/adopt.ts",
-    "validation5": "tsx src/validation5.ts"
+    "guard": "tsx --import @agentcoop/core/register-sdk src/main.ts",
+    "adopt": "tsx --import @agentcoop/core/register-sdk src/adopt.ts",
+    "validation5": "tsx --import @agentcoop/core/register-sdk src/validation5.ts"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0"
