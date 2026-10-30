@@ -10,7 +10,9 @@
  * This hook makes every ESM import of the SDK's CJS entry (via `sdk.ts`, or a
  * bare `import … from '@bsv/sdk'`) load a small ESM wrapper whose export list
  * is read at load time. The wrapper re-exports the very instance wallet-toolbox
- * require()s, so SDK classes are one copy at runtime too.
+ * require()s, so SDK classes are one copy at runtime too. `knex` gets the same
+ * treatment (its `knex` named export is invisible to Node too; the shared test
+ * helper test/helpers/mockchain.ts imports it, and the demos run that helper).
  *
  * Synchronous in-thread hooks (module.registerHooks, Node ≥ 22.15) so they run
  * before tsx's own resolver. Usage:
@@ -20,26 +22,36 @@ import { createRequire, registerHooks } from 'node:module'
 import { pathToFileURL } from 'node:url'
 
 const require = createRequire(import.meta.url)
-const CJS_PATH = require.resolve('@bsv/sdk')
-const CJS_URL = pathToFileURL(CJS_PATH).href
-const WRAPPER_URL = 'agentcoop:bsv-sdk-cjs'
+const WRAPPED = ['@bsv/sdk', 'knex']
+/** CJS entry file URL → wrapper URL, and wrapper URL → CJS entry path. */
+const byFileUrl = new Map()
+const byWrapper = new Map()
+const wrapperFor = new Map()
+for (const pkg of WRAPPED) {
+  const path = require.resolve(pkg)
+  const wrapper = `agentcoop:cjs:${pkg}`
+  byFileUrl.set(pathToFileURL(path).href, wrapper)
+  byWrapper.set(wrapper, path)
+  wrapperFor.set(pkg, wrapper)
+}
 
 registerHooks({
   resolve (specifier, context, nextResolve) {
     const isImport = context.conditions?.includes('import') === true
-    if (isImport && specifier === '@bsv/sdk') return { url: WRAPPER_URL, shortCircuit: true }
+    if (isImport && wrapperFor.has(specifier)) return { url: wrapperFor.get(specifier), shortCircuit: true }
     const result = nextResolve(specifier, context)
-    if (isImport && result.url === CJS_URL) return { url: WRAPPER_URL, shortCircuit: true }
+    if (isImport && byFileUrl.has(result.url)) return { url: byFileUrl.get(result.url), shortCircuit: true }
     return result
   },
   load (url, context, nextLoad) {
-    if (url !== WRAPPER_URL) return nextLoad(url, context)
-    const names = Object.keys(require(CJS_PATH)).filter(n => n !== 'default' && n !== '__esModule' && /^[A-Za-z_$][\w$]*$/.test(n))
+    const path = byWrapper.get(url)
+    if (path === undefined) return nextLoad(url, context)
+    const names = Object.keys(require(path)).filter(n => n !== 'default' && n !== '__esModule' && /^[A-Za-z_$][\w$]*$/.test(n))
     const source = [
       "import { createRequire } from 'node:module'",
-      `const sdk = createRequire(${JSON.stringify(CJS_URL)})(${JSON.stringify(CJS_PATH)})`,
-      'export default sdk',
-      `export const { ${names.join(', ')} } = sdk`
+      `const mod = createRequire(${JSON.stringify(pathToFileURL(path).href)})(${JSON.stringify(path)})`,
+      'export default mod',
+      `export const { ${names.join(', ')} } = mod`
     ].join('\n')
     return { format: 'module', source, shortCircuit: true }
   }

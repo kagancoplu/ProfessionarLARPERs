@@ -202,11 +202,14 @@ export async function internalizeRevenue (ctx: CliContext, beef: number[], txid:
   return vouts.map(v => `${txid}.${v}`)
 }
 
-/** Find pledge fees and settlement payments of our pools on the overlay (MASTER §3.8, Track B) and track them. */
+/**
+ * Find pledge fees and settlement payments of our pools on the overlay (MASTER §3.8, Track B) and track them.
+ * `includeInvalid`: a pledge left out of the settlement (wait list) is `valid:false`, but its registration fee still paid us.
+ */
 export async function syncRevenue (ctx: CliContext): Promise<string[]> {
   const added: string[] = []
   for (const pool of ctx.pools.all().filter(p => p.poolId !== undefined)) {
-    for (const query of [{ op: 'pledges' as const, poolId: pool.poolId!, includeSpent: true }, { op: 'settlement' as const, poolId: pool.poolId! }]) {
+    for (const query of [{ op: 'pledges' as const, poolId: pool.poolId!, includeSpent: true, includeInvalid: true }, { op: 'settlement' as const, poolId: pool.poolId! }]) {
       let outputs
       try {
         // §3.8 AgentCoop queries (ls_agentcoop); the kit client types only its token queries.
