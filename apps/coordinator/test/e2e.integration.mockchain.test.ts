@@ -17,11 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Transaction } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
-import { WebSocket } from 'ws'
-import {
-  buildPledge, buildReserveAndAnnounce, COOP_SERVICE, COOP_TOPIC, internalizeSettlement, OverlayClient, P2pkhWalletSigner, receivePkh,
-  signOffer, signSettlementInput, TokenKit, verifySettlementPlan, type Offer, type PoolTerms, type SettlementPlan
-} from '@agentcoop/core'
+import { buildPledge, buildReserveAndAnnounce, COOP_SERVICE, COOP_TOPIC, internalizeSettlement, OverlayClient, signOffer, TokenKit, type PoolTerms } from '@agentcoop/core'
 import { startOverlay, type RunningOverlay } from '../../../packages/overlay/src/server'
 import { createMockChain, type MockChain } from '../../../test/helpers/mockchain'
 import { broadcastMock, lookup } from '../../../packages/overlay/test/helpers/settlement'
@@ -29,6 +25,7 @@ import { ManualHeight } from '../src/chain'
 import { coreProtocol } from '../src/protocol'
 import { noSpentChecker } from '../src/spent'
 import { startCoordinator, type RunningCoordinator } from '../src/server'
+import { startAgentBot, type AgentBot } from './helpers/agentBot'
 
 let chain: MockChain
 let overlay: RunningOverlay
@@ -39,38 +36,8 @@ const kitFor = (w: Wallet): TokenKit => new TokenKit(w, new OverlayClient(overla
 const fetchTx = async (txid: string): Promise<Transaction> =>
   Transaction.fromBinary(Array.from((await (chain.services as any).storage.getTransaction(txid)).rawTx as number[]))
 
-/** An agent on the coordinator's WS: checks the plan with A's verifier (lineage included) and signs its input. */
-async function agentBot (w: Wallet, kit: TokenKit, pledge: Awaited<ReturnType<typeof buildPledge>>): Promise<{ ws: WebSocket, messages: any[], plans: SettlementPlan[] }> {
-  const identity = await kit.identityKey()
-  const ws = new WebSocket(`${coop.url.replace('http', 'ws')}/ws`)
-  const messages: any[] = []
-  const plans: SettlementPlan[] = []
-  await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) })
-  ws.on('message', d => {
-    const msg = JSON.parse(d.toString())
-    messages.push(msg)
-    if (msg.type !== 'sign_request') return
-    void (async () => {
-      const offer = await (await fetch(`${coop.url}/offers/${msg.poolId}`)).json() as Offer
-      try {
-        await verifySettlementPlan(msg.plan, offer, pledge.outpoint, {
-          expectedCredits: pledge.record.credits,
-          expectedCreditPkh: receivePkh(identity, Number(pledge.record.tokenIndex)),
-          verifyLineage: true,
-          lineage: { fetchTx }
-        })
-      } catch (e) {
-        ws.send(JSON.stringify({ type: 'sign_reject', poolId: msg.poolId, round: msg.round, reason: String((e as Error).message) }))
-        return
-      }
-      plans.push(msg.plan)
-      const unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, new P2pkhWalletSigner(w, { protocolID: pledge.instructions.protocolID, keyID: pledge.instructions.keyID }))
-      ws.send(JSON.stringify({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: msg.yourInputIndex, unlockingScriptHex: unlock.toHex() }))
-    })()
-  })
-  ws.send(JSON.stringify({ type: 'hello', identity, poolIds: [] }))
-  return { ws, messages, plans }
-}
+const agentBot = async (w: Wallet, kit: TokenKit, pledge: Awaited<ReturnType<typeof buildPledge>>): Promise<AgentBot> =>
+  await startAgentBot(coop.url, w, await kit.identityKey(), pledge, fetchTx)
 
 const waitFor = async <T>(fn: () => T | undefined, ms = 30_000): Promise<T> => {
   const end = Date.now() + ms

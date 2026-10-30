@@ -13,6 +13,8 @@ import { OverlayUnavailableError, type OverlayLookup } from './overlay'
 import type { CoordinatorStore } from './store'
 import { OfferError, verifyOffer } from './verifyOffer'
 import { normalizeOutpoint, verifyListing } from './verifyListing'
+import { auditPool } from './audit'
+import { computeMetrics, toProm, type Metrics } from './metrics'
 
 export type ApiPoolStatus = PoolView['status'] | 'failed' | 'locking'
 export type ApiPool = Omit<PoolView, 'status'> & { status: ApiPoolStatus, hasOffer: boolean, height?: number, heightUnknown?: true, coordinator?: CoordinatorStatus }
@@ -121,6 +123,17 @@ export function createApiRouter (deps: ApiDeps): Router {
       return x < y ? -1 : x > y ? 1 : 0
     })
     res.json(live)
+  }))
+
+  r.get('/pools/:poolId/audit', wrap(async (req, res) => {
+    res.json(await auditPool(deps, poolIdParam(req)))
+  }))
+
+  let metricsCache: { at: number, value: Metrics } | undefined
+  r.get('/metrics', wrap(async (req, res) => {
+    if (metricsCache === undefined || Date.now() - metricsCache.at > 10_000) metricsCache = { at: Date.now(), value: await computeMetrics(deps) }
+    if (req.query.format === 'prom') res.type('text/plain; version=0.0.4').send(toProm(metricsCache.value))
+    else res.json(metricsCache.value)
   }))
 
   r.get('/healthz', wrap(async (_req, res) => {
