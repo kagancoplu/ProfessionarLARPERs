@@ -2,7 +2,7 @@
  * Vault owner CLI (BSV Desktop). Run it where the owner's Desktop is open and unlocked.
  *
  *   npm run owner -- create-vault --agent agent-1 [--guard guard] [--guard-url http://localhost:8091]
- *   npm run owner -- policy <vaultId> --allow provider-api[,…] --max-pool 5000 --weekly 20000 --max-fee 500 [--hot-daily 2000]
+ *   npm run owner -- policy <vaultId> --allow provider-api[,…] --max-pool 5000 --weekly 20000 --max-fee 500 [--hot-daily 2000] [--min-ask 40]
  *   npm run owner -- fund <vaultId> <sats>             (> 100,000 sats needs --force)
  *   npm run owner -- withdraw <vaultId> [--outpoint txid.vout]… [--dry-run]
  *   npm run owner -- status [<vaultId>]
@@ -82,7 +82,7 @@ run(async () => {
     case 'policy': {
       const vault = loadVault(args[0])
       const allow = (option(args, '--allow') ?? '').split(',').filter(s => s !== '').map(resolveIdentity)
-      const policy = { allowProviders: allow, maxPerPoolSats: sats(args, '--max-pool'), weeklyCapSats: sats(args, '--weekly'), maxFeeSats: sats(args, '--max-fee'), hotWalletDailySats: sats(args, '--hot-daily', false) }
+      const policy = { allowProviders: allow, maxPerPoolSats: sats(args, '--max-pool'), weeklyCapSats: sats(args, '--weekly'), maxFeeSats: sats(args, '--max-fee'), hotWalletDailySats: sats(args, '--hot-daily', false), ...(args.includes('--min-ask') ? { minAskSatsPerCredit: sats(args, '--min-ask') } : {}) }
       const { wallet } = await connectDesktop()
       await putPolicy(new AuthFetch(wallet, undefined, undefined, originator), guardUrlOf(args, vault), vault.record.agent, policy)
       console.log(`✓ policy for agent ${short(vault.record.agent)}: ${JSON.stringify(policy)}`)

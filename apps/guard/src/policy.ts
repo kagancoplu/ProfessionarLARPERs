@@ -35,6 +35,8 @@ export interface GuardPolicy {
   maxFeeSats: number
   /** Daily top-up of the agent's hot wallet (enforced from D-P2.2). */
   hotWalletDailySats: number
+  /** D-P2b: lowest ask per credit when the agent lists vault-locked credits; absent = listing off. */
+  minAskSatsPerCredit?: number
 }
 
 export interface RegisteredVault {
@@ -54,12 +56,14 @@ export function validatePolicy (json: unknown): GuardPolicy | null {
   const j = json as Record<string, unknown>
   if (!Array.isArray(j.allowProviders) || !j.allowProviders.every(p => typeof p === 'string' && IDENTITY_RE.test(p))) return null
   if (!SATS_FIELDS.every(f => isSats(j[f]))) return null
+  if (j.minAskSatsPerCredit !== undefined && !isSats(j.minAskSatsPerCredit)) return null
   return {
     allowProviders: [...new Set(j.allowProviders as string[])],
     maxPerPoolSats: j.maxPerPoolSats as number,
     weeklyCapSats: j.weeklyCapSats as number,
     maxFeeSats: j.maxFeeSats as number,
-    hotWalletDailySats: j.hotWalletDailySats as number
+    hotWalletDailySats: j.hotWalletDailySats as number,
+    ...(j.minAskSatsPerCredit !== undefined ? { minAskSatsPerCredit: j.minAskSatsPerCredit as number } : {})
   }
 }
 
@@ -117,6 +121,10 @@ export interface CosignAllowed {
   inflowSats?: number
   /** The guard's key for this signature when it is not the vault key ('rail': [1,'agentcoop rail'], keyID = swapId). */
   signWith?: { protocolID: WalletProtocol, keyID: string, pub: string }
+  /** Sighash scope of this signature when it is not ALL|FORKID ('list': 0xC3). */
+  signScope?: number
+  /** 'redeem' / 'list': the credits moved (D-P2b). */
+  credits?: { tokenId: string, amount: string, delivered?: string, kept?: string, askSats?: number }
 }
 
 export interface CosignDenied {

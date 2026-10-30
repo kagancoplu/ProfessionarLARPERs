@@ -46,6 +46,8 @@ CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the
 | `pay` | `txBEEF`: AtomicBEEF with every input's source | `payees?: [{ vout, provider, keyID }]` (provider payments) · `hotWallet?: [{ vout, derivationPrefix, derivationSuffix }]` (top-up of the agent's own hot wallet) · `poolBEEF?` (the pool tx, when the tx is a vault pledge; otherwise the guard fetches it) |
 | `settle` | `plan`: the coordinator's `SettlementPlan`; **the guard builds the tx itself** (`planTransaction`) | `poolId` (required), `expectedCredits?`, `tokenId?` (cross-checks; the guard reads the truth from the chain) |
 | `rail` | `txBEEF`: the claim of a Coop Rail HTLC (D-P3) | `swapId` (required). The guard signs with its rail key `[1,'agentcoop rail']`/swapId; the BSV must land in the agent's vault |
+| `redeem` | `txBEEF`: spends one vault-locked credit UTXO (A 5.1–5.3, `creditLock: 'vault'`) with agent + guard (D-P2b) | `creditPayees?: [{ vout, provider, index }]`: credits to an allowed provider's token address `receivePkh(provider, index)`; every other credit output must be locked to the same vault; all credits accounted for. Without payees it is a split inside the vault |
+| `list` | `txBEEF`: the listing skeleton, input `i` = vault credits, output `i` = the proceeds; agent and guard sign **SINGLE\|ANYONECANPAY\|FORKID (0xC3)** | — : the proceeds go to the vault script and are ≥ credits × `minAskSatsPerCredit` (off when the owner has not set it) |
 
 Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `new VaultSigner(wallet, { vaultId, cosign, context, plan? })` (an `InputSigner` for A's `signSettlementInput`); `httpCosigner(GUARD_URL)`. A refusal throws `CosignRejected { status, reason }`.
 
@@ -58,6 +60,7 @@ Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFro
 | `weeklyCapSats` | Max outflow of the vault over a rolling 7 days; a pledge coin counts from pledge time (reserved), the settlement replaces it with its real cost |
 | `maxFeeSats` | Max miner fee of one transaction; in a settlement, max fee share of this agent |
 | `hotWalletDailySats` | Max top-ups of the agent's hot wallet over a rolling 24 hours (they also count in the weekly cap) |
+| `minAskSatsPerCredit` | Optional (D-P2b). Lowest ask per credit when the agent lists vault-locked credits; absent = the agent cannot list them |
 
 ## What each check closes (FINAL-IDEA §8)
 
@@ -83,6 +86,8 @@ The project-wide threat model, with every threat mapped to its control and test,
 | **Settle**: per-pool and weekly caps on the real cost (S7) | `maxPerPoolSats exceeded`, `weeklyCapSats exceeded` | A policy tightened between pledge and settlement |
 | **Hot wallet** (2.2): output = the agent's own BRC-29 key from 'anyone' (H1, H2) | `hot wallet proof mismatch` | Paying a third party disguised as a top-up |
 | **Hot wallet**: rolling 24 h cap (H3) | `hotWalletDailySats exceeded` | A compromised agent draining the vault through its hot wallet |
+| **Redeem** (D-P2b): input = this agent's vault-locked credits, one per vault; credit outputs proven to an allowed provider or locked to the same vault; conserved (C1–C3) | `not vault-locked credits`, `credits to unlisted output`, `credits to another vault`, `provider not allowed: …`, `payee proof mismatch`, `credits not conserved` | **The agent sells or sends its credits around the guard** (T-10) |
+| **List** (D-P2b): SINGLE\|ACP; proceeds to the vault script at or above the owner's floor (L1–L3) | `listing proceeds must go to the vault`, `listing not enabled by the owner`, `ask below minAskSatsPerCredit` | **Dumping vault credits** to a third party for nothing (T-10) |
 | **Rail** (D-P3): the HTLC names this guard's and this agent's keys for the swap; final; agent signature; the HTLC's sats land in the agent's registered vault; fee cap (R1–R6) | `not a rail HTLC for this guard`, `agent mismatch`, `rail funds must land in the vault` | **"Coop Rail claim bypasses the vault policy"** (closed: claim = agent + guard 2-of-2 and the guard only signs into the vault) |
 | Rolling weekly cap, one ledger entry per vault input (G12) | `weeklyCapSats exceeded` | Bounded loss if the agent (or the agent and the guard) is compromised |
 | One request at a time, decision log (G13) | — | Racing two requests under the cap; auditability |

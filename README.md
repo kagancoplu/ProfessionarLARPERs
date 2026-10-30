@@ -122,7 +122,7 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
-- **Partly closed:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault (agent + guard to move them); the guard's spending policy for those credits is still to come.
+- **Closed, with one bounded path:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, and listings pay the vault at or above the owner's floor. A provider's credit return still sends tokens to the agent's own address (≤ 20 credits per redeem).
 - **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
@@ -155,7 +155,7 @@ Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md
 
 - No mainnet transaction yet; validations 2–6 (BSV Desktop SINGLE\|ACP signing, vault script policy, nLockTime semantics, v1 malleability) are written and wait for satoshis.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
-- Vault-locked credits can be delivered but not yet spent through the guard (threat T-10), and Coop Rail has no reverse direction.
+- A provider's credit return sends vault-redeemed credits to the agent's own address (bounded, threat T-10); Coop Rail has no reverse direction.
 - The coordinator's selection is auditable but cannot be forced.
 
 ## License

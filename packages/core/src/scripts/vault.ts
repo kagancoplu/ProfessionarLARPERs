@@ -137,8 +137,15 @@ export function vaultRecordScript (r: VaultRecord): LockingScript {
 
 // ── signing ──────────────────────────────────────────────────────────────────
 
-/** BIP-143 sighash (ALL|FORKID) of a vault input; the subscript is the whole vault script. Needs the input's source transaction. */
-export function vaultSighash (tx: Transaction, inputIndex: number): number[] {
+/** SINGLE|ANYONECANPAY|FORKID (0xC3): a vault credit listing signs only its own input and the output at the same index (D-P2b). */
+export const VAULT_LIST_SIGHASH = 0xc3
+
+/**
+ * BIP-143 sighash of a vault input (default ALL|FORKID); the subscript is the source's
+ * whole locking script (a vault, or vault-locked credits with their inscription). Needs
+ * the input's source transaction.
+ */
+export function vaultSighash (tx: Transaction, inputIndex: number, scope: number = VAULT_SIGHASH): number[] {
   const input = tx.inputs[inputIndex]
   if (input === undefined) throw new Error(`no input ${inputIndex}`)
   const sourceTx = input.sourceTransaction
@@ -156,21 +163,21 @@ export function vaultSighash (tx: Transaction, inputIndex: number): number[] {
     inputSequence: input.sequence ?? 0xffffffff,
     subscript: source.lockingScript,
     lockTime: tx.lockTime,
-    scope: VAULT_SIGHASH
+    scope
   })
   return Hash.hash256(preimage)
 }
 
-/** A wallet's DER signature → checksig format (DER ‖ 0x41). */
-export function toChecksigSignature (der: number[]): number[] {
+/** A wallet's DER signature → checksig format (DER ‖ scope byte, default 0x41). */
+export function toChecksigSignature (der: number[], scope: number = VAULT_SIGHASH): number[] {
   const sig = Signature.fromDER([...der])
-  return new TransactionSignature(sig.r, sig.s, VAULT_SIGHASH).toChecksigFormat()
+  return new TransactionSignature(sig.r, sig.s, scope).toChecksigFormat()
 }
 
-/** True if `checksig` (DER ‖ 0x41, low-S) signs `sighash` with `pub`. */
-export function verifyVaultSignature (pub: string, sighash: number[], checksig: number[]): boolean {
+/** True if `checksig` (DER ‖ scope byte, default 0x41; low-S) signs `sighash` with `pub`. */
+export function verifyVaultSignature (pub: string, sighash: number[], checksig: number[], scope: number = VAULT_SIGHASH): boolean {
   try {
-    if (checksig.length < 9 || checksig[checksig.length - 1] !== VAULT_SIGHASH) return false
+    if (checksig.length < 9 || checksig[checksig.length - 1] !== scope) return false
     const sig = Signature.fromDER(checksig.slice(0, -1))
     if (sig.s.cmp(N_HALF) > 0) return false
     return ECDSA.verify(new BigNumber(sighash), sig, PublicKey.fromString(pub))
