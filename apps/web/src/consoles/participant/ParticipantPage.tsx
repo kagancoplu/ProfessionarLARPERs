@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useFlows, useRuntime } from '../../app-context'
 import type { ProviderJob } from '../../api/types'
 import { t } from '../../i18n/t'
-import { store, useShallowStore, useStore } from '../../store'
+import { useShallowStore, useStore } from '../../store'
 import { selectPools } from '../../store/selectors'
 import { TownDrawer } from '../../town/TownDrawer'
 import { Counter, DemoPricingTag, EmptyState, PixelButton, Scroll, Signboard, SimulatedJobsTag, Tag, TxLink, formatInt } from '../../ui'
@@ -171,4 +171,3 @@ export function ParticipantPage () {
   )
 }
 
-export function openJoin (poolId: string): void { store.getState().openDrawer('pool', poolId) }

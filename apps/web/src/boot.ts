@@ -9,6 +9,7 @@ import { coopApi } from './api/coop'
 import { agentsApi } from './api/agents'
 import { guardApi } from './api/guard'
 import { makerApi } from './api/maker'
+import { overlayApi } from './api/overlay'
 import { startSfx } from './audio'
 import { invalidateFor, queryClient } from './api/queries'
 import type { AppRuntime } from './app-context'
@@ -18,6 +19,7 @@ import { startCoordinatorFeed } from './events/adapters/coordinatorWs'
 import { startEnvelopeSse } from './events/adapters/envelopeSse'
 import { startOverlaySse } from './events/adapters/overlaySse'
 import { startHealthPolling } from './events/health'
+import { startLivePolling } from './events/livePoll'
 import { makeEvent } from './events/types'
 import { MOCK_IDS } from './mock/data'
 import { createMockWallet } from './mock/wallet'
@@ -94,6 +96,8 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   stops.push(startEnvelopeSse('guard', guardApi.eventsUrl, bus, status('guard')).close)
   stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
   stops.push(startEnvelopeSse('maker', makerApi.eventsUrl, bus, status('maker')).close)
+  // listings, the agents' roster and vaults have no stream of their own
+  stops.push(startLivePolling(bus, store, { listings: () => coopApi.listings(), agents: () => agentsApi.list(), vaults: () => overlayApi.vaults() }))
   // a wallet connection announces itself to the coordinator so sign_requests arrive
   stops.push(store.subscribe((s, prev) => {
     if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) liveFeed.hello(s.me.identityKey, mine.getState().pledges.filter(p => p.status === 'pending' || p.status === 'signed').map(p => p.poolId))

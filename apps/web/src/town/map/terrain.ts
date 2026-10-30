@@ -64,7 +64,4 @@ export function tileIndexAt (grid: Terrain[][], x: number, y: number): number {
 
 export const isWalkable = (grid: Terrain[][], tx: number, ty: number): boolean => { const t = grid[ty]?.[tx]; return t !== undefined && t !== 'water' }
 
-/** Pixel centre of a tile (unscaled world units). */
-export const tileCentre = (tx: number, ty: number): { x: number, y: number } => ({ x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 })
 
-export const ascii = (grid: Terrain[][]): string => grid.map(r => r.map(t => ({ grass: '.', dirt: 'd', sand: 's', cobble: 'c', water: 'w' })[t]).join('')).join('\n')

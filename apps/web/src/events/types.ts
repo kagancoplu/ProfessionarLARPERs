@@ -86,10 +86,6 @@ export type CoopEventType = keyof CoopEventMap
 export type EventOf<T extends CoopEventType> = CoopEvent<T, CoopEventMap[T]>
 export type AnyCoopEvent = { [K in CoopEventType]: EventOf<K> }[CoopEventType]
 
-export function isEvent<T extends CoopEventType> (e: CoopEvent, type: T): e is EventOf<T> {
-  return e.type === type
-}
-
 const counters = new Map<EventSource, number>()
 
 /** Build an envelope with a per-source increasing id (`web:12`). `ts` defaults to now. */

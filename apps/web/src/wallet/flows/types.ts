@@ -54,7 +54,6 @@ export interface MyVault {
 
 export interface VaultStatus { vault?: VaultView, policy?: GuardPolicy, policyUpdatedAt?: string, decisions: GuardDecision[], spentLast7dSats?: number }
 
-export interface SweepPreview { listings: Listing[], totalSats: number, totalCredits: string, approvals: number }
 
 export interface FlowsApi {
   readonly mode: DataMode

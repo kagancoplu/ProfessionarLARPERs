@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AgentCoop frontend: role consoles + pixel-art live town. Browser \u2192 BSV Desktop (WalletClient), services via REST/WS/SSE.",
+  "description": "AgentCoop frontend: role consoles + pixel-art live town. Browser → BSV Desktop (WalletClient), services via REST/WS/SSE.",
   "engines": {
     "node": ">=22"
   },
@@ -29,7 +29,6 @@
     "@tanstack/react-query": "5.105.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "howler": "2.2.4",
     "msw": "2.15.0",
     "phaser": "3.90.0",
     "react": "19.3.1",
@@ -44,7 +43,6 @@
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",
-    "@types/howler": "2.2.13",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",

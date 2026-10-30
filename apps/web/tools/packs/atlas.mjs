@@ -24,7 +24,8 @@ export async function buildAtlas (outDir) {
     textureName: 'town', width: 2048, height: 2048, fixedSize: false, padding: 2, allowRotation: false,
     allowTrim: true, trimMode: 'trim', detectIdentical: true, exporter: 'Phaser3', removeFileExtension: true, prependFolderName: false
   })
-  for (const f of files) await writeFile(resolve(outDir, f.name), f.buffer)
+  // JSON minified (the packer pretty-prints): Phaser reads it the same, the download is ~3× smaller
+  for (const f of files) await writeFile(resolve(outDir, f.name), f.name.endsWith('.json') ? JSON.stringify(JSON.parse(f.buffer.toString())) : f.buffer)
   for (const t of TILESETS) await copyFile(resolve(KENMI, t.file), resolve(outDir, 'terrain', `${t.name}.png`))
   return { frames: images.length, files: files.map(f => f.name) }
 }

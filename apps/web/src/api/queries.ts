@@ -6,7 +6,6 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
 import type { AnyCoopEvent } from '../events/types'
 import { store } from '../store'
-import { agentsApi } from './agents'
 import { coopApi } from './coop'
 
 export const queryClient = new QueryClient({
@@ -35,21 +34,6 @@ export function usePledges (poolId: string | undefined) {
     queryKey: keys.pledges(poolId ?? ''),
     enabled: poolId !== undefined,
     queryFn: async () => { const pledges = await coopApi.pledges(poolId!, true); store.getState().setPledges(poolId!, pledges); return pledges }
-  })
-}
-
-export function useListings () {
-  return useQuery({
-    queryKey: keys.listings,
-    queryFn: async () => { const listings = await coopApi.listings(); store.getState().hydrateListings(listings); return listings }
-  })
-}
-
-export function useAgents () {
-  return useQuery({
-    queryKey: keys.agents,
-    queryFn: async () => { const agents = await agentsApi.list(); store.getState().hydrateAgents(agents); return agents },
-    retry: 0
   })
 }
 

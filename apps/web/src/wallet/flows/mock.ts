@@ -332,4 +332,3 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
   }
 }
 
-export const MOCK_ME = MOCK_IDS.me

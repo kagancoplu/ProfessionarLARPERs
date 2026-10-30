@@ -8,7 +8,8 @@ const houses = []
 for (const mat of ['Wood', 'Stone']) for (let i = 1; i <= 5; i++) for (const c of ['Red', 'Blue', 'Black']) {
   houses.push({ name: `house_${mat.toLowerCase()}${i}_${c.toLowerCase()}`, file: `${B}/Houses/${mat}/House_${i}_${mat}_Base_${c}${i === 2 && mat === 'Stone' && c === 'Black' ? 'png' : ''}.png` })
 }
-export const SPRITES = [
+/** Everything in the pack we know how to cut; only USED below goes into the atlas. */
+const ALL_SPRITES = [
   ...houses,
   ...['Red', 'Blue', 'Black'].map(c => ({ name: `blacksmith_${c.toLowerCase()}`, file: `${B}/Unique_Buildings/Blacksmith_House/Blacksmith_House_${c}.png` })),
   ...['Red', 'Blue', 'Black'].map(c => ({ name: `coop_${c.toLowerCase()}`, file: `${B}/Unique_Buildings/Coop/Coop_Base_${c}.png`, rect: [0, 0, 80, 128], frames: { count: 3, dx: 80 } })),
@@ -61,6 +62,18 @@ export const SPRITES = [
   { name: 'icon_other2', file: 'Icons/Outline/Other_Icons_2_Outline.png', rect: [0, 0, 16, 16], frames: { count: 20, cols: 4, dx: 16, dy: 16 } },
   { name: 'icon_tool', file: 'Icons/Outline/Tool_Icons_Outline.png', rect: [0, 0, 16, 16], frames: { count: 10, dx: 16 } }
 ]
+
+/** What the Town actually draws (src/town/**). Add a name here when a scene starts using it: the atlas stays small. */
+const USED = new Set([
+  'house_wood1_red', 'house_stone2_blue', 'house_wood3_black', 'house_wood4_blue',
+  'blacksmith_red', 'coop_red', 'fisherman_blue', 'windmill', 'windmill_sail', 'silo',
+  'stall', 'well', 'fountain', 'bench_stone', 'bench_wood', 'barrel', 'barrel_flowers', 'sign', 'sign_post',
+  'lantern', 'smoke', 'chest', 'chest_gold', 'bunting', 'campfire',
+  'oak_big', 'oak_med', 'spruce_big', 'birch_big', 'fruit_big', 'stump',
+  'hay', 'scarecrow', 'trough', 'boat', 'wheat', 'tomato', 'carrot', 'pumpkin', 'icon_res', 'icon_other'
+])
+export const SPRITES = ALL_SPRITES.filter(s => USED.has(s.name))
+export const UNUSED_SPRITES = ALL_SPRITES.filter(s => !USED.has(s.name)).map(s => s.name)
 
 /** Whole sheets copied as Tiled tilesets (16 px grid). */
 export const TILESETS = [

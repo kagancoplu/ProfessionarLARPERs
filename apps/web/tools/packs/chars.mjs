@@ -35,6 +35,7 @@ export async function buildChars (outDir) {
     textureName: 'chars', width: 2048, height: 2048, fixedSize: false, padding: 2, allowRotation: false,
     allowTrim: true, trimMode: 'trim', detectIdentical: true, exporter: 'Phaser3', removeFileExtension: true, prependFolderName: false
   })
-  for (const f of files) await writeFile(resolve(outDir, f.name), f.buffer)
+  // JSON minified (the packer pretty-prints): Phaser reads it the same, the download is ~3× smaller
+  for (const f of files) await writeFile(resolve(outDir, f.name), f.name.endsWith('.json') ? JSON.stringify(JSON.parse(f.buffer.toString())) : f.buffer)
   return { chars: NPCS.length + VILLAGERS.length + ANIMALS.length, frames: images.length, files: files.map(f => f.name) }
 }
