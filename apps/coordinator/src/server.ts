@@ -1,0 +1,70 @@
+/**
+ * AgentCoop coordinator + side API: `npm run coordinator` → http://localhost:8090
+ *
+ * Faz 1: POST/GET /offers, GET /pools, /pools/:id, /pools/:id/pledges,
+ * /healthz, WS /ws (hello, pool_update). The coordinator holds no funds and
+ * no keys that control funds; anyone can run one (FINAL-IDEA §4.5).
+ *
+ * Env: PORT (8090), OVERLAY_URL (http://localhost:8080), ARCADE_URL (block
+ * height for `failed`), COORDINATOR_DB (./data/coordinator.db), COORDINATOR_POLL_MS (5000).
+ */
+import { createServer, type Server } from 'node:http'
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import express from 'express'
+import { createApiRouter, type ApiDeps } from './api'
+import { ArcadeHeight, type HeightSource } from './chain'
+import { configFromEnv, type CoordinatorConfig } from './config'
+import { OverlayLookup } from './overlay'
+import { CoordinatorStore } from './store'
+import { Feed } from './ws'
+
+export interface RunningCoordinator {
+  url: string
+  server: Server
+  feed: Feed
+  deps: ApiDeps
+  close: () => Promise<void>
+}
+
+export async function startCoordinator (config: CoordinatorConfig, opts: { height?: HeightSource } = {}): Promise<RunningCoordinator> {
+  const store = await CoordinatorStore.open(config.dbFile)
+  const locking = new Set<string>()
+  const deps: ApiDeps = {
+    overlay: new OverlayLookup(config.overlayUrl),
+    store,
+    height: opts.height ?? new ArcadeHeight(config.arcadeUrl),
+    locking: () => locking
+  }
+  const app = express()
+  app.use((req, res, next) => {
+    // Read endpoints are public (Faz 5 tightens CORS and adds rate limits).
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    if (req.method === 'OPTIONS') { res.sendStatus(204); return }
+    next()
+  })
+  app.use(createApiRouter(deps))
+  const server = createServer(app)
+  const feed = new Feed(server, deps, config.pollMs)
+  await new Promise<void>(resolve => server.listen(config.port, resolve))
+  feed.start()
+  return {
+    url: `http://localhost:${config.port}`,
+    server,
+    feed,
+    deps,
+    close: async () => {
+      await feed.close()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+      await store.close()
+    }
+  }
+}
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const config = configFromEnv()
+  const c = await startCoordinator(config)
+  console.log(`AgentCoop coordinator at ${c.url} (overlay ${config.overlayUrl}, WS ${c.url.replace('http', 'ws')}/ws)`)
+}

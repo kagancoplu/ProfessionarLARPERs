@@ -1,16 +1,33 @@
 import type { LookupFormula, LookupService, OutputAdmittedByTopic, OutputSpent } from '@bsv/overlay'
-import { Utils, type LookupQuestion } from '@bsv/sdk'
+import { Transaction, Utils, type LookupQuestion } from '@bsv/sdk'
 import type { Knex } from 'knex'
 import { decodeBsv21, tokenIdFromOutpoint } from './kit/inscription'
 import { GAP_LIMIT, receivePkh } from './kit/addresses'
 import { TOPIC } from './AgentCoopTopicManager'
+import { parseOpReturn } from './stub/opreturn'
+import type { PoolTerms } from './stub/types'
+import type { PledgeView, PoolStatus, PoolView, SettlementView } from './views'
+export type { PledgeView, PoolStatus, PoolView, SettlementView } from './views'
+import {
+  PLEDGE_COIN_VOUT,
+  PLEDGE_FEE_VOUT,
+  POOL_CREDIT_VOUT,
+  validatePledgeRecord,
+  validatePoolRecord,
+  validateSettleRecord,
+  type PoolRecord
+} from './records'
 
 export const SERVICE = 'ls_agentcoop'
 const OUTPUTS = 'agentcoop_token_outputs'
 const TOKENS = 'agentcoop_tokens'
+const POOLS = 'agentcoop_pools'
+const PLEDGES = 'agentcoop_pledges'
+const SETTLEMENTS = 'agentcoop_settlements'
+const RECORDS = 'agentcoop_records'
 const MAX_RESULTS = 500
 
-/** Queries accepted by `ls_agentcoop` (the `query` of a LookupQuestion). */
+/** Queries accepted by `ls_agentcoop` (the `query` of a LookupQuestion). MASTER §3.8. */
 export type KitQuery =
   | { op: 'token', tokenId: string }
   | { op: 'tokens' }
@@ -18,6 +35,13 @@ export type KitQuery =
   | { op: 'identity', identityKey: string, tokenId?: string, includeSpent?: boolean }
   | { op: 'outpoint', txid: string, vout: number }
   | { op: 'history', tokenId: string, limit?: number }
+
+export type AgentCoopQuery =
+  | KitQuery
+  | { op: 'pools', status?: PoolStatus }
+  | { op: 'pool', poolId: string }
+  | { op: 'pledges', poolId: string, includeSpent?: boolean, includeInvalid?: boolean }
+  | { op: 'settlement', poolId: string }
 
 /** Per-output metadata returned in each lookup answer's `context` (UTF-8 JSON). */
 export interface OutputContext {
@@ -42,6 +66,41 @@ interface OutputRow {
   owner_pkh: string
   spent: number
   spending_txid: string | null
+}
+
+interface PoolRow {
+  pool_id: string
+  txid: string
+  record_vout: number
+  terms: string
+  credit_token_id: string | null
+  credit_amt: string | null
+  created_height: number | null
+}
+
+interface PledgeRow {
+  outpoint: string
+  txid: string
+  vout: number
+  pool_id: string
+  participant: string
+  credits: string
+  token_index: string
+  signer: 'p2pkh' | 'vault'
+  coin_sats: number
+  fee_out_sats: number | null
+  fee_out_script_hex: string | null
+  height: number | null
+  spent: number
+  spending_txid: string | null
+}
+
+interface SettlementRow {
+  txid: string
+  record_vout: number
+  pool_id: string
+  pledge_list_hash: string
+  inputs: string
 }
 
 export const migrations = [{
@@ -73,33 +132,154 @@ export const migrations = [{
     await knex.schema.dropTableIfExists(OUTPUTS)
     await knex.schema.dropTableIfExists(TOKENS)
   }
+}, {
+  name: '2026-10-30-002-agentcoop-records',
+  async up (knex: Knex): Promise<void> {
+    await knex.schema.createTable(POOLS, t => {
+      t.string('pool_id', 80).primary()
+      t.string('txid', 64).notNullable()
+      t.integer('record_vout').notNullable()
+      t.text('terms').notNullable()
+      t.string('credit_token_id', 80)
+      t.string('credit_amt', 24)
+      t.integer('created_height')
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+    })
+    await knex.schema.createTable(PLEDGES, t => {
+      t.string('outpoint', 80).primary()
+      t.string('txid', 64).notNullable()
+      t.integer('vout').notNullable()
+      t.string('pool_id', 80).notNullable().index()
+      t.string('participant', 66).notNullable().index()
+      t.string('credits', 24).notNullable()
+      t.string('token_index', 24).notNullable()
+      t.string('signer', 8).notNullable()
+      t.bigInteger('coin_sats').notNullable()
+      t.bigInteger('fee_out_sats')
+      t.text('fee_out_script_hex')
+      t.integer('height')
+      t.boolean('spent').notNullable().defaultTo(false)
+      t.string('spending_txid', 64)
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+    })
+    await knex.schema.createTable(SETTLEMENTS, t => {
+      t.string('txid', 64).primary()
+      t.integer('record_vout').notNullable()
+      t.string('pool_id', 80).notNullable().index()
+      t.string('pledge_list_hash', 64).notNullable()
+      t.text('inputs').notNullable()
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+    })
+    await knex.schema.createTable(RECORDS, t => {
+      t.string('txid', 64).notNullable()
+      t.integer('vout').notNullable()
+      t.string('op', 16).notNullable().index()
+      t.text('json').notNullable()
+      t.timestamp('created_at').defaultTo(knex.fn.now())
+      t.primary(['txid', 'vout'])
+    })
+  },
+  async down (knex: Knex): Promise<void> {
+    for (const t of [POOLS, PLEDGES, SETTLEMENTS, RECORDS]) await knex.schema.dropTableIfExists(t)
+  }
 }]
 
 const isHex = (s: unknown, len: number): s is string => typeof s === 'string' && s.length === len && /^[0-9a-f]+$/.test(s)
+const outpointOf = (txid: string, vout: number): string => `${txid}_${vout}`
+const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b
 
 export class AgentCoopLookupService implements LookupService {
-  readonly admissionMode = 'locking-script' as const
+  // whole-tx: AgentCoop records need the OP_RETURN, the inputs and the other outputs of the transaction.
+  readonly admissionMode = 'whole-tx' as const
   readonly spendNotificationMode = 'txid' as const
 
   constructor (private readonly knex: Knex) {}
 
   async outputAdmittedByTopic (payload: OutputAdmittedByTopic): Promise<void> {
-    if (payload.mode !== 'locking-script' || payload.topic !== TOPIC) return
-    const d = decodeBsv21(payload.lockingScript)
-    if (d === null) return
-    const tokenId = d.op === 'deploy+mint' ? tokenIdFromOutpoint(payload.txid, payload.outputIndex) : d.id!
-    await this.knex(OUTPUTS).insert({
-      txid: payload.txid,
-      vout: payload.outputIndex,
-      token_id: tokenId,
-      op: d.op,
-      amt: d.amt,
-      owner_pkh: d.ownerPkh,
-      satoshis: payload.satoshis
-    }).onConflict(['txid', 'vout']).ignore()
-    if (d.op === 'deploy+mint') {
-      await this.knex(TOKENS).insert({ token_id: tokenId, sym: d.sym ?? null, dec: d.dec ?? '0', icon: d.icon ?? null, supply: d.amt })
-        .onConflict('token_id').ignore()
+    if (payload.mode !== 'whole-tx' || payload.topic !== TOPIC) return
+    const tx = Transaction.fromAtomicBEEF(payload.atomicBEEF)
+    const txid = tx.id('hex')
+    const output = tx.outputs[payload.outputIndex]
+    if (output === undefined) return
+
+    const d = decodeBsv21(output.lockingScript)
+    if (d !== null) {
+      const tokenId = d.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, payload.outputIndex) : d.id!
+      await this.knex(OUTPUTS).insert({
+        txid,
+        vout: payload.outputIndex,
+        token_id: tokenId,
+        op: d.op,
+        amt: d.amt,
+        owner_pkh: d.ownerPkh,
+        satoshis: output.satoshis ?? 0
+      }).onConflict(['txid', 'vout']).ignore()
+      if (d.op === 'deploy+mint') {
+        await this.knex(TOKENS).insert({ token_id: tokenId, sym: d.sym ?? null, dec: d.dec ?? '0', icon: d.icon ?? null, supply: d.amt })
+          .onConflict('token_id').ignore()
+      }
+      return
+    }
+
+    const record = parseOpReturn(output.lockingScript)
+    if (record === null) return // e.g. the pledge coin itself: indexed with its record
+    const height = tx.merklePath?.blockHeight ?? null
+    switch (record.op) {
+      case 'pool': {
+        const terms = validatePoolRecord(record.json)
+        if (terms === null) return
+        const credit = tx.outputs[POOL_CREDIT_VOUT]
+        const c = credit !== undefined ? decodeBsv21(credit.lockingScript) : null
+        await this.knex(POOLS).insert({
+          pool_id: outpointOf(txid, POOL_CREDIT_VOUT),
+          txid,
+          record_vout: payload.outputIndex,
+          terms: JSON.stringify(terms),
+          credit_token_id: c === null ? null : (c.op === 'deploy+mint' ? tokenIdFromOutpoint(txid, POOL_CREDIT_VOUT) : c.id!),
+          credit_amt: c?.amt ?? null,
+          created_height: height
+        }).onConflict('pool_id').ignore()
+        return
+      }
+      case 'pledge': {
+        const pledge = validatePledgeRecord(record.json)
+        const coin = tx.outputs[PLEDGE_COIN_VOUT]
+        if (pledge === null || coin === undefined) return
+        const fee = tx.outputs[PLEDGE_FEE_VOUT]
+        await this.knex(PLEDGES).insert({
+          outpoint: outpointOf(txid, PLEDGE_COIN_VOUT),
+          txid,
+          vout: PLEDGE_COIN_VOUT,
+          pool_id: pledge.poolId,
+          participant: pledge.participant,
+          credits: pledge.credits,
+          token_index: pledge.tokenIndex,
+          signer: pledge.signer,
+          coin_sats: coin.satoshis ?? 0,
+          fee_out_sats: fee?.satoshis ?? null,
+          fee_out_script_hex: fee?.lockingScript.toHex() ?? null,
+          height
+        }).onConflict('outpoint').ignore()
+        return
+      }
+      case 'settle': {
+        const settle = validateSettleRecord(record.json)
+        const in0 = tx.inputs[0]
+        if (settle === null || in0 === undefined) return
+        // Only a transaction that actually spends the pool's credit UTXO at input 0 settles the pool.
+        if (outpointOf(in0.sourceTXID ?? in0.sourceTransaction!.id('hex'), in0.sourceOutputIndex) !== settle.poolId) return
+        await this.knex(SETTLEMENTS).insert({
+          txid,
+          record_vout: payload.outputIndex,
+          pool_id: settle.poolId,
+          pledge_list_hash: settle.pledgeListHash,
+          inputs: JSON.stringify(tx.inputs.map(i => outpointOf(i.sourceTXID ?? i.sourceTransaction!.id('hex'), i.sourceOutputIndex)))
+        }).onConflict('txid').ignore()
+        return
+      }
+      default:
+        await this.knex(RECORDS).insert({ txid, vout: payload.outputIndex, op: record.op, json: JSON.stringify(record.json) })
+          .onConflict(['txid', 'vout']).ignore()
     }
   }
 
@@ -107,15 +287,17 @@ export class AgentCoopLookupService implements LookupService {
     if (payload.topic !== TOPIC) return
     const spendingTxid = payload.mode === 'txid' || payload.mode === 'script' ? payload.spendingTxid : null
     await this.knex(OUTPUTS).where({ txid: payload.txid, vout: payload.outputIndex }).update({ spent: true, spending_txid: spendingTxid })
+    await this.knex(PLEDGES).where({ txid: payload.txid, vout: payload.outputIndex }).update({ spent: true, spending_txid: spendingTxid })
   }
 
   async outputEvicted (txid: string, outputIndex: number): Promise<void> {
     await this.knex(OUTPUTS).where({ txid, vout: outputIndex }).delete()
+    await this.knex(PLEDGES).where({ txid, vout: outputIndex }).delete()
   }
 
   async lookup (question: LookupQuestion): Promise<LookupFormula> {
     if (question.service !== SERVICE) throw new Error(`unsupported service ${question.service}`)
-    const q = question.query as KitQuery
+    const q = question.query as AgentCoopQuery
     if (q === null || typeof q !== 'object') throw new Error('query must be an object')
 
     switch (q.op) {
@@ -148,9 +330,116 @@ export class AgentCoopLookupService implements LookupService {
         const limit = Math.min(Math.max(q.limit ?? 100, 1), MAX_RESULTS)
         return await this.formula(await this.knex<OutputRow>(OUTPUTS).where({ token_id: q.tokenId }).orderBy('created_at', 'desc').limit(limit))
       }
+      case 'pools': {
+        const rows = await this.knex<PoolRow>(POOLS).orderBy('created_at', 'desc').limit(MAX_RESULTS)
+        const views = await Promise.all(rows.map(async r => await this.poolView(r)))
+        return views
+          .filter(v => q.status === undefined || v.view.status === q.status)
+          .map(({ row, view }) => ({ txid: row.txid, outputIndex: row.record_vout, context: this.ctx(view) }))
+      }
+      case 'pool': {
+        this.parseTokenId(q.poolId)
+        const row = await this.knex<PoolRow>(POOLS).where({ pool_id: q.poolId }).first()
+        if (row === undefined) return []
+        const { view } = await this.poolView(row)
+        return [{ txid: row.txid, outputIndex: row.record_vout, context: this.ctx(view) }]
+      }
+      case 'pledges': {
+        this.parseTokenId(q.poolId)
+        const pool = await this.knex<PoolRow>(POOLS).where({ pool_id: q.poolId }).first()
+        const status = pool !== undefined ? (await this.poolView(pool)).view.status : undefined
+        const rows = await this.knex<PledgeRow>(PLEDGES).where({ pool_id: q.poolId }).limit(MAX_RESULTS)
+        return this.sortPledges(rows.map(r => this.pledgeView(r, pool, status)))
+          .filter(v => (q.includeSpent === true || !v.spent) && (q.includeInvalid === true || v.valid))
+          .map(v => ({ txid: v.txid, outputIndex: v.vout, context: this.ctx(v) }))
+      }
+      case 'settlement': {
+        this.parseTokenId(q.poolId)
+        const row = await this.knex<SettlementRow>(SETTLEMENTS).where({ pool_id: q.poolId }).orderBy('created_at', 'asc').first()
+        if (row === undefined) return []
+        const view: SettlementView = { poolId: row.pool_id, txid: row.txid, pledgeListHash: row.pledge_list_hash, inputs: JSON.parse(row.inputs) }
+        return [{ txid: row.txid, outputIndex: row.record_vout, context: this.ctx(view) }]
+      }
       default:
         throw new Error('unknown query op')
     }
+  }
+
+  /** Status, progress and sanity of a pool, all from chain records (MASTER §3.8). */
+  private async poolView (row: PoolRow): Promise<{ row: PoolRow, view: PoolView }> {
+    const terms = { ...JSON.parse(row.terms) as PoolRecord, poolId: row.pool_id } as PoolTerms
+    const [credit, settlement] = await Promise.all([
+      this.knex<OutputRow>(OUTPUTS).where({ txid: row.txid, vout: POOL_CREDIT_VOUT }).first(),
+      this.knex<SettlementRow>(SETTLEMENTS).where({ pool_id: row.pool_id }).orderBy('created_at', 'asc').first()
+    ])
+    let invalidReason: string | undefined
+    if (credit === undefined) invalidReason = 'credit output not admitted'
+    else if (row.credit_token_id !== terms.tokenId || row.credit_amt !== terms.credits) invalidReason = 'credit output does not match terms'
+    const status: PoolStatus = settlement !== undefined ? 'settled' : credit !== undefined && Boolean(credit.spent) ? 'cancelled' : 'open'
+    // open: valid unspent pledges; settled: the pledges the settlement spent.
+    const pledges = invalidReason !== undefined || status === 'cancelled'
+      ? []
+      : status === 'settled'
+        ? (await this.knex<PledgeRow>(PLEDGES).where({ pool_id: row.pool_id, spending_txid: settlement!.txid })).map(p => this.pledgeView(p, row, status))
+        : (await this.knex<PledgeRow>(PLEDGES).where({ pool_id: row.pool_id }).andWhere('spent', false)).map(p => this.pledgeView(p, row, status)).filter(p => p.valid)
+    const view: PoolView = {
+      poolId: row.pool_id,
+      txid: row.txid,
+      terms,
+      status,
+      pledgedCredits: pledges.reduce((s, p) => s + BigInt(p.credits), 0n).toString(),
+      pledgeCount: pledges.length,
+      target: terms.credits,
+      ...(settlement !== undefined ? { settledTxid: settlement.txid } : {}),
+      ...(credit?.spending_txid != null ? { spendingTxid: credit.spending_txid } : {}),
+      ...(row.created_height !== null ? { createdHeight: row.created_height } : {}),
+      ...(invalidReason !== undefined ? { invalidReason } : {})
+    }
+    return { row, view }
+  }
+
+  /** Pledge validity (MASTER §3.8), evaluated against the pool's terms at query time. */
+  private pledgeView (r: PledgeRow, pool: PoolRow | undefined, status: PoolStatus | undefined): PledgeView {
+    let invalidReason: string | undefined
+    if (pool === undefined) invalidReason = 'unknown pool'
+    else {
+      const t = JSON.parse(pool.terms) as PoolRecord
+      const credits = BigInt(r.credits)
+      const N = BigInt(t.credits)
+      if (status !== undefined && status !== 'open' && !Boolean(r.spent)) invalidReason = `pool ${status}`
+      else if (credits < BigInt(t.minCredits) || credits > N) invalidReason = `credits outside ${t.minCredits}..${t.credits}`
+      else if (r.fee_out_script_hex !== t.payScriptHex || BigInt(r.fee_out_sats ?? 0) < BigInt(t.feeSats)) invalidReason = 'registration fee missing or below feeSats'
+      else if (BigInt(r.coin_sats) < ceilDiv(credits * BigInt(t.priceSats), N) + 1n) invalidReason = 'pledge coin below its share of the price'
+    }
+    return {
+      outpoint: r.outpoint,
+      txid: r.txid,
+      vout: r.vout,
+      poolId: r.pool_id,
+      participant: r.participant,
+      credits: r.credits,
+      tokenIndex: r.token_index,
+      signer: r.signer,
+      coinSats: Number(r.coin_sats),
+      ...(r.height !== null ? { height: r.height } : {}),
+      spent: Boolean(r.spent),
+      ...(r.spending_txid !== null ? { spendingTxid: r.spending_txid } : {}),
+      valid: invalidReason === undefined,
+      ...(invalidReason !== undefined ? { invalidReason } : {})
+    }
+  }
+
+  /** MASTER §3.2 order: (height asc, txid asc), unmined last by txid. The coordinator re-checks heights with Arcade. */
+  private sortPledges (views: PledgeView[]): PledgeView[] {
+    return views.sort((a, b) => {
+      const ha = a.height ?? Number.MAX_SAFE_INTEGER
+      const hb = b.height ?? Number.MAX_SAFE_INTEGER
+      return ha !== hb ? ha - hb : a.txid < b.txid ? -1 : a.txid > b.txid ? 1 : a.vout - b.vout
+    })
+  }
+
+  private ctx (value: object): number[] {
+    return Utils.toArray(JSON.stringify(value), 'utf8')
   }
 
   /** pkh → receive index for every used index of `identityKey`, scanning GAP_LIMIT past the last used one. */
@@ -198,11 +487,11 @@ export class AgentCoopLookupService implements LookupService {
   }
 
   async getDocumentation (): Promise<string> {
-    return '# ls_agentcoop\nQueries: token, tokens, utxos (ownerPkhs), identity (identityKey), outpoint, history.'
+    return '# ls_agentcoop\nQueries: pools, pool, pledges, settlement (AgentCoop records) and token, tokens, utxos (ownerPkhs), identity (identityKey), outpoint, history (BSV-21 credits). See plan/00-MASTER-PLAN.md §3.8.'
   }
 
   async getMetaData (): Promise<{ name: string, shortDescription: string }> {
-    return { name: SERVICE, shortDescription: 'BSV-21 token UTXOs by owner, identity key, token and outpoint' }
+    return { name: SERVICE, shortDescription: 'AgentCoop pools, pledges, settlements and BSV-21 credit UTXOs' }
   }
 }
 
