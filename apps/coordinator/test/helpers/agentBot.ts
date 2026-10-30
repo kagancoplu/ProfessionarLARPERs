@@ -3,9 +3,10 @@
  * should: on `sign_request` it checks the plan with Track A's
  * verifySettlementPlan (lineage included) and signs its input with
  * signSettlementInput. `silent` never answers (griefing / offline agent);
- * `delayMs` waits before answering.
+ * `delayMs` waits before answering; `signer` replaces the P2PKH signer (a vault
+ * agent passes a VaultSigner, which asks the guard to co-sign).
  */
-import { P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan, type buildPledge, type Offer, type SettlementPlan } from '@agentcoop/core'
+import { P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan, type InputSigner, type Offer, type PledgeRecord, type SettlementPlan } from '@agentcoop/core'
 import type { Transaction, WalletInterface } from '@agentcoop/core/sdk'
 import type { WebSocket } from 'ws'
 import { connectCoordinator } from '../../src/client'
@@ -16,9 +17,9 @@ export async function startAgentBot (
   coopUrl: string,
   wallet: WalletInterface,
   identity: string,
-  pledge: Awaited<ReturnType<typeof buildPledge>>,
+  pledge: { outpoint: string, record: PledgeRecord, instructions: { protocolID: any, keyID: string } },
   fetchTx: (txid: string) => Promise<Transaction>,
-  opts: { silent?: boolean, delayMs?: number } = {}
+  opts: { silent?: boolean, delayMs?: number, signer?: (plan: SettlementPlan, offer: Offer) => InputSigner } = {}
 ): Promise<AgentBot> {
   const plans: SettlementPlan[] = []
   const onMessage = (msg: any): void => {
@@ -38,7 +39,15 @@ export async function startAgentBot (
         return
       }
       plans.push(msg.plan)
-      const unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, new P2pkhWalletSigner(wallet, { protocolID: pledge.instructions.protocolID, keyID: pledge.instructions.keyID }))
+      let unlock
+      try {
+        const signer = opts.signer?.(msg.plan, offer) ?? new P2pkhWalletSigner(wallet, { protocolID: pledge.instructions.protocolID, keyID: pledge.instructions.keyID })
+        unlock = await signSettlementInput(msg.plan, msg.yourInputIndex, signer)
+      } catch (e) {
+        // e.g. the guard refused to co-sign: say so instead of timing out
+        ws.send(JSON.stringify({ type: 'sign_reject', poolId: msg.poolId, round: msg.round, reason: String((e as any).reason ?? (e as Error).message) }))
+        return
+      }
       ws.send(JSON.stringify({ type: 'sign_response', poolId: msg.poolId, round: msg.round, inputIndex: msg.yourInputIndex, unlockingScriptHex: unlock.toHex() }))
     })()
   }
