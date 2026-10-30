@@ -61,6 +61,8 @@ Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFro
 
 ## What each check closes (FINAL-IDEA §8)
 
+The project-wide threat model, with every threat mapped to its control and test, is [docs/THREAT-MODEL.md](../../docs/THREAT-MODEL.md); this table is the guard's part of it in detail.
+
 | Check | Refusal | Threat closed |
 |---|---|---|
 | Every input's source hashes to its prevout txid (G1) | `source txid mismatch` | Lying about other inputs' amounts (BIP-143 signs only the input's own amount) to hide vault money in "agent change" |
