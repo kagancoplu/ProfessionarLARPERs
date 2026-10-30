@@ -39,6 +39,8 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | `GET` | `/pools/:poolId/pledges` | valid unspent pledges in coordinator order; `?all=1` adds spent and invalid ones with `invalidReason` |
 | `POST` | `/listings` | Body: `Listing` (MASTER §3.3). The outpoint (`txid_vout` or `txid.vout`) must be a credit output the overlay admitted and has not seen spent, holding exactly `credits` of `tokenId`; the seller's signature is `SINGLE\|ANYONECANPAY\|FORKID` and unlocks it for "the output at my index pays `askSats` to `payScriptHex`" (valid at any position in a sweep). `201` or `400/404/409 { code, error }` |
 | `GET` | `/listings?tokenId=` | unspent listings, cheapest per credit first; swept or cancelled ones are dropped |
+| `GET` | `/pools/:poolId/audit` | re-derives a settled pool from the chain: `checks` (`hashMatches`, `termsHashMatches`, `providerPaid`, `creditsDelivered`, `allIncludedValid`, `selectionMatches`), `skippedEarlier` (pledges ahead in line that were left out, with the reason), `verdict` (`consistent` / `inconsistent` / `unexplained-skips`). `409 NOT_SETTLED` otherwise |
+| `GET` | `/metrics` (`?format=prom`) | pools and pledges by state, settlements, participants, average fee and size, rounds, and `custodiedSats` with its `custodyCheck` |
 | `GET` | `/healthz` | overlay reachable, current height, `engine` (signing rounds on/off) |
 
 `GET /pools/:poolId` also carries `coordinator: { round, signed, total, blacklist: [{ outpoint, reason }], lastRound?: { round, outcome, missing, txid? } }` once the pool has had a round.
@@ -79,6 +81,12 @@ Blacklists, attempt counts and last rounds are stored in the coordinator's datab
 Pool updates come from the overlay's event stream (`GET /agentcoop/events`), so a pledge reaches WebSocket clients and can start a round within a second; the periodic poll is a fallback.
 
 The plan itself comes from Track A (`planSettlement`: deterministic order, exact N within a 120 % window, fee from the real signed size; MASTER §3.2/§3.4), injected through `src/protocol.ts` (`SettlementProtocol`, `coreProtocol`). `startCoordinator` without a protocol runs the side API and the feed only (`/healthz` → `engine: false`).
+
+## Audit and metrics
+
+**Audit.** For a settled pool, anyone can check from the chain that the settle record's `pledgeListHash` is the hash of the inputs actually included, that the provider got exactly P at output 0, and that every included pledge got its credits at its own receive address. The selection is checked by re-running Track A's `planSettlement` on the pool's pledges with this coordinator's declared blacklist. Pledges ahead in line that were left out are listed with a reason: the declared one (`timeout`, `bad signature`, `rejected: …`), `cancelled`, `rule: not part of the first exact fill`, or `not explained`. The blacklist reasons are the coordinator's word, not chain facts: censorship becomes detectable, not impossible (FINAL-IDEA §8).
+
+**`custodiedSats`.** Every output of every settlement is classified as the provider's payment, a participant's credits, a participant's change (its own pledge coin script) or the OP_RETURN record; satoshis in any other output count as custodied. `0` is computed, not assumed. Scope: pools and settlements. Credits redeemed at a provider become an off-chain prepaid balance there (FINAL-IDEA §4.7), which this number does not cover.
 
 ## Layout
 

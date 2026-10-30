@@ -56,6 +56,17 @@ export class OverlayLookup {
     return (await this.lookup<PledgeView>({ op: 'pledges', poolId })).map(r => ({ view: r.context, sourceTx: r.tx }))
   }
 
+  /** Every pledge of a pool (spent and invalid included), with its transaction (B.P6a audit and metrics). */
+  async pledgeCandidatesAll (poolId: string): Promise<Array<{ view: PledgeView, sourceTx: Transaction }>> {
+    return (await this.lookup<PledgeView>({ op: 'pledges', poolId, includeSpent: true, includeInvalid: true })).map(r => ({ view: r.context, sourceTx: r.tx }))
+  }
+
+  /** The settlement of a pool with its inputs' source transactions linked (from the overlay's BEEF). */
+  async settlementWithTx (poolId: string): Promise<{ view: SettlementView, tx: Transaction } | undefined> {
+    const [r] = await this.lookup<SettlementView>({ op: 'settlement', poolId })
+    return r === undefined ? undefined : { view: r.context, tx: r.tx }
+  }
+
   /** The pool transaction (out0 = the credit UTXO the offer spends). */
   async poolTx (poolId: string): Promise<Transaction | undefined> {
     const [txid, vout] = poolId.split('_')
