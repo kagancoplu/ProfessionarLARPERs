@@ -22,5 +22,6 @@
       "knex": ["./node_modules/knex"]
     }
   },
+  "exclude": ["test/compat.overlay.test.ts"],
   "include": ["src/**/*.ts", "test/**/*.ts", "../../packages/core/src/scripts/vault.ts", "../../packages/core/src/signers/VaultSigner.ts", "../owner-cli/src/**/*.ts"]
 }

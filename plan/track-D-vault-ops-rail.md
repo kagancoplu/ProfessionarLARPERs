@@ -79,6 +79,7 @@
 
 **Görevler**
 - 2.1 Guard `settle` yolu: `verifySettlementPlan` + `verifyLineage: true`; `expectedCredits` ajanın pledge kaydından; `pay` kontrolleri; haftalık toplam güncelle.
+- 2.1b **(D.P1 sonrası eklendi)** Vault'lu pledge tx'i (A.3.1: vault UTXO → out0 pledge coin vault script'ine, out1 ücret → `payScript`, out2 OP_RETURN pledge) guard'a `kind:'pay'` ile gelir. D.P1'in `pay` kuralında pledge coin "vault'a dönen" sayıldığı için `maxPerPoolSats` ancak settlement'ta devreye girer. Injection'ı **pledge anında** durdurmak için: tx `agentcoop pledge` kaydı taşıyorsa out0 pledge coin'i `maxPerPoolSats`'a sayılır, kayıttaki havuzun `terms.provider` ∈ `allowProviders` olmalı ve out1 `payKeyID` ile kanıtlanır (MASTER §3.3 `PoolTerms.payKeyID?`; A doldurmalı). Terms: overlay `{ op:'pool' }` (yalnızca keşif; ödeme kanıtı türetmeyle).
 - 2.2 Sıcak cüzdan: guard onaylı günlük tavanla vault → ajan `default` basket'ine BRC-29 ödemesi (`context.kind='pay'`, alıcı = ajanın kendisi, tavan `hotWalletDailySats`); C'nin ajanı perakende 402'de bunu kullanır.
 - 2.3 Injection senaryosu (C ile): `scripts/demo-injection.ts` → guard 403 `{ reason: 'maxPerPoolSats exceeded' | 'provider not allowed' }`; log satırı jüri için okunabilir.
 - 2.4 `test/e2e.vault-settlement.mockchain.test.ts` (A ile ortak) yeşil; mainnet'te vault'lu settlement (A.P3 ile birlikte tek koşu).

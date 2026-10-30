@@ -248,6 +248,9 @@ PROVIDER_API_URL=http://localhost:8092
 # sunucu cüzdanları (64 hex; scripts/keygen.ts üretir; ASLA commit etme)
 WALLET_PROVIDER_API_KEY=   WALLET_COORDINATOR_KEY=   WALLET_GUARD_KEY=
 WALLET_AGENT_1_KEY=  WALLET_AGENT_2_KEY=  WALLET_AGENT_3_KEY=  WALLET_MAKER_KEY=
+# overlay + koordinatör (B; infra/run.mjs) — D.P1'de eklendi
+OVERLAY_PORT=8080  COOP_PORT=8090  OVERLAY_PRIVATE_KEY=(gizli, boşsa data/overlay/overlay.key)  TOKEN_WHITELIST=
+ROUND_TIMEOUT_MS=60000  MAX_ROUNDS=3  SPENT_CHECK=woc|none  # DATA_DIR yalnızca infra/run.mjs
 # Desktop'a bağlanan CLI'lar için originator
 APP_ORIGINATOR=agentcoop.local
 # ajan beyni

@@ -73,6 +73,8 @@ Bu bulut oturumunda `.env`, `data/` ve Desktop **yok**; test 5 treasury laptopun
 | `apps/guard/src/validation5.ts` | `npm run validation5`: mainnet doğrulama testi 5 (Desktop = sahip, `agent-1`, guard süreç içinde HTTP) | D |
 | `apps/guard/test/vault.script.test.ts` | Script/anahtar/kayıt birim testleri | D |
 | `apps/guard/test/vault.mockchain.test.ts` | §9 senaryoları (A'nın kök `test/`'i gelince oraya taşınır) | D |
+| `apps/guard/test/compat.overlay.test.ts` | B'nin overlay'i (B.P3 `stub/vault.ts`, `records.ts`) aynı kayıttan aynı script'i türetiyor. B'nin ESM paketi olduğu için guard'ın tip denetiminden hariç | D |
+| `apps/guard/src/adopt.ts` | `npm run adopt -- <ajan> <vaultId>`: sahibin fonlamalarını ajanın basket'ine alır | D |
 | `apps/guard/README.md` | Çalıştırma, API, politika alanları, kontrol → tehdit tablosu (D-P2'de genişler) | D |
 | `apps/owner-cli/package.json`, `tsconfig.json` | CJS paket, yalnızca `@bsv/sdk` (Desktop'a `WalletClient`, guard'a `AuthFetch`) | D |
 | `apps/owner-cli/src/vault-ops.ts` | Kütüphane (testlerde wallet-toolbox cüzdanı Desktop yerine geçer): `createVault`, `registerVault`, `fundVault`, `putPolicy`, `getVaultStatus`, `findVaultUtxos`, `withdrawVault` | D |
@@ -239,3 +241,15 @@ Başarısızlık olursa Arcade `/tx` hata metni STATUS'a yazılır, A ile konuş
 5. Mockchain testi → yeşil; `typecheck` (guard + owner-cli).
 6. `validation5.ts` (burada çalıştırılamaz: `.env`/Desktop/sats yok).
 7. MASTER §3.2/§3.3/§3.7, STATUS (Track D, arayüz değişiklikleri, blokajlar), `apps/guard/README.md`, Checkpoint (§11).
+
+---
+
+## 11. Checkpoint (2026-10-30 17:25)
+
+| Soru | Cevap |
+|---|---|
+| **Plan hâlâ iyi mi?** | Evet. Mockchain'de üç yol (fonla, 2-of-2, sahip çekimi) ve tüm red senaryoları çalışıyor; zincir tek imzayı reddediyor. Üç düzeltme/bulgu: (1) **wallet-toolbox `signAction` yayın hatasında fırlatmıyor** (çift harcama → `sendWithResults[].status='failed'`); `broadcastResult()` eklendi, A/C de kendi `signAction` çağrılarında kontrol etmeli (STATUS'ta duyuruldu). (2) Ajanın cüzdanı vault harcamasına kendi ücret girdisini ve çok sayıda para üstü çıktısını ekliyor → guard'ın G1 (kaynak txid bağı) + G9 (bilinmeyen ≤ dış girdi) kuralları zorunlu; ikisi birlikte vault'tan "açıklanamayan" çıkışı ücret tavanıyla sınırlıyor. (3) Vault'lu pledge'de pledge coin vault script'ine döndüğü için `maxPerPoolSats` pledge anında değil settlement'ta devreye giriyor → track dosyasına **Faz 2.1b** eklendi (pledge farkındalığı + `PoolTerms.payKeyID`). Test 5 mainnet'te koşmadı (sats yok), politika reddi riski açık; A'nın test 2'si (Desktop'ın özel subscript'le imzası) da henüz yok, Desktop davranışı test 5'te ilk kez görülecek |
+| **Bitti mi?** | Kod, birim + mockchain testleri (**24/24**, `cd apps/guard && npm test`), tip denetimi (guard + owner-cli), `npm run guard` duman testi (`/healthz` 200, boş `/cosign` 400, kimliksiz `PUT` 401) ✓. **Açık:** doğrulama testi 5 (mainnet) → sats + treasury laptopu (`npm run validation5`) |
+| **Diğer track'ler?** (17:20 fetch) | **A:** dal yok, P0 başlamadı → `verifyLineage`/`verifySettlementPlan`/`buildPledge('vault')` yok. **B:** P3 ✅ mockchain: vault indeksi D'nin kayıt biçimiyle **uyumlu** (aynı alanlar, aynı `'anyone'` türetmesi; `compat.overlay.test.ts` kanıtlıyor), koordinatör planlamayı A'ya bırakıyor ve imzaları `Spend` ile genel doğruluyor (vault girdisi özel işlem istemiyor). B'nin `.env.example` istekleri eklendi. **C:** dal yok, P0 başlamadı (`mode:'vault'` yok) |
+| **Sonraki faz bağımlı mı?** | D-P2 `settle` yolu A.P2 (`verifySettlementPlan`, `verifyLineage`) ve A.P3 (`buildPledge(…,'vault')`) ister; yoksa track kuralı: mock plan ile test (B'nin `apps/coordinator/test/helpers/devProtocol.ts` planlayıcısı referans). 2.2 sıcak cüzdan ve 2.1b pledge farkındalığı A'dan bağımsız başlayabilir |
+| **Arayüz değişikliği?** | MASTER §3.2 (vault script'i + kayıt satırı), §3.3 (`PoolTerms.payKeyID?`, `VaultSigner` notu), §3.4 (`vaultLockingScript` yeri), §3.7 (`PUT/GET /vaults`, `agentSignatureHex`, `payees`, (sahip, ajan) politikası, `/healthz`), §3.9 (B'nin değişkenleri). STATUS "Arayüz değişiklikleri"nde |
