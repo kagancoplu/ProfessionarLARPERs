@@ -47,6 +47,7 @@ export function TopBar () {
         <NavLink to="/explorer" className={cn('label relative whitespace-nowrap border-2 border-surface-2 px-2 py-0.5 no-underline text-surface-2 hover:bg-wood-dark', unread > 0 && 'border-gold text-gold')} title="Sign requests and guard refusals" data-testid="bell">
           alerts{unread > 0 && <span className="ml-1 counter text-[18px] leading-4">{unread}</span>}
         </NavLink>
+        <NavLink to="/settings" className="label whitespace-nowrap border-2 border-surface-2 px-2 py-0.5 no-underline text-surface-2 hover:bg-wood-dark" title="Settings (sound, day/night, walking, presenter, motion)" data-testid="settings-link">⚙</NavLink>
         <WalletChip />
       </div>
     </header>

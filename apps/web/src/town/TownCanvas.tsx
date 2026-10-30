@@ -17,7 +17,7 @@ export default function TownCanvas () {
     if (parent === null) return
     let game: import('phaser').Game | undefined
     let cancelled = false
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || store.getState().settings.reducedMotion
     const fx = new FxQueue({ speed: store.getState().mode === 'replay' ? store.getState().settings.replaySpeed : 1, reducedMotion: reduced })
     void Promise.all([import('phaser'), import('./scenes/TownScene')]).then(([{ default: Phaser }, { TownScene }]) => {
       if (cancelled) return

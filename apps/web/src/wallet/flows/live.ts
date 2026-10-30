@@ -20,6 +20,7 @@ import type { EventBus } from '../../events/bus'
 import type { CoordinatorFeed } from '../../events/adapters/coordinatorWs'
 import type { AppStoreApi } from '../../store'
 import { mine } from '../mine'
+import { STEP } from './labels'
 import { createStepper } from './steps'
 import { FlowError, type CreditBalance, type FlowsApi, type MyPledge, type PrepaidBalance, type SignReview } from './types'
 
@@ -57,8 +58,8 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const k = kit()
       const me = identity()
       const tokenIndex = await s.step('Pick my next credit address', 'BSV-21', () => k.nextIndex(me), i => ({ detail: `receive address #${i}` }))
-      const p = await s.step('Build the pledge in BSV Desktop (coin stays in your wallet)', 'BRC-100', () => buildPledge(wallet(), terms, String(credits), 'p2pkh', undefined, { tokenIndex }), r => ({ txid: r.txid, detail: `${r.satoshis} sat pledge coin + ${terms.feeSats} sat fee + OP_RETURN` }))
-      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', () => overlay().submit(p.beef))
+      const p = await s.step(STEP.buildPledge, 'BRC-100', () => buildPledge(wallet(), terms, String(credits), 'p2pkh', undefined, { tokenIndex }), r => ({ txid: r.txid, detail: `${r.satoshis} sat pledge coin + ${terms.feeSats} sat fee + OP_RETURN` }))
+      await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(p.beef))
       const my: MyPledge = { poolId, label: terms.label, txid: p.txid, outpoint: p.outpoint, credits: p.record.credits, coinSats: p.satoshis, tokenIndex, instructions: p.instructions, status: 'pending', createdAt: new Date().toISOString() }
       mine.getState().upsertPledge(my)
       deps.getFeed()?.hello(me, [poolId])
@@ -67,7 +68,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
 
     async cancelPledge (outpoint) {
       const s = createStepper(bus, 'cancelPledge')
-      const r = await s.step('Spend the pledge coin back to your wallet', 'BRC-100', () => cancelPledge(wallet(), outpoint), x => ({ txid: x.txid }))
+      const r = await s.step(STEP.cancelPledge, 'BRC-100', () => cancelPledge(wallet(), outpoint), x => ({ txid: x.txid }))
       await s.step('Tell the overlay (tm_agentcoop)', 'overlay', () => overlay().submit(r.beef))
       mine.getState().patchPledge(outpoint, { status: 'withdrawn' })
       return { txid: r.txid }
@@ -77,7 +78,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const s = createStepper(bus, 'sign')
       const my = mine.getState().pledges.find(p => p.poolId === req.poolId && (p.status === 'pending' || p.status === 'signed'))
       if (my === undefined) throw new FlowError('sign', 'No active pledge of mine in this pool.')
-      const offer = await s.step('Fetch the provider\'s signed offer', 'HTTP', () => coopApi.offer(req.poolId))
+      const offer = await s.step(STEP.fetchOffer, 'HTTP', () => coopApi.offer(req.poolId))
       const mineInPlan = req.plan.participants.find(p => p.outpoint === my.outpoint)
       const checks: SignReview['checks'] = []
       checks.push({ label: 'My pledge is in the plan', ok: mineInPlan !== undefined, stamp: 'AtomicBEEF' })
@@ -87,7 +88,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       checks.push({ label: `Σ credits = N (${sum} = ${offer.terms.credits})`, ok: sum === BigInt(offer.terms.credits) })
       let ok = checks.every(c => c.ok === true)
       try {
-        await s.step('Verify the whole settlement (DvP, pledge-list hash, provider lineage from the token deploy)', 'lineage', () =>
+        await s.step(STEP.verifySettlement, 'lineage', () =>
           verifySettlementPlan(req.plan, offer, my.outpoint, { expectedCredits: my.credits, expectedCreditPkh: receivePkh(identity(), my.tokenIndex), verifyLineage: true, lineage: { arcadeUrl: env.urls.arcade } }))
         checks.push({ label: 'Pledge-list hash and the provider\'s credit lineage', ok: true, stamp: 'SPV' })
       } catch (err) {
@@ -101,10 +102,10 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const s = createStepper(bus, 'sign')
       const feed = deps.getFeed()
       if (feed === undefined || !feed.connected) throw new FlowError('sign', 'Not connected to the coordinator.')
-      const unlock = await s.step('Sign my input with SIGHASH_ALL in BSV Desktop', 'ALL', () =>
+      const unlock = await s.step(STEP.signInput, 'ALL', () =>
         signSettlementInput(review.request.plan, review.request.yourInputIndex, new P2pkhWalletSigner(wallet(), { protocolID: review.pledge.instructions.protocolID, keyID: review.pledge.instructions.keyID })))
       feed.send({ type: 'sign_response', poolId: review.request.poolId, round: review.request.round, inputIndex: review.request.yourInputIndex, unlockingScriptHex: unlock.toHex() })
-      s.note('Signature sent to the coordinator', 'ALL', `round ${review.request.round}, input #${review.request.yourInputIndex}`)
+      s.note(STEP.signatureSent, 'ALL', `round ${review.request.round}, input #${review.request.yourInputIndex}`)
       mine.getState().patchPledge(review.pledge.outpoint, { status: 'signed', plan: review.request.plan })
       store.getState().dismissNotification(`sign:${review.request.poolId}:${review.request.round}`)
     },
@@ -131,8 +132,8 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
         }
         throw new FlowError('settled', 'settlement not on the overlay yet')
       })
-      await s.step('Take my change back into the agentcoop basket', 'internalizeAction', () => internalizeSettlement(wallet(), tx, my.plan!, my.outpoint, my.instructions))
-      await s.step('Sync my credits (bsv21 basket)', 'BSV-21', () => kit().sync(), r => ({ detail: `${r.inserted.length} new credit output(s)` }))
+      await s.step(STEP.takeChange, 'internalizeAction', () => internalizeSettlement(wallet(), tx, my.plan!, my.outpoint, my.instructions))
+      await s.step(STEP.syncCredits, 'BSV-21', () => kit().sync(), r => ({ detail: `${r.inserted.length} new credit output(s)` }))
       mine.getState().patchPledge(my.outpoint, { status: 'settled', settledTxid: txid })
     },
 
@@ -146,7 +147,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
 
     async redeem (credits) {
       const s = createStepper(bus, 'redeem')
-      const catalog = await s.step('Read the provider catalog (who to pay the credits to)', 'BRC-103', () => authJson<Catalog>('/v1/catalog'))
+      const catalog = await s.step(STEP.readCatalog, 'BRC-103', () => authJson<Catalog>('/v1/catalog'))
       const product = catalog.products[0]
       if (product === undefined || product.tokenId === null) throw new FlowError('redeem', 'The provider has no credit token yet.')
       const k = kit()
@@ -156,7 +157,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
         if (out === undefined) throw new FlowError('redeem', 'transfer not on the overlay yet')
         return out.beef
       })
-      const r = await s.step('Redeem at the provider (it verifies the lineage itself)', 'BRC-103', () => authJson<{ prepaidMinutes: number }>('/v1/credits/redeem', { beef, outputIndex: 0 }))
+      const r = await s.step(STEP.redeemAtProvider, 'BRC-103', () => authJson<{ prepaidMinutes: number }>('/v1/credits/redeem', { beef, outputIndex: 0 }))
       return { txid: sent.txid, prepaidMinutes: r.prepaidMinutes }
     },
 
@@ -193,9 +194,9 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
         credits: String(draft.credits), priceSats: String(draft.priceSats), payScriptHex, feeSats: String(draft.feeSats), minCredits: String(draft.minCredits),
         deadlineHeight: String(height + draft.deadlineBlocks), label: draft.label, retailSatsPerCredit: '50'
       }
-      const announced = await s.step('Reserve the credits and announce the pool in BSV Desktop (T2)', 'OP_RETURN', () => buildReserveAndAnnounce(w, kit(), terms, { poolNonce: nonce }), r => ({ txid: r.txid, detail: `poolId ${r.poolId}` }))
-      const offer = await s.step('Sign the offer once: SIGHASH_SINGLE|ANYONECANPAY, then you can go offline', 'SINGLE|ACP', () => signOffer(w, announced.poolId, announced.terms))
-      await s.step('Register the offer with the coordinator', 'HTTP', () => coopApi.postOffer(offer))
+      const announced = await s.step(STEP.reserveAnnounce, 'OP_RETURN', () => buildReserveAndAnnounce(w, kit(), terms, { poolNonce: nonce }), r => ({ txid: r.txid, detail: `poolId ${r.poolId}` }))
+      const offer = await s.step(STEP.signOffer, 'SINGLE|ACP', () => signOffer(w, announced.poolId, announced.terms))
+      await s.step(STEP.registerOffer, 'HTTP', () => coopApi.postOffer(offer))
       let offerTxid: string | undefined
       try { offerTxid = (await s.step('Publish the offer on chain (any coordinator can find it)', 'OP_RETURN', () => publishOffer(w, offer as Offer), r => ({ txid: r.txid }))).txid } catch { /* optional */ }
       mine.getState().addPool({ poolId: announced.poolId, nonce, label: draft.label, txid: announced.txid, createdAt: new Date().toISOString(), ...(offerTxid !== undefined ? { offerTxid } : {}) })
@@ -204,7 +205,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
 
     async cancelPool (poolId) {
       const s = createStepper(bus, 'cancelPool')
-      const txid = await s.step('Spend the reserved credits back to your balance (the offer becomes void)', 'BRC-100', () => coreCancelPool(wallet(), kit(), poolId), t => ({ txid: t }))
+      const txid = await s.step(STEP.cancelPool, 'BRC-100', () => coreCancelPool(wallet(), kit(), poolId), t => ({ txid: t }))
       return { txid }
     },
 
@@ -269,8 +270,8 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
     async createVault (agent) {
       const s = createStepper(bus, 'createVault')
       const guard = await s.step('Ask the guard who it is (/healthz)', 'HTTP', () => guardApi.healthz(), g => ({ detail: `${g.network} · ${g.identityKey.slice(0, 12)}…` }))
-      const v = await s.step('Derive the vault keys in BSV Desktop (owner key from your identity, keyID = vaultId)', 'BRC-100', () => opCreateVault(wallet(), { agent, guard: guard.identityKey }), r => ({ detail: `vault ${r.vaultId.slice(0, 8)}… · ${r.lockingScriptHex.length / 2} bytes` }))
-      await s.step('Register the vault at the guard (BRC-103); it must derive the very same script', '2-of-2', () => registerVault(auth(), env.urls.guard, v))
+      const v = await s.step(STEP.deriveVault, 'BRC-100', () => opCreateVault(wallet(), { agent, guard: guard.identityKey }), r => ({ detail: `vault ${r.vaultId.slice(0, 8)}… · ${r.lockingScriptHex.length / 2} bytes` }))
+      await s.step(STEP.registerVault, '2-of-2', () => registerVault(auth(), env.urls.guard, v))
       mine.getState().addVault(v)
       bus.publish(makeEvent('guard', 'vault_registered', { vaultId: v.vaultId, owner: v.record.owner, agent }, { agent }))
       return v
@@ -281,7 +282,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const v = mine.getState().vaults.find(x => x.vaultId === vaultId)
       if (v === undefined) throw new FlowError('fundVault', 'Create the vault in this browser first (its script is kept here).')
       const r = await s.step(`Fund the vault with ${satoshis} sat in BSV Desktop (T9: out0 vault coin, out1 OP_RETURN record)`, 'BRC-100', () => opFundVault(wallet(), v, satoshis), x => ({ txid: x.txid }))
-      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', () => overlay().submit(r.tx)).catch(() => { s.note('Overlay did not take the vault record (the guard and the chain still have it)', 'overlay') })
+      await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(r.tx)).catch(() => { s.note('Overlay did not take the vault record (the guard and the chain still have it)', 'overlay') })
       mine.getState().patchVault(vaultId, { fundedSats: v.fundedSats + satoshis, lastTxid: r.txid })
       const view: VaultView = { vaultId, owner: v.record.owner, agent: v.agent, guard: v.guard, scriptHex: v.lockingScriptHex, verified: true, balanceSats: v.fundedSats + satoshis, utxos: [{ outpoint: `${r.txid}_${r.vout}`, satoshis }] }
       bus.publish(makeEvent('overlay', 'vault_funded', { vault: view, txid: r.txid }, { txid: r.txid, agent: v.agent }))
@@ -290,7 +291,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
 
     async putPolicy (agent, policy) {
       const s = createStepper(bus, 'putPolicy')
-      await s.step('PUT /policies/:agent at the guard (BRC-103, signed with your identity; no transaction)', 'BRC-103', async () => {
+      await s.step(STEP.putPolicy, 'BRC-103', async () => {
         const res = await auth().fetch(`${env.urls.guard}/policies/${agent}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(policy) })
         if (!res.ok) throw new FlowError('putPolicy', `guard answered ${res.status}: ${(await res.text()).slice(0, 200)}`)
       }, () => ({ detail: `maxPerPool ${policy.maxPerPoolSats} · weekly ${policy.weeklyCapSats} · maxFee ${policy.maxFeeSats} · hot/day ${policy.hotWalletDailySats}` }))
@@ -338,9 +339,9 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       const token = balances.find(b => b.basket >= BigInt(credits))
       if (token === undefined) throw new FlowError('list', 'You do not hold that many credits of one token.')
       const r = await s.step(`Move ${credits} credits to a listing key in BSV Desktop (basket agentcoop listings) + OP_RETURN list`, 'OP_RETURN', () => reserveListing(wallet(), k, token.tokenId, String(credits), String(askSats)), x => ({ txid: x.txid }))
-      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', () => overlay().submit(r.beef))
-      const listing = await s.step('Sign the listing once: SIGHASH_SINGLE|ANYONECANPAY ("the output at my index pays me askSats")', 'SINGLE|ACP', () => signListing(wallet(), r.outpoint, String(askSats)))
-      await s.step('POST /listings at the coordinator (it verifies the outpoint and the signature)', 'HTTP', () => coopApi.postListing(listing))
+      await s.step(STEP.submitOverlay, 'overlay', () => overlay().submit(r.beef))
+      const listing = await s.step(STEP.signListing, 'SINGLE|ACP', () => signListing(wallet(), r.outpoint, String(askSats)))
+      await s.step(STEP.postListing, 'HTTP', () => coopApi.postListing(listing))
       bus.publish(makeEvent('overlay', 'listing_added', { listing }, { txid: r.txid, agent: identity() }))
       return { txid: r.txid, outpoint: r.outpoint }
     },
@@ -348,7 +349,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
     async cancelListing (outpoint) {
       const s = createStepper(bus, 'cancelListing')
       const listing = store.getState().listings.byOutpoint[outpoint]
-      const txid = await s.step('Spend the listed credits back to your token address (the signature now spends nothing)', 'BRC-100', () => coreCancelListing(wallet(), kit(), outpoint), t => ({ txid: t }))
+      const txid = await s.step(STEP.cancelListing, 'BRC-100', () => coreCancelListing(wallet(), kit(), outpoint), t => ({ txid: t }))
       if (listing !== undefined) bus.publish(makeEvent('overlay', 'listing_cancelled', { listing, txid }, { txid, agent: identity() }))
       return { txid }
     },

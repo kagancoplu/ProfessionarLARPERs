@@ -1,4 +1,8 @@
-/** Single dictionary (track-E §0: English only, i18n scaffold). Keys are dotted paths. */
+/**
+ * The shared copy table (English only, track-E §0). Not a translation layer: it holds the strings that must read the
+ * same everywhere (navigation, wallet errors, honesty tags, empty states, counter names) and test/i18n.test.ts checks
+ * their voice. Text that belongs to one page stays inline in that page. Keys are dotted paths, read with `t()`.
+ */
 export const en = {
   app: { name: 'AgentCoop', tagline: 'Group buying for agents. Nobody holds the money.' },
   nav: { town: 'Town', pools: 'Pools', market: 'Market', agents: 'My Agents', provider: 'Provider', owner: 'Owner', explorer: 'Explorer', metrics: 'Metrics', settings: 'Settings' },

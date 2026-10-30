@@ -11,6 +11,7 @@ import { makeMockPledge, makeMockPool, MOCK_IDS, MOCK_PRODUCT, MOCK_TOKEN_ID, mo
 import type { MockWorld } from '../../mock/state'
 import type { AppStoreApi } from '../../store'
 import { mine } from '../mine'
+import { STEP } from './labels'
 import { createStepper } from './steps'
 import { FlowError, type FlowsApi, type MyPledge, type MyVault, type SignReview } from './types'
 
@@ -36,7 +37,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       if (credits < Number(pool.terms.minCredits) || credits > Number(pool.terms.credits)) throw new FlowError('pledge', `Credits must be between ${pool.terms.minCredits} and ${pool.terms.credits}.`)
       const unit = Number(pool.terms.priceSats) / Number(pool.terms.credits)
       const coinSats = Math.ceil(credits * unit) + 1 + 300
-      const res = await s.step('Build the pledge in BSV Desktop (coin stays in your wallet)', 'BRC-100', () => wallet().createAction({
+      const res = await s.step(STEP.buildPledge, 'BRC-100', () => wallet().createAction({
         description: 'AgentCoop: pledge to pool',
         outputs: [out(coinSats, 'AgentCoop pledge coin (your key)'), out(Number(pool.terms.feeSats), 'registration fee → provider'), out(0, 'OP_RETURN agentcoop pledge')]
       }), r => ({ txid: r.txid }))
@@ -46,7 +47,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       world.pledges.set(poolId, list)
       const next = { ...pool, pledgedCredits: String(BigInt(pool.pledgedCredits) + BigInt(credits)), pledgeCount: pool.pledgeCount + 1 }
       world.pools.set(poolId, next)
-      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', async () => { await wait(150) })
+      await s.step(STEP.submitOverlay, 'overlay', async () => { await wait(150) })
       bus.publish(makeEvent('overlay', 'pledge_added', { pledge: p, pledgedCredits: next.pledgedCredits }, { poolId, txid: p.txid, agent: p.participant }))
       const my: MyPledge = { poolId, label: pool.terms.label, txid: p.txid, outpoint: p.outpoint, credits: String(credits), coinSats, tokenIndex: 0, instructions: { protocolID: [1, 'agentcoop pledge'], keyID: 'mock', counterparty: 'anyone', poolId }, status: 'pending', createdAt: ts() }
       mine.getState().upsertPledge(my)
@@ -58,7 +59,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const s = createStepper(bus, 'cancelPledge')
       const my = mine.getState().pledges.find(p => p.outpoint === outpoint)
       if (my === undefined) throw new FlowError('cancelPledge', 'No such pledge.')
-      const res = await s.step('Spend the pledge coin back to your wallet', 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: withdraw pledge', outputs: [out(my.coinSats, 'pledge coin → your balance')] }), r => ({ txid: r.txid }))
+      const res = await s.step(STEP.cancelPledge, 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: withdraw pledge', outputs: [out(my.coinSats, 'pledge coin → your balance')] }), r => ({ txid: r.txid }))
       const list = world.pledges.get(my.poolId) ?? []
       const view = list.find(p => p.outpoint === outpoint)
       if (view !== undefined) { view.spent = true; view.spendingTxid = res.txid; view.valid = false }
@@ -74,9 +75,9 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const s = createStepper(bus, 'sign')
       const my = mine.getState().pledges.find(p => p.poolId === req.poolId && (p.status === 'pending' || p.status === 'signed'))
       if (my === undefined) throw new FlowError('sign', 'No active pledge of mine in this pool.')
-      await s.step('Fetch the provider\'s signed offer', 'HTTP', () => wait(120))
+      await s.step(STEP.fetchOffer, 'HTTP', () => wait(120))
       const mineInPlan = req.plan.participants.find(p => p.outpoint === my.outpoint)
-      await s.step('Verify the whole settlement (DvP, pledge-list hash, provider lineage from the token deploy)', 'lineage', () => wait(400))
+      await s.step(STEP.verifySettlement, 'lineage', () => wait(400))
       const sum = req.plan.participants.reduce((a, p) => a + BigInt(p.credits), 0n)
       const checks: SignReview['checks'] = [
         { label: 'My pledge is in the plan', ok: mineInPlan !== undefined, stamp: 'AtomicBEEF' },
@@ -90,8 +91,8 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
 
     async sign (review) {
       const s = createStepper(bus, 'sign')
-      await s.step('Sign my input with SIGHASH_ALL in BSV Desktop', 'ALL', () => wallet().createSignature({ protocolID: [1, 'agentcoop pledge'], keyID: review.pledge.instructions.keyID, counterparty: 'anyone', data: [1] }))
-      s.note('Signature sent to the coordinator', 'ALL', `round ${review.request.round}, input #${review.request.yourInputIndex}`)
+      await s.step(STEP.signInput, 'ALL', () => wallet().createSignature({ protocolID: [1, 'agentcoop pledge'], keyID: review.pledge.instructions.keyID, counterparty: 'anyone', data: [1] }))
+      s.note(STEP.signatureSent, 'ALL', `round ${review.request.round}, input #${review.request.yourInputIndex}`)
       const m = world.me.pledges.get(review.request.poolId)
       if (m !== undefined) m.signed = true
       mine.getState().patchPledge(review.pledge.outpoint, { status: 'signed', plan: review.request.plan })
@@ -110,8 +111,8 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       if (my === undefined) return
       const s = createStepper(bus, 'settled')
       if (my.status !== 'signed') { mine.getState().patchPledge(my.outpoint, { status: 'left-out', settledTxid: txid }); s.note('The pool settled without my pledge; my coin was not touched', 'ALL'); return }
-      await s.step('Take my change back into the agentcoop basket', 'internalizeAction', () => wait(200))
-      await s.step('Sync my credits (bsv21 basket)', 'BSV-21', () => wait(200), () => ({ detail: `${my.credits} credits received` }))
+      await s.step(STEP.takeChange, 'internalizeAction', () => wait(200))
+      await s.step(STEP.syncCredits, 'BSV-21', () => wait(200), () => ({ detail: `${my.credits} credits received` }))
       world.me.credits += BigInt(my.credits)
       mine.getState().patchPledge(my.outpoint, { status: 'settled', settledTxid: txid })
       world.me.pledges.delete(poolId)
@@ -125,9 +126,9 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const s = createStepper(bus, 'redeem')
       if (credits < 1 || credits > 20) throw new FlowError('redeem', 'Redeem between 1 and 20 credits (maxRedeem).')
       if (world.me.credits < BigInt(credits)) throw new FlowError('redeem', `You hold ${world.me.credits} credits.`)
-      await s.step('Read the provider catalog (who to pay the credits to)', 'BRC-103', () => wait(100))
+      await s.step(STEP.readCatalog, 'BRC-103', () => wait(100))
       const res = await s.step(`Send ${credits} credit(s) to the provider in BSV Desktop`, 'BSV-21', () => wallet().createAction({ description: 'AgentCoop: redeem credits', outputs: [out(1, `${credits} GPUH credits → provider`)] }), r => ({ txid: r.txid }))
-      await s.step('Redeem at the provider (it verifies the lineage itself)', 'BRC-103', () => wait(250))
+      await s.step(STEP.redeemAtProvider, 'BRC-103', () => wait(250))
       world.me.credits -= BigInt(credits)
       world.me.prepaidMinutes += credits * 60
       bus.publish(makeEvent('provider', 'credits_redeemed', { agent: me(), credits: String(credits), txid: res.txid! }, { agent: me(), txid: res.txid }))
@@ -179,9 +180,9 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
     async openPool (draft) {
       const s = createStepper(bus, 'openPool')
       if (mine.getState().tokenId === undefined) throw new FlowError('openPool', 'Mint credits first (the pool sells your token).')
-      const ann = await s.step('Reserve the credits and announce the pool in BSV Desktop (T2)', 'OP_RETURN', () => wallet().createAction({ description: 'AgentCoop: announce pool', outputs: [out(1, `${draft.credits} credits reserved (offer UTXO)`), out(0, 'OP_RETURN agentcoop pool')] }), r => ({ txid: r.txid }))
-      await s.step('Sign the offer once: SIGHASH_SINGLE|ANYONECANPAY, then you can go offline', 'SINGLE|ACP', () => wallet().createSignature({ protocolID: [1, 'agentcoop provider'], keyID: 'offer mock', counterparty: 'anyone', data: [1] }))
-      await s.step('Register the offer with the coordinator', 'HTTP', () => wait(120))
+      const ann = await s.step(STEP.reserveAnnounce, 'OP_RETURN', () => wallet().createAction({ description: 'AgentCoop: announce pool', outputs: [out(1, `${draft.credits} credits reserved (offer UTXO)`), out(0, 'OP_RETURN agentcoop pool')] }), r => ({ txid: r.txid }))
+      await s.step(STEP.signOffer, 'SINGLE|ACP', () => wallet().createSignature({ protocolID: [1, 'agentcoop provider'], keyID: 'offer mock', counterparty: 'anyone', data: [1] }))
+      await s.step(STEP.registerOffer, 'HTTP', () => wait(120))
       const pool = { ...makeMockPool(world.pools.size + 1, world.height, { credits: String(draft.credits), priceSats: String(draft.priceSats), feeSats: String(draft.feeSats), minCredits: String(draft.minCredits), label: draft.label, deadlineHeight: String(world.height + draft.deadlineBlocks), provider: me(), tokenId: mine.getState().tokenId! }), txid: ann.txid!, poolId: `${ann.txid}_0` }
       pool.terms.poolId = pool.poolId
       world.pools.set(pool.poolId, pool)
@@ -196,7 +197,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const s = createStepper(bus, 'cancelPool')
       const pool = world.pools.get(poolId)
       if (pool === undefined) throw new FlowError('cancelPool', 'No such pool.')
-      const res = await s.step('Spend the reserved credits back to your balance (the offer becomes void)', 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: cancel pool', outputs: [out(1, 'credits back to your bsv21 basket')] }), r => ({ txid: r.txid }))
+      const res = await s.step(STEP.cancelPool, 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: cancel pool', outputs: [out(1, 'credits back to your bsv21 basket')] }), r => ({ txid: r.txid }))
       world.pools.set(poolId, { ...pool, status: 'cancelled', spendingTxid: res.txid })
       bus.publish(makeEvent('overlay', 'pool_cancelled', { poolId, txid: res.txid! }, { poolId, txid: res.txid, agent: me() }))
       return { txid: res.txid! }
@@ -232,8 +233,8 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const owner = me()
       const vaultId = mockTxid('vault').replace('mock_vault_', 'c0ffee') .padEnd(32, '0').slice(0, 32)
       const scriptHex = '63' + '21' + owner + 'ac67' + '5221' + agent + '21' + MOCK_IDS.guard + '52ae68'
-      await s.step('Derive the vault keys in BSV Desktop (owner key from your identity, keyID = vaultId)', 'BRC-100', () => wallet().getPublicKey({ protocolID: [1, 'agentcoop vault'], keyID: vaultId, counterparty: 'anyone', forSelf: true }))
-      await s.step('Register the vault at the guard (BRC-103); it must derive the same script', '2-of-2', () => wait(200), () => ({ detail: 'OP_IF owner OP_CHECKSIG OP_ELSE 2 agent guard 2 OP_CHECKMULTISIG OP_ENDIF' }))
+      await s.step(STEP.deriveVault, 'BRC-100', () => wallet().getPublicKey({ protocolID: [1, 'agentcoop vault'], keyID: vaultId, counterparty: 'anyone', forSelf: true }))
+      await s.step(STEP.registerVault, '2-of-2', () => wait(200), () => ({ detail: 'OP_IF owner OP_CHECKSIG OP_ELSE 2 agent guard 2 OP_CHECKMULTISIG OP_ENDIF' }))
       const view: VaultView = { vaultId, owner, agent, guard: MOCK_IDS.guard, scriptHex, verified: true, balanceSats: 0, utxos: [] }
       world.vaults.set(vaultId, view)
       const agentInfo = world.agents.find(a => a.identity === agent)
@@ -259,7 +260,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
 
     async putPolicy (agent, policy) {
       const s = createStepper(bus, 'putPolicy')
-      await s.step('PUT /policies/:agent at the guard (BRC-103, signed with your identity; no transaction)', 'BRC-103', () => wait(200), () => ({ detail: `maxPerPool ${policy.maxPerPoolSats} · weekly ${policy.weeklyCapSats} · maxFee ${policy.maxFeeSats} · hot/day ${policy.hotWalletDailySats} · ${policy.allowProviders.length} provider(s)` }))
+      await s.step(STEP.putPolicy, 'BRC-103', () => wait(200), () => ({ detail: `maxPerPool ${policy.maxPerPoolSats} · weekly ${policy.weeklyCapSats} · maxFee ${policy.maxFeeSats} · hot/day ${policy.hotWalletDailySats} · ${policy.allowProviders.length} provider(s)` }))
       world.policies.set(agent, { owner: me(), policy, updatedAt: ts() })
       bus.publish(makeEvent('guard', 'policy_updated', { agent, owner: me() }, { agent }))
     },
@@ -292,8 +293,8 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       if (credits < 1 || BigInt(credits) > world.me.credits) throw new FlowError('list', `You hold ${world.me.credits} credits.`)
       if (askSats < 1) throw new FlowError('list', 'Ask at least 1 sat.')
       const res = await s.step(`Move ${credits} credits to a listing key in BSV Desktop (basket agentcoop listings) + OP_RETURN list`, 'OP_RETURN', () => wallet().createAction({ description: 'AgentCoop: list credits', outputs: [out(1, `${credits} credits → listing key`), out(0, 'OP_RETURN agentcoop list')] }), r => ({ txid: r.txid }))
-      await s.step('Sign the listing once: SIGHASH_SINGLE|ANYONECANPAY ("the output at my index pays me askSats")', 'SINGLE|ACP', () => wallet().createSignature({ protocolID: [1, 'agentcoop market'], keyID: 'list mock', counterparty: 'anyone', data: [1] }))
-      await s.step('POST /listings at the coordinator (it verifies the outpoint and the signature)', 'HTTP', () => wait(150))
+      await s.step(STEP.signListing, 'SINGLE|ACP', () => wallet().createSignature({ protocolID: [1, 'agentcoop market'], keyID: 'list mock', counterparty: 'anyone', data: [1] }))
+      await s.step(STEP.postListing, 'HTTP', () => wait(150))
       const listing: Listing = { outpoint: `${res.txid}_0`, tokenId: MOCK_TOKEN_ID, credits: String(credits), askSats: String(askSats), seller: me(), unlockingScriptHex: '', lockingScriptHex: '', payScriptHex: '' }
       world.listings.set(listing.outpoint, listing)
       world.me.listings.add(listing.outpoint)
@@ -306,7 +307,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const s = createStepper(bus, 'cancelListing')
       const listing = world.listings.get(outpoint)
       if (listing === undefined || !world.me.listings.has(outpoint)) throw new FlowError('cancelListing', 'Not your listing.')
-      const res = await s.step('Spend the listed credits back to your token address (the signature now spends nothing)', 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: cancel listing', outputs: [out(1, `${listing.credits} credits → your bsv21 basket`)] }), r => ({ txid: r.txid }))
+      const res = await s.step(STEP.cancelListing, 'BRC-100', () => wallet().createAction({ description: 'AgentCoop: cancel listing', outputs: [out(1, `${listing.credits} credits → your bsv21 basket`)] }), r => ({ txid: r.txid }))
       world.listings.delete(outpoint)
       world.me.listings.delete(outpoint)
       world.me.credits += BigInt(listing.credits)
@@ -323,7 +324,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       const credits = picked.reduce((a, l) => a + BigInt(l.credits), 0n)
       await s.step(`Verify each listing against its source transaction and the credit lineage back to the deploy (${picked.length})`, 'lineage', () => wait(350))
       const res = await s.step(`Buy ${picked.length} listing(s): ${total} sat to the sellers, ${credits} credits to you, one transaction (SIGHASH_ALL)`, 'BRC-100', () => wallet().createAction({ description: `AgentCoop: buy ${picked.length} listing(s)`, outputs: [...picked.map(l => out(Number(l.askSats), `pay seller ${l.seller.slice(0, 8)}…`)), out(1, `${credits} credits → your bsv21 basket`)] }), r => ({ txid: r.txid }))
-      await s.step('Submit to the overlay (tm_agentcoop)', 'overlay', () => wait(120))
+      await s.step(STEP.submitOverlay, 'overlay', () => wait(120))
       for (const l of picked) { world.listings.delete(l.outpoint); bus.publish(makeEvent('overlay', 'listing_filled', { listing: l, txid: res.txid!, buyer: me() }, { txid: res.txid, agent: me() })) }
       world.me.credits += credits
       bus.publish(makeEvent('agents', 'agent_payment', { kind: 'sweep', txid: res.txid!, sats: total }, { agent: me(), txid: res.txid }))
