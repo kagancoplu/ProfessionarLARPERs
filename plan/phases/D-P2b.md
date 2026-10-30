@@ -59,3 +59,7 @@ Testler yeşil; kök `npm test` + typecheck temiz; MASTER §3.7 ve STATUS (D →
 3. **Diğer track'ler:** A 5.4 `creditSpend.ts` kurucularını bu guard türlerine yazacak; C: `/v1/credits/return` vault'tan redeem edilen krediyi ajanın P2PKH'ına gönderiyor (T-10'daki sınırlı dolaylı yol) → vault'a dönmeli. STATUS'ta D → A, C.
 4. **Sonraki:** S3 hâlâ tamamlanmadı; mainnet için sats/laptop yok. Kullanıcıya sorulacak.
 5. **Arayüz değişikliği:** MASTER §3.7 (`kind: 'redeem' | 'list'`, `creditPayees`, `minAskSatsPerCredit`, 0xC3) güncellendi; STATUS "Arayüz değişiklikleri"nde D → A, C.
+
+## 9. Ek: A 5.4 ile birleşme (30.10 ~23:40, kullanıcı kararı)
+
+A 5.4 (`src/vault/creditSpend.ts`) D-P2b'yi görmeden yazılmıştı: `list`'te krediyi ajanın liste anahtarına (P2PKH) taşıyor, `redeem`'de alıcı kanıtı göndermiyordu. Kullanıcı kararı: **D'nin guard kuralları geçerli, A uyarlar.** Birleşmede: `VaultSigner.ts` D'nin sürümü (A'nın değişiklikleri onun alt kümesiydi); basket sabiti tek (`types.ts`) ve etiketler A'nınki (`id:`, `amt:`); guard, yanlış kapsamla imzalanmış `list`/`redeem` isteğine açık neden veriyor. Yeni test: A'nın `transferVaultCredits`'i gerçek guard'la (`redeem` + `creditPayees` geçiyor, kanıtsız ve P2PKH'ye "liste" reddediliyor, A'nın `listVaultCredits`'i D'nin kaydını okuyor). STATUS D → A.

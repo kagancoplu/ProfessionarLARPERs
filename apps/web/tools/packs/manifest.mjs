@@ -51,6 +51,11 @@ export const SPRITES = [
   { name: 'trough', file: `${O}/Water_Troughs.png`, rect: [0, 0, 32, 32], frames: { count: 3, dx: 32 } },
   { name: 'picnic', file: `${O}/Picnic_Basket.png` },
   { name: 'boat', file: `${O}/Boat.png` },
+  { name: 'wheat', file: 'Crops/Crops.png', rect: [80, 0, 16, 32] },
+  { name: 'tomato', file: 'Crops/Crops.png', rect: [80, 32, 16, 32] },
+  { name: 'carrot', file: 'Crops/Crops.png', rect: [80, 64, 16, 32] },
+  { name: 'pumpkin', file: 'Crops/Crops.png', rect: [80, 160, 16, 32] },
+  { name: 'cabbage', file: 'Crops/Crops.png', rect: [80, 224, 16, 32] },
   { name: 'icon_res', file: 'Icons/Outline/Resources_Icons_Outline.png', rect: [0, 0, 16, 16], frames: { count: 36, cols: 6, dx: 16, dy: 16 } },
   { name: 'icon_other', file: 'Icons/Outline/Other_Icons_Outline.png', rect: [0, 0, 16, 16], frames: { count: 15, cols: 5, dx: 16, dy: 16 } },
   { name: 'icon_other2', file: 'Icons/Outline/Other_Icons_2_Outline.png', rect: [0, 0, 16, 16], frames: { count: 20, cols: 4, dx: 16, dy: 16 } },
@@ -94,3 +99,12 @@ export const VILLAGERS = OUTFITS.map(([shirtKind, shirtColor, pantsKind, pantsCo
   layers: ['Player/Player_Base/Player_Base_animations.png', `Player/Feet/Shoes_1_${shoes}.png`, PANTS[pantsKind](pantsColor), SHIRT[shirtKind](shirtColor), 'Player/Hands/Hands_1_Bare.png', `Player/Head/Hair_${hair}/Hair_${hair}_${hairColor}.png`]
 }))
 export const HAIR_COLORS_ALL = HAIR_COLORS
+
+/** Animals: 32×32 cells; each anim names its row and frame count (Kenmi sheets face right). */
+export const ANIMALS = [
+  { name: 'chicken', file: 'Animals/Chicken/Chicken_01.png', anims: { idle: [0, 2], walk: [2, 8] } },
+  { name: 'chicken_b', file: 'Animals/Chicken/Chicken_03.png', anims: { idle: [0, 2], walk: [2, 8] } },
+  { name: 'duck', file: 'Animals/Duck/Duck_01.png', anims: { idle: [0, 2], walk: [1, 6], swim_idle: [7, 2], swim: [8, 4] } },
+  { name: 'sheep', file: 'Animals/Sheep/Sheep_01.png', anims: { idle: [0, 2], walk: [3, 8] } },
+  { name: 'cow', file: 'Animals/Cow/Cow_01.png', anims: { idle: [0, 2], walk: [3, 8] } }
+]

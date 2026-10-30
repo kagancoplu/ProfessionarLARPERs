@@ -1,8 +1,8 @@
 /** /_kit — the design system in one place (track-E 0.2): tokens, type, components, states, sprites, atlas. */
 import { useState } from 'react'
 import { store, useStore } from '../store'
-import { Counter, DemoPricingTag, EmptyState, ErrorState, ExperimentalTag, IdentityChip, LoadingState, PixelButton, Scroll, ServiceBadge, Signboard, SimulatedJobsTag, Sprite, Tag, Timer, TxLink } from '../ui'
-import { SPRITE_DATA, type SpriteName } from '../ui/sprites.generated'
+import { Counter, DemoPricingTag, EmptyState, ErrorState, ExperimentalTag, IdentityChip, LoadingState, PixelButton, PxIcon, Scroll, ServiceBadge, Signboard, SimulatedJobsTag, Tag, Timer, TxLink } from '../ui'
+import { ICONS, type IconName } from '../ui/icons.generated'
 
 
 const TOKENS = ['surface', 'surface-2', 'surface-3', 'ink', 'ink-muted', 'wood', 'wood-dark', 'wood-light', 'gold', 'gold-dark', 'grass', 'grass-dark', 'danger', 'danger-dark', 'sky', 'water', 'warn']
@@ -85,11 +85,11 @@ export default function KitPage () {
         </Scroll>
       </Signboard>
 
-      <Signboard title="Sprites (code-drawn, 1× / 3×)">
+      <Signboard title="Icons (public/ui/icons.png — Kenmi Cute Fantasy + drawn, 1× / 3×)">
         <div className="flex flex-wrap items-end gap-6">
-          {(Object.keys(SPRITE_DATA) as SpriteName[]).map(name => (
+          {(Object.keys(ICONS) as IconName[]).map(name => (
             <div key={name} className="flex flex-col items-center gap-1">
-              <div className="flex items-end gap-2"><Sprite name={name} zoom={1} /><Sprite name={name} zoom={3} /></div>
+              <div className="flex items-end gap-2"><PxIcon name={name} zoom={1} /><PxIcon name={name} zoom={3} /></div>
               <span className="label text-ink-muted">{name}</span>
             </div>
           ))}

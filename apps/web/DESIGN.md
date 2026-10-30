@@ -113,21 +113,21 @@ every `/design-review` finding that departs from this file is a bug.
 ## Components (`src/ui/`)
 | Component | Rules |
 |---|---|
-| `Signboard` | the card: `--surface-2`, 2 px `--wood` frame, hard shadow, optional wooden title plate (Pixelify, `--wood` bg, parchment text) |
-| `Scroll` | the modal/dialog: parchment, 3 px ink shadow, curled top/bottom edges drawn as 4 px pixel bands; used for every confirmation ("what, how many sats, which address → Approve in BSV Desktop → txid") |
-| `PixelButton` | variants `primary` (gold bg, ink text), `secondary` (parchment bg, 2 px ink border), `danger`, `ghost`; states hover (lighten 1 step), active (pressed offset), disabled (`--surface-3`, muted text, no shadow), loading (hourglass sprite, label stays) |
+| `Signboard` | the card: `--surface-2` inside the wooden 9-slice frame (`public/ui/frame-wood.png`, 8 px slices at 2×), hard shadow, optional title plate (Pixelify, `--wood-dark` bg, parchment text) |
+| `Scroll` | the modal/dialog: parchment 9-slice frame (`frame-parchment`, day/night variants), 3 px ink shadow, wood bands top/bottom; used for every confirmation ("what, how many sats, which address → Approve in BSV Desktop → txid") |
+| `PixelButton` | 9-slice pixel buttons (`btn9-gold`, `btn9-parchment`, `btn9-danger`: 4 px slices at 2×, bevel light top / dark bottom; pressed swaps to the `-pressed` image), `ghost` is flat; states hover (brightness), active (offset + pressed image), disabled (muted, grayscale, no shadow), loading (hourglass icon blinks in steps, label stays) |
 | `Counter` | VT323 digits, sizes s/m/l, unit in Pixelify 14 px; animates by stepping digits (no easing blur) |
 | `Timer` | Counter + 1-bit ring; turns `--warn` under 20 s, `--danger` under 5 s |
 | `TxLink` | VT323 `ab12…cd34` + WhatsOnChain link icon; `mock_` ids show a `MOCK` tag and no link |
 | `IdentityChip` | VT323 short key + role color dot + copy; full key in tooltip |
 | `Tag` | Pixelify 12/16 uppercase; honesty tags are fixed: `demo pricing` (warn), `simulated GPU jobs` (sky), `experimental` (danger outline), `MOCK` / `LIVE` / `REPLAY` (mode) |
 | `ServiceBadge` | 8 px square light + service name; green/red/gray |
-| `Drawer` | right, 440 px, wood frame, title plate, close `Esc`; one at a time |
+| `Drawer` | right, 440 px, wooden 9-slice frame, title plate, close `Esc`; one at a time |
 | `Toast` | bottom-right stack, signboard mini, 5 s, pause on hover |
 | `EmptyState` | a pixel sprite (empty board, idle villager) + one concrete sentence + one action; never "No data" |
 | `LoadingState` | hourglass sprite, "Reading the overlay…" style copy naming the service |
 | `ErrorState` | which service, what happened in plain words, "Retry" button; Desktop errors translated by `wallet/errors.ts` |
-| `Sprite` | code-drawn SVG, `shape-rendering: crispEdges`, integer zoom only |
+| `PxIcon` | 16 px icon from `public/ui/icons.png` (Kenmi Cute Fantasy icons + a few drawn in the same cream-rim/black-line style), `image-rendering: pixelated`, integer zoom only |
 
 - **Every interactive element** has hover, `:focus-visible` (2 px `--gold` outline, 2 px offset), disabled and
   loading states.
@@ -135,6 +135,15 @@ every `/design-review` finding that departs from this file is a bug.
   helper text `--ink-muted` 14 px, errors `--danger-dark` with a 1 px danger border.
 - **Tables:** header Pixelify 12 px uppercase on `--surface-3`, rows 40 px, numbers right-aligned tabular, hover
   `--surface-3`, selected row 2 px `--gold` left bar.
+
+## Town art (E-V1)
+- **Source:** Kenmi *Cute Fantasy* (Premium) for terrain, buildings, props, NPCs, animals and icons. No other pack is
+  mixed in; missing pieces are drawn in Kenmi's style (dark plum outline `#3f2832`, cream rim `#f9e6cf` on icons,
+  wood `#91533b`/`#b86f50`). Rules in `.claude/skills/village-art-direction/SKILL.md`.
+- **Grid:** 16 px tiles, 64 px character cells (chibi), buildings whole tiles; 3/4 top-down; light from top-left.
+- **Rendering:** Phaser `pixelArt`, integer camera zoom 2–4, `depth = y` for everything that stands, animated water by
+  tileset frame swap, night = multiply overlay + additive lantern/window glows.
+- **Labels:** HTML in the Phaser DOM layer, `town-label` 9-slice (3 px slices at 1× world px), Pixelify 6–7 px.
 
 ## Voice and copy
 - Concrete and product-specific: "Festival in 3 days · 600/1000 credits", "Guard refused: maxPerPoolSats exceeded

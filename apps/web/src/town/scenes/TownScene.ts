@@ -11,14 +11,15 @@ import { Board } from '../entities/Board'
 import { CHARS, Villager, type Profile } from '../entities/Villager'
 import { FxQueue } from '../fx/queue'
 import { BOARD, COOP, HOUSES, POINTS, WORKSHOP } from '../layout'
-import { FOUNTAIN, PLACES, TREES } from '../map/places'
+import { ANIMALS, FOUNTAIN, PLACES, TREES } from '../map/places'
+import { Animal } from '../entities/Animal'
 import { MAP_H, MAP_W, TILE } from '../map/terrain'
 import { attachBridge } from '../bridge'
 import { DEPTH, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN } from '../game'
 
 export interface TownDeps { store: AppStoreApi, bus: EventBus, fx: FxQueue }
 
-const TERRAIN_KEYS = ['grass', 'dirt', 'sand', 'cobble', 'water', 'decor', 'flowers', 'fence', 'path_decor', 'water_decor']
+const TERRAIN_KEYS = ['grass', 'dirt', 'sand', 'cobble', 'water', 'decor', 'flowers', 'fence', 'path_decor', 'water_decor', 'farmland']
 const WATER_FRAMES = 8
 
 export class TownScene extends Phaser.Scene {
@@ -77,6 +78,7 @@ export class TownScene extends Phaser.Scene {
     this.workshop = new Workshop(this, WORKSHOP.x, WORKSHOP.y, WORKSHOP.frame, door(WORKSHOP))
     this.coop = new Building(this, COOP.x, COOP.y, COOP.frame, 'Coop hall · vaults & guard', door(COOP))
     for (const h of HOUSES) this.houses.push(new House(this, h.x, h.y, h.frame, (h.slot ?? 1) - 1))
+    for (const a of ANIMALS) new Animal(this, a)
     this.board = new Board(this, BOARD.x, BOARD.y)
     this.bell = new Bell(this, FOUNTAIN.x, FOUNTAIN.y)
     this.cart = new Cart(this)

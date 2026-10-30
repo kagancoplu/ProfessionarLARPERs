@@ -66,6 +66,9 @@ export function evaluateCredits (e: CreditsInput): CosignAllowed | CosignDenied 
   const scope = e.kind === 'list' ? VAULT_LIST_SIGHASH : VAULT_SIGHASH
   const sighash = vaultSighash(tx, i, scope)
   const agentSig = /^([0-9a-f]{2})+$/i.test(e.agentSignatureHex ?? '') ? Utils.toArray(e.agentSignatureHex, 'hex') : []
+  if (agentSig.length > 0 && agentSig[agentSig.length - 1] !== scope) {
+    return deny(403, e.kind === 'list' ? 'a listing is signed SINGLE|ANYONECANPAY|FORKID (0xc3): list the vault credits themselves, proceeds to the vault' : 'redeem is signed ALL|FORKID (0x41)', ctx)
+  }
   if (!verifyVaultSignature(vault.keys.agentPub, sighash, agentSig, scope)) return deny(403, 'agent signature invalid', ctx)
 
   // G6: default deny without a policy.

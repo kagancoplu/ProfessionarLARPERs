@@ -30,7 +30,7 @@ import { decodeBsv21Owned, vaultKeysOfScript } from '../scripts/creditLock'
 import { pledgeAmount } from '../pool/pledge'
 import { validateTerms } from '../pool/terms'
 import { coopOutpoint, toWalletOutpoint } from '../util/outpoint'
-import { PLEDGE_BASKET, VAULT_BASKET, VAULT_PROTOCOL, type InputSigner, type PledgeRecord, type PoolTerms, type SettlementPlan } from '../types'
+import { PLEDGE_BASKET, VAULT_BASKET, VAULT_CREDITS_BASKET, VAULT_PROTOCOL, type InputSigner, type PledgeRecord, type PoolTerms, type SettlementPlan } from '../types'
 import {
   ANYONE_IDENTITY_KEY,
   VAULT_COSIGN_UNLOCK_LENGTH,
@@ -47,6 +47,7 @@ import {
 
 // ── guard protocol (MASTER §3.7) ─────────────────────────────────────────────
 
+/** 'redeem' | 'list': spending vault-locked credits (A 5.4 builds, the guard's policy is D-P2b). */
 export type CosignKind = 'settle' | 'pay' | 'rail' | 'redeem' | 'list'
 
 /** D-P2b 'redeem': output `vout` sends credits to `provider`'s token address `receivePkh(provider, index)` (kit addresses). */
@@ -150,6 +151,7 @@ function vaultKeysOfInput (tx: Transaction, inputIndex: number): VaultKeys {
   const input = tx.inputs[inputIndex]
   const source = input?.sourceTransaction?.outputs[input.sourceOutputIndex]
   if (source === undefined) throw new Error(`input ${inputIndex} has no source output`)
+  // A plain vault output, or vault-locked credits (A 5.4): the same keys either way.
   const keys = vaultKeysOfScript(source.lockingScript)
   if (keys === null) throw new Error(`input ${inputIndex} is not a vault output`)
   return keys
@@ -270,15 +272,19 @@ export async function listVaultUtxos (wallet: WalletInterface, vaultId: string, 
 
 // ── vault-locked credits (A 5.1–5.3; D-P2b) ──────────────────────────────────
 
-/** Vault-locked credits live apart from the vault's sats, so spendFromVault never picks one for a fee. */
-export const VAULT_CREDITS_BASKET = 'agentcoop vault credits'
+/** Vault-locked credits live apart from the vault's sats, so spendFromVault never picks one for a fee (one constant, types.ts). */
+export { VAULT_CREDITS_BASKET }
 
 export interface VaultCreditUtxo extends VaultUtxo {
   tokenId: string
   amount: bigint
 }
 
-/** Track vault-locked credits of `vaultId` (e.g. from a settlement with creditLock 'vault') in the agent's credits basket. */
+/**
+ * Track vault-locked credits of `vaultId` in the agent's credits basket. Same tags and instructions
+ * as Track A's creditSpend.ts (`vault:<id>`, `id:<tokenId>`, `amt:<n>`; `{ vaultId, tokenId, amt }`),
+ * so either module lists what the other stored.
+ */
 export async function adoptVaultCredits (wallet: WalletInterface, vaultId: string, tx: number[], vout: number, originator?: string): Promise<VaultCreditUtxo> {
   const t = Transaction.fromAtomicBEEF(tx)
   const txid = t.id('hex')
@@ -292,7 +298,7 @@ export async function adoptVaultCredits (wallet: WalletInterface, vaultId: strin
     outputs: [{
       outputIndex: vout,
       protocol: 'basket insertion',
-      insertionRemittance: { basket: VAULT_CREDITS_BASKET, customInstructions: JSON.stringify({ ...JSON.parse(instructions(vaultId, 'agent')), tokenId, amt: d.amount.toString() }), tags: [vaultTag(vaultId), `token:${tokenId}`] }
+      insertionRemittance: { basket: VAULT_CREDITS_BASKET, customInstructions: JSON.stringify({ vaultId, tokenId, amt: d.amount.toString() }), tags: [vaultTag(vaultId), `id:${tokenId}`, `amt:${d.amount}`] }
     }],
     description: 'Adopt AgentCoop vault credits'
   }, originator)
@@ -301,7 +307,7 @@ export async function adoptVaultCredits (wallet: WalletInterface, vaultId: strin
 
 /** Spendable vault-locked credits the agent's wallet tracks for `vaultId` (optionally one token), largest first. */
 export async function listVaultCredits (wallet: WalletInterface, vaultId: string, tokenId?: string, originator?: string): Promise<VaultCreditUtxo[]> {
-  const tags = [vaultTag(vaultId), ...(tokenId !== undefined ? [`token:${tokenId}`] : [])]
+  const tags = [vaultTag(vaultId), ...(tokenId !== undefined ? [`id:${tokenId}`] : [])]
   const { outputs, BEEF } = await wallet.listOutputs({ basket: VAULT_CREDITS_BASKET, tags, tagQueryMode: 'all', include: 'entire transactions', limit: 1000 }, originator)
   if (BEEF === undefined) return []
   const beef = Array.from(BEEF)

@@ -16,16 +16,16 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AuthFetch, LockingScript, Transaction, UnlockingScript } from '@agentcoop/core/sdk'
+import { AuthFetch, LockingScript, Transaction, UnlockingScript, Utils } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import {
   COOP_SERVICE, COOP_TOPIC, OverlayClient, P2pkhWalletSigner, TokenKit, VAULT_PROTOCOL,
   assembleSettlement, buildBsv21Script, buildPledge, buildReserveAndAnnounce, decodeBsv21Owned, identifyAdmissible, inputScriptValid, internalizeSettlement,
   parseOutpoint, planSettlement, receivePkh, signOffer, signSettlementInput, toChecksigSignature, vaultCosignUnlock, vaultOwnerUnlock,
-  vaultSighash, verifyLineage, verifySettlementPlan, VAULT_COSIGN_UNLOCK_LENGTH,
+  vaultSighash, verifyLineage, verifySettlementPlan, VAULT_COSIGN_UNLOCK_LENGTH, internalizeVaultCredits, listVaultCredits, transferVaultCredits,
   type Offer, type PledgeCandidate, type PoolTerms, type SettlementPlan
 } from '@agentcoop/core'
-import { VaultSigner, adoptVaultOutput, httpCosigner, listVaultUtxos, CosignRejected, type Cosigner, type VaultPledge } from '@agentcoop/core/signers/VaultSigner'
+import { VaultOwnerSigner, VaultSigner, adoptVaultOutput, httpCosigner, listVaultUtxos, CosignRejected, type Cosigner, type VaultPledge } from '@agentcoop/core/signers/VaultSigner'
 import { startOverlay, type RunningOverlay } from '../packages/overlay/src/server'
 import { Guard } from '../apps/guard/src/guard'
 import { createGuardApp } from '../apps/guard/src/server'
@@ -180,5 +180,46 @@ describe('vault-locked credits in a settlement (A 5.3)', () => {
     expect(await valid(async tx => vaultOwnerUnlock(await sig(agentV, tx)))).toBe(false)
     expect(await valid(async tx => vaultCosignUnlock(await sig(agentV, tx), await sig(guardWallet, tx)))).toBe(true) // what the guard would sign (5.4)
     expect(await valid(async tx => vaultOwnerUnlock(await sig(owner, tx)))).toBe(true)
+  })
+  it('5.4: V takes its vault-locked credits, redeems 150 at the provider (agent + guard), 250 stay locked', async () => {
+    // Stand-in for the guard's 'redeem' / 'list' policy (Track D): sign only for an allowed recipient.
+    const creditGuard = (allowed: string[]): Cosigner => async req => {
+      if (req.context.kind !== 'redeem' && req.context.kind !== 'list') throw new CosignRejected(403, `kind ${req.context.kind}`)
+      const tx = Transaction.fromAtomicBEEF(typeof req.txBEEF === 'string' ? Utils.toArray(req.txBEEF, 'hex') : req.txBEEF!)
+      const out = decodeBsv21Owned(tx.outputs[0].lockingScript)
+      if (out?.owner.kind !== 'p2pkh' || !allowed.includes(out.owner.pkh)) throw new CosignRejected(403, 'recipient not allowed')
+      const { signature } = await guardWallet.createSignature({ hashToDirectlySign: vaultSighash(tx, req.inputIndex), protocolID: VAULT_PROTOCOL, keyID: vault.record.vaultId, counterparty: 'anyone' })
+      return { signatureHex: Utils.toHex(toChecksigSignature(signature)), guardPub: '' }
+    }
+    const redeemPkh = receivePkh(provider.identityKey, 0)
+    const credit = await internalizeVaultCredits(agentV, settlement, plan, vPledge.outpoint, vault.record.vaultId)
+    expect(credit).toMatchObject({ outpoint: `${settlement.id('hex')}_${1 + j}`, amt: 400n, tokenId: terms.tokenId })
+    expect((await listVaultCredits(agentV, vault.record.vaultId)).map(c => c.amt)).toEqual([400n])
+
+    // A recipient the guard does not allow: nothing moves, the action is aborted.
+    await expect(transferVaultCredits(agentV, { vaultId: vault.record.vaultId, credit, amt: 150n, toPkh: receivePkh(agentV.identityKey, 7), kind: 'list', cosign: creditGuard([redeemPkh]) }))
+      .rejects.toThrow(CosignRejected)
+    expect((await listVaultCredits(agentV, vault.record.vaultId)).map(c => c.amt)).toEqual([400n])
+
+    const r = await transferVaultCredits(agentV, { vaultId: vault.record.vaultId, credit, amt: 150n, toPkh: redeemPkh, kind: 'redeem', cosign: creditGuard([redeemPkh]) })
+    const tx = Transaction.fromAtomicBEEF(r.beef)
+    expect(inputScriptValid(tx, 0)).toBe(true)
+    expect(decodeBsv21Owned(tx.outputs[0].lockingScript)).toMatchObject({ amount: 150n, owner: { kind: 'p2pkh', pkh: redeemPkh } })
+    expect(decodeBsv21Owned(tx.outputs[1].lockingScript)).toMatchObject({ amount: 250n, owner: { kind: 'vault', vaultScriptHex: vault.lockingScriptHex } })
+    expect(r.rest).toMatchObject({ outpoint: `${r.txid}_1`, amt: 250n })
+    expect((await listVaultCredits(agentV, vault.record.vaultId)).map(c => c.amt)).toEqual([250n])
+
+    // Admission and lineage need the vault-aware rules (B: overlay ownerKinds).
+    expect(identifyAdmissible(tx, [0], VAULT_RULES).outputsToAdmit).toEqual([0, 1])
+    expect(identifyAdmissible(tx, [0]).outputsToAdmit).toEqual([])
+    expect(await verifyLineage(`${r.txid}_0`, { fetchTx, ownerKinds: VAULT_RULES.ownerKinds })).toMatchObject({ ok: true, amt: 150n, ownerPkh: redeemPkh })
+
+    // The owner takes the remaining 250 alone (VaultOwnerSigner now reads keys from vault-locked credits too).
+    const back = new Transaction()
+    back.addInput({ sourceTransaction: tx, sourceOutputIndex: 1, sequence: 0xffffffff })
+    back.addOutput({ lockingScript: buildBsv21Script({ op: 'transfer', id: terms.tokenId, amt: '250' }, receivePkh(owner.identityKey, 0)), satoshis: 1 })
+    back.inputs[0].unlockingScript = await new VaultOwnerSigner(owner, { vaultId: vault.record.vaultId }).sign(back, 0)
+    expect(inputScriptValid(back, 0)).toBe(true)
+    await expect(new VaultOwnerSigner(agentV, { vaultId: vault.record.vaultId }).sign(back, 0)).rejects.toThrow(/not locked to this owner/)
   })
 })

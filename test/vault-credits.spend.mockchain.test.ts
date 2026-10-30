@@ -12,7 +12,7 @@ import type { AddressInfo } from 'node:net'
 import type { Server } from 'node:http'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AuthFetch, LockingScript, P2PKH, PublicKey, Transaction, UnlockingScript, type CreateActionOutput } from '@agentcoop/core/sdk'
-import { buildBsv21Script, buildVaultCreditScript, decodeBsv21Owned, receivePkh } from '@agentcoop/core'
+import { buildBsv21Script, buildVaultCreditScript, decodeBsv21Owned, listVaultCredits as listVaultCreditsA, receivePkh, transferVaultCredits } from '@agentcoop/core'
 import { VAULT_COSIGN_UNLOCK_LENGTH, VAULT_LIST_SIGHASH, VAULT_OWNER_UNLOCK_LENGTH } from '@agentcoop/core/scripts/vault'
 import {
   CosignRejected, VAULT_CREDITS_BASKET, VaultOwnerSigner, VaultSigner, adoptVaultCredits, broadcastResult, httpCosigner, listVaultCredits, vaultTag,
@@ -60,7 +60,7 @@ async function redeem (utxo: VaultCreditUtxo, outputs: Array<{ lockingScript: st
         lockingScript: o.lockingScript,
         satoshis: o.satoshis ?? 1,
         outputDescription: `out ${i}`,
-        ...(keep ? { basket: VAULT_CREDITS_BASKET, tags: [vaultTag(vault.record.vaultId), `token:${tokenId}`], customInstructions: JSON.stringify({ vaultId: vault.record.vaultId, role: 'agent', tokenId }) } : {})
+        ...(keep ? { basket: VAULT_CREDITS_BASKET, tags: [vaultTag(vault.record.vaultId), `id:${tokenId}`, `amt:${d.amount}`], customInstructions: JSON.stringify({ vaultId: vault.record.vaultId, tokenId, amt: d.amount.toString() }) } : {})
       }
     }),
     options: { randomizeOutputs: false, acceptDelayedBroadcast: false, signAndProcess: false }
@@ -207,5 +207,30 @@ describe('D-P2b: vault-locked credits through the guard', () => {
     const unlock = await new VaultOwnerSigner(owner, { vaultId: vault.record.vaultId }).sign(tx, i)
     const r = broadcastResult(await owner.signAction({ reference: st.reference, spends: { [i]: { unlockingScript: unlock.toHex() } } }))
     expect(decodeBsv21Owned((await fetchTx(r.txid)).outputs[0].lockingScript)).toMatchObject({ amount: 10n, owner: { kind: 'p2pkh', pkh: ownerPkh } })
+  })
+
+  it('Track A\'s transferVaultCredits against this guard: redeem with creditPayees passes; moving credits to the agent\'s own key as a "listing" is refused', async () => {
+    // fresh credits on the vault, stored by this module and listed by Track A's (one basket, one tag scheme)
+    const res = await owner.createAction({
+      description: 'test: more vault-locked credits',
+      outputs: [{ lockingScript: buildVaultCreditScript({ op: 'deploy+mint', amt: '30', sym: 'VCRED', dec: '0' }, vault.lockingScriptHex).toHex(), satoshis: 1, outputDescription: 'credits' }],
+      options: { randomizeOutputs: false, acceptDelayedBroadcast: false }
+    })
+    await adoptVaultCredits(agent, vault.record.vaultId, Array.from(res.tx!), 0)
+    const [credit] = await listVaultCreditsA(agent, vault.record.vaultId, `${res.txid!}_0`)
+    expect(credit).toMatchObject({ amt: 30n, tokenId: `${res.txid!}_0` })
+
+    const notAListing = transferVaultCredits(agent, { vaultId: vault.record.vaultId, credit, amt: 10n, toPkh: receivePkh(agent.identityKey, 3), kind: 'list', cosign })
+    expect(await refusal(notAListing)).toMatch(/^a listing is signed SINGLE\|ANYONECANPAY\|FORKID \(0xc3\)/) // and even signed 0xC3, credits to the agent's key are refused (test above)
+    const noProof = transferVaultCredits(agent, { vaultId: vault.record.vaultId, credit, amt: 10n, toPkh: receivePkh(provider.identityKey, 1), kind: 'redeem', cosign })
+    expect(await refusal(noProof)).toBe('credits to unlisted output (vout 0)')
+
+    const r = await transferVaultCredits(agent, {
+      vaultId: vault.record.vaultId, credit, amt: 10n, toPkh: receivePkh(provider.identityKey, 1), kind: 'redeem', cosign,
+      context: { creditPayees: [{ vout: 0, provider: provider.identityKey, index: 1 }] }
+    })
+    expect(r.rest).toMatchObject({ amt: 20n })
+    expect(logs.at(-1)).toMatch(/ALLOW redeem .* credits=30 delivered=10 kept=20/)
+    expect((await listVaultCreditsA(agent, vault.record.vaultId, credit.tokenId)).map(c => c.amt)).toEqual([20n])
   })
 })

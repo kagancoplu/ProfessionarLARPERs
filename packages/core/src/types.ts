@@ -21,6 +21,8 @@ export const PLEDGE_BASKET = 'agentcoop'
 /** Vault keys: keyID = vaultId, counterparty 'anyone'. */
 export const VAULT_PROTOCOL: WalletProtocol = [1, 'agentcoop vault']
 export const VAULT_BASKET = 'agentcoop vault'
+/** Vault-locked credits (A-P5 5.3/5.4): BSV-21 outputs on the vault script, spent agent + guard or by the owner. */
+export const VAULT_CREDITS_BASKET = 'agentcoop vault credits'
 /** Lighthouse pledge coins (A-P5 5.5): keys are VAULT_PROTOCOL with keyID = lhId. Separate basket: not "one active pledge". */
 export const LIGHTHOUSE_BASKET = 'agentcoop lighthouse'
 
