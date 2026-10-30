@@ -96,6 +96,23 @@ export function loadProducts (dir = PRODUCTS_DIR): Product[] {
   return products
 }
 
+/**
+ * Pick up token ids written to the product files since `products` was loaded
+ * (`provider-cli mint` while provider-api runs), updating the shared objects in
+ * place. Returns the products whose token changed.
+ */
+export function refreshTokenIds (products: Product[], dir = PRODUCTS_DIR): Product[] {
+  const fresh = new Map(loadProducts(dir).map(p => [p.id, p.tokenId]))
+  const changed: Product[] = []
+  for (const p of products) {
+    const tokenId = fresh.get(p.id)
+    if (tokenId === undefined || tokenId === p.tokenId) continue
+    p.tokenId = tokenId
+    changed.push(p)
+  }
+  return changed
+}
+
 /** Record the credit token of a product (written by `provider-cli mint`). */
 export function setProductTokenId (productId: string, tokenId: string, dir = PRODUCTS_DIR): void {
   const file = join(dir, `${productId}.json`)

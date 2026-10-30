@@ -1,8 +1,9 @@
 /** Track C Faz 0: products are configuration; the job simulator is deterministic and queues per GPU. */
-import { describe, expect, it } from 'vitest'
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadProducts, parseProduct, PRODUCTS_DIR, retailSatsFor, type Product } from '../apps/provider-api/src/products'
+import { describe, expect, it } from 'vitest'
+import { loadProducts, parseProduct, PRODUCTS_DIR, refreshTokenIds, retailSatsFor, setProductTokenId, type Product } from '../apps/provider-api/src/products'
 import { JobRunner, simulateLog } from '../apps/provider-api/src/runner'
 
 const product = (gpus: number): Product => ({
@@ -41,6 +42,19 @@ describe('products', () => {
     expect(() => parseProduct({ ...product(1), retailSatsPerCredit: 0 })).toThrow(/retailSatsPerCredit/)
     expect(() => parseProduct({ ...product(1), tokenId: 'abc.0' })).toThrow(/tokenId/)
     expect(() => parseProduct({ ...product(1), minutesPerCredit: 0 })).toThrow(/minutesPerCredit/)
+  })
+
+  it('picks up a token minted while the provider runs, in the loaded objects', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'products-'))
+    writeFileSync(join(dir, 'gpu-h100.json'), JSON.stringify(product(1)))
+    const loaded = loadProducts(dir)
+    expect(refreshTokenIds(loaded, dir)).toEqual([])
+    const tokenId = `${'ab'.repeat(32)}_0`
+    setProductTokenId('gpu-h100', tokenId, dir)
+    const same = loaded[0]
+    expect(refreshTokenIds(loaded, dir).map(p => p.id)).toEqual(['gpu-h100'])
+    expect(same.tokenId).toBe(tokenId)
+    expect(refreshTokenIds(loaded, dir)).toEqual([])
   })
 })
 

@@ -15,7 +15,7 @@ import { COOP_SERVICE, COOP_TOPIC, OverlayClient, type OutboxItem } from '@agent
 import { createProviderApp } from './app'
 import { CreditLedger } from './credits'
 import { JsonFile } from './jsonFile'
-import { loadProducts } from './products'
+import { loadProducts, refreshTokenIds } from './products'
 import { JobRunner } from './runner'
 
 loadDotEnv()
@@ -49,7 +49,18 @@ const server = app.listen(port, () => {
   for (const p of products) console.log(`  ${p.id}: ${p.label}, ${p.retailSatsPerCredit} sat/${p.unit} retail, token ${p.tokenId ?? '(not minted yet)'}`)
 })
 
+// `provider-cli mint` writes the token id to products/*.json; serve it without a restart.
+const tokenWatch = setInterval(() => {
+  try {
+    for (const p of refreshTokenIds(products)) console.log(`  ${p.id}: credit token is now ${p.tokenId ?? '(none)'}`)
+  } catch (e) {
+    console.log(`  products: reload failed (${(e as Error).message}); keeping the loaded token ids`)
+  }
+}, 5000)
+tokenWatch.unref()
+
 const shutdown = async (): Promise<void> => {
+  clearInterval(tokenWatch)
   runner.stop()
   server.close()
   await close()

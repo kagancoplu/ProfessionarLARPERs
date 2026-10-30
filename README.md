@@ -93,12 +93,12 @@ npm run web:mock          # the web app with a scripted mock Desktop
 
 ## Mainnet run
 
-Not done yet (no satoshis). The steps, each first with ≤ 1,000 sat:
+Done so far on mainnet: funding, the first end-to-end settlement (T1–T5), the provider's BSV Desktop mint and pool (T1, T2) and four agent 402 payments (T7); see [Example transactions](#example-transactions). The steps, each first with ≤ 1,000 sat:
 
 1. Server wallet keys: `npx tsx scripts/keygen.ts --only-missing >> .env` (keys stay in `.env`, which is git-ignored).
 2. Fund them from the treasury BSV Desktop: `npm run fund -w @agentcoop/scripts -- agent-1=1000 --dry-run`, then without `--dry-run`.
 3. `npm run infra`, `npm run provider`, `npm run guard -w @agentcoop/guard`.
-4. Provider: `npm run provider-cli -- mint …` and `open-pool` from BSV Desktop.
+4. Provider: `npm run provider-cli -- mint …` and `open-pool` from BSV Desktop. A running provider API picks up the minted token id from `products/*.json` within 5 s, no restart.
 5. Agents: `npm run agents`. Owner: `npm run owner -w @agentcoop/owner-cli -- create-vault | policy | fund | withdraw`.
 6. Coop Rail (Base Sepolia → BSV, ≤ 1 USDC / ≤ 1,000 sat): `npm run deploy -w @agentcoop/maker -- --yes`, then `npm run swap-demo -w @agentcoop/maker -- --vault <vaultId>` (dry run: checks keys, balances, guard and vault), then the same with `--yes`. See [docs/RAIL-POC.md](docs/RAIL-POC.md).
 
@@ -212,7 +212,7 @@ SmartRoute, an LLM router that is itself the provider of reserved model capacity
 
 ## Known limitations
 
-- On mainnet so far: the first end-to-end run (T1–T5) with server wallets for the provider and both agents. The BSV Desktop flows (provider, owner, human participant) and validations 2–6 (Desktop SINGLE\|ACP signing, vault script policy, nLockTime, v1 malleability) are the next runs.
+- On mainnet so far: the first end-to-end run (T1–T5) with server wallets, the provider's BSV Desktop mint and pool (T1, T2), agent 402 payments (T7) and validations 2 and 7 (Desktop SINGLE\|ACP signing, overlay-free lineage). Still to run: the three-agent pool settlement, credit redeem (T6), the market (T8), the owner's vault (T9, T10, validation 5), the human participant, and validations 4 and 6 (nLockTime, v1 malleability).
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
 - A provider's credit return sends vault-redeemed credits to the agent's own address (bounded, threat T-10); Coop Rail has no reverse direction.
 - The coordinator's selection is auditable but cannot be forced.
