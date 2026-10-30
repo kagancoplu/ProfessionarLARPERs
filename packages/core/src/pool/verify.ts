@@ -7,10 +7,11 @@ import { LockingScript, Transaction } from '../sdk'
 import { decodeBsv21 } from '../kit/inscription'
 import { AgentCoopError } from '../errors'
 import { parseOpReturn } from '../scripts/opreturn'
-import type { Offer, SettlementPlan } from '../types'
+import type { Offer, PledgeRecord, SettlementPlan } from '../types'
 import { parseOutpoint } from '../util/outpoint'
 import { inputScriptValid } from '../util/spend'
-import { pledgeListHash } from './plan'
+import { creditLockOf, pledgeListHash } from './plan'
+import { decodeBsv21Owned } from '../scripts/creditLock'
 import { creditsCost, termsHash, validateTerms } from './terms'
 import { verifyLineage, type LineageOptions } from '../verify/lineage'
 
@@ -28,6 +29,15 @@ export interface VerifyOptions {
 }
 
 export const planTransaction = (plan: SettlementPlan): Transaction => Transaction.fromAtomicBEEF(plan.templateBEEF)
+
+/** The pledge record in a pledge transaction (its first `agentcoop pledge` OP_RETURN), or undefined. */
+export function pledgeRecordOf (tx: Transaction): PledgeRecord | undefined {
+  for (const o of tx.outputs) {
+    const r = parseOpReturn(o.lockingScript as LockingScript)
+    if (r?.op === 'pledge') return r.json as unknown as PledgeRecord
+  }
+  return undefined
+}
 
 const txidOf = (tx: Transaction, i: number): string => tx.inputs[i].sourceTXID ?? tx.inputs[i].sourceTransaction!.id('hex')
 
@@ -61,17 +71,25 @@ export async function verifySettlementPlan (plan: SettlementPlan, offer: Offer, 
     const vin = j + 1
     if (txidOf(tx, vin) !== op.txid || tx.inputs[vin].sourceOutputIndex !== op.vout) bad(`input ${vin} is not ${p.outpoint}`)
     const credit = tx.outputs[vin]
-    const d = decodeBsv21(credit.lockingScript)
+    const d = decodeBsv21Owned(credit.lockingScript)
     if (d === null || d.op !== 'transfer' || d.id !== t.tokenId || d.amount !== BigInt(p.credits) || credit.satoshis !== 1) bad(`output ${vin} is not ${p.credits} credits`)
     total += BigInt(p.credits)
     const coin = tx.inputs[vin].sourceTransaction!.outputs[op.vout]
+    // Who owns the credits is the pledge's on-chain choice, never the plan's: a coordinator
+    // must not move a vault agent's credits to a plain P2PKH (guard bypass) or lock anyone else's.
+    const lock = creditLockOf(pledgeRecordOf(tx.inputs[vin].sourceTransaction!))
+    if (p.creditLock !== lock) bad(`participant ${vin}: creditLock ≠ its pledge record`)
+    if (lock === 'vault') {
+      if (d!.owner.kind !== 'vault' || d!.owner.vaultScriptHex !== coin.lockingScript.toHex()) bad(`output ${vin} is not locked to the pledge coin's vault script`)
+    } else if (d!.owner.kind !== 'p2pkh') bad(`output ${vin} is not a P2PKH credit output`)
     const change = tx.outputs[n + 1 + j]
     if (change.lockingScript.toHex() !== coin.lockingScript.toHex()) bad(`change ${n + 1 + j} does not return to the pledge coin's script`)
     if (String(change.satoshis) !== p.changeSats || change.satoshis! < 1) bad(`change ${n + 1 + j} ≠ plan`)
     if (p.outpoint === myOutpoint) {
       mine = j
       if (p.credits !== opts.expectedCredits) bad(`my credits are ${p.credits}, expected ${opts.expectedCredits}`)
-      if (opts.expectedCreditPkh !== undefined && d!.ownerPkh !== opts.expectedCreditPkh) bad('my credit output pays someone else')
+      // Vault-locked credits are already bound to my own coin's script above; the P2PKH check is for P2PKH credits.
+      if (opts.expectedCreditPkh !== undefined && d!.owner.kind === 'p2pkh' && d!.owner.pkh !== opts.expectedCreditPkh) bad('my credit output pays someone else')
       const cost = coin.satoshis! - change.satoshis!
       const maxCost = Number(creditsCost(t, p.credits)) + 1 + (opts.maxFeeSats ?? 1000)
       if (cost > maxCost) bad(`I would pay ${cost} sats, at most ${maxCost} accepted`)

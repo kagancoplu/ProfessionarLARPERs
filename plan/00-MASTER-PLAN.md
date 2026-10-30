@@ -123,6 +123,8 @@ export interface PledgeRecord {       // OP_RETURN op=pledge
   participant: string                 // identity key
   tokenIndex: string                  // kredi çıktısının gideceği receive address index'i (kit addresses.ts)
   signer: 'p2pkh' | 'vault'           // pledge coin'in tipi → koordinatör unlockingScriptLength'i buradan bilir
+  creditLock?: 'vault'                // A-P5 5.3, yalnızca signer:'vault' ile: settlement'ta kredi çıktısı pledge coin'in vault script'ine kilitli
+                                      // (zincirdeki kayıt esas: doğrulayıcılar planı buna göre kontrol eder, koordinatör seçemez)
 }
 // Pledge tx düzeni (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
 // Para üstü kuralı: settlement'ta katılımcının para üstü, pledge coin'in KENDİ locking script'ine döner.
@@ -142,7 +144,7 @@ export interface Listing {            // market (op=list OP_RETURN + zincir dı�
 
 export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular
   poolId: string; round: number
-  participants: Array<{ outpoint: string; participant: string; credits: string; signer: 'p2pkh'|'vault'; changeSats: string }>
+  participants: Array<{ outpoint: string; participant: string; credits: string; signer: 'p2pkh'|'vault'; changeSats: string; creditLock?: 'vault' }>
   pledgeListHash: string
   templateBEEF: number[]              // imzasız tx + tüm girdilerin kaynak tx'leri (AtomicBEEF)
 }
@@ -193,7 +195,14 @@ planTransaction(plan): Transaction                                              
 internalizeSettlement(wallet, tx, plan, myOutpoint, pledgeInstructions): Promise<void>
 fetchChainPolicy(arcadeUrl): Promise<{ height, satsPerKb, maxTxSize? }>            // Arcade /health; planSettlement'ın `chain`'i
 // A-P2: doğrulama ve market (MASTER'daki `buildSweep(wallet, listings[]): { plan }` bununla DEĞİŞTİ; henüz kullanan yoktu)
-verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache? }): Promise<{ ok, tokenId?, amt?: bigint, ownerPkh?, depth, reason? }>
+verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache?, ownerKinds? }): Promise<{ ok, tokenId?, amt?: bigint, ownerPkh?, owner?: CreditOwner, depth, reason? }>
+// A-P5 (vault'a kilitli krediler, scripts/creditLock.ts; yalnız ekleme):
+//   buildVaultCreditScript(insc, vaultScript): LockingScript       // BSV-21 zarfı + vault script'i (P2PKH yerine)
+//   decodeBsv21Owned(script): { ...Bsv21Inscription, amount, owner: { kind:'p2pkh', pkh } | { kind:'vault', vaultScriptHex, vaultHash } } | null
+//   vaultKeysOfScript(script): VaultKeys | null                       // düz vault çıktısı veya vault'a kilitli kredi
+//   identifyAdmissible(tx, prev, { ownerKinds?: ['p2pkh'] | ['p2pkh','vault'] })   // varsayılan = kit, birebir
+//   creditLockOf(record), creditScriptFor(tokenId, candidate), pledgeRecordOf(pledgeTx)
+//   buildPledge(…,'vault', …, { vault: { …, creditLock?: 'vault' } }) · pledgeFromVault({ …, creditLock?: 'vault' })
 reserveListing(wallet, kit, tokenId, credits, askSats): Promise<{ txid, outpoint, beef }>   // signListing'den önce
 signListing(wallet, outpoint, askSats): Promise<Listing> · verifyListing(listing, { sourceTx }): void
 buildSweep(wallet, kit, listings[], { verifyLineage?=true, lineage?, getBeef? }): Promise<{ txid, credits, tx }>

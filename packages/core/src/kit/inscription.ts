@@ -97,7 +97,8 @@ export function tokenIdFromOutpoint (txid: string, vout: number): string {
   return `${txid}_${vout}`
 }
 
-function validatePayload (p: Record<string, unknown>): Bsv21Inscription {
+/** Gates 2 and 3 on a parsed BSV-21 JSON payload; throws on anything else. */
+export function validatePayload (p: Record<string, unknown>): Bsv21Inscription {
   for (const [k, v] of Object.entries(p)) {
     if (typeof v !== 'string') throw new Error(`BSV-21 field "${k}" must be a string`)
   }

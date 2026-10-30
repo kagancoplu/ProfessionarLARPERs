@@ -14,9 +14,15 @@
  *
  * The result is that every admitted UTXO descends, input by input, from the
  * genuine deploy.
+ *
+ * AgentCoop extension (track A 5.2, behind a flag): `ownerKinds: ['p2pkh','vault']`
+ * also reads BSV-21 outputs owned by a Mandate Vault script (scripts/creditLock.ts).
+ * The default ['p2pkh'] is the kit's behaviour, byte for byte: a vault-owned
+ * output is then not a token at all (never admitted, never counted as input).
  */
 import type { Transaction } from '../sdk'
-import { decodeBsv21, MAX_U64, tokenIdFromOutpoint } from './inscription'
+import { decodeBsv21, MAX_U64, tokenIdFromOutpoint, type DecodedBsv21 } from './inscription'
+import { decodeBsv21Owned, type OwnerKind } from '../scripts/creditLock'
 
 export interface Admission {
   outputsToAdmit: number[]
@@ -39,6 +45,20 @@ interface TokenSummary {
 export interface RuleOptions {
   /** If set, only these token ids are tracked (deploys of other tokens are ignored). */
   whitelist?: ReadonlySet<string>
+  /** Token owners read as tokens. Default ['p2pkh'] (the kit). */
+  ownerKinds?: readonly OwnerKind[]
+}
+
+type Decoded = Pick<DecodedBsv21, 'op' | 'id' | 'amount'>
+
+/** The decoder the rules use for these options. */
+export function bsv21Decoder (opts: Pick<RuleOptions, 'ownerKinds'> = {}): (script: Transaction['outputs'][number]['lockingScript']) => Decoded | null {
+  const kinds = opts.ownerKinds ?? ['p2pkh']
+  if (kinds.length === 1 && kinds[0] === 'p2pkh') return decodeBsv21
+  return script => {
+    const d = decodeBsv21Owned(script)
+    return d !== null && kinds.includes(d.owner.kind) ? d : null
+  }
 }
 
 export function identifyAdmissible (tx: Transaction, previousCoins: number[], opts: RuleOptions = {}): Admission {
@@ -46,10 +66,11 @@ export function identifyAdmissible (tx: Transaction, previousCoins: number[], op
   const tracked = (id: string): boolean => opts.whitelist === undefined || opts.whitelist.has(id)
   const admit: Admission = { outputsToAdmit: [], coinsToRetain: [] }
   const summary = new Map<string, TokenSummary>()
+  const decode = bsv21Decoder(opts)
 
   // Pass 1: outputs.
   tx.outputs.forEach((output, vout) => {
-    const d = decodeBsv21(output.lockingScript)
+    const d = decode(output.lockingScript)
     if (d === null) return
     if (d.op === 'deploy+mint') {
       if (tracked(tokenIdFromOutpoint(txid, vout))) admit.outputsToAdmit.push(vout)
@@ -69,7 +90,7 @@ export function identifyAdmissible (tx: Transaction, previousCoins: number[], op
     const sourceTxid = input.sourceTXID ?? input.sourceTransaction?.id('hex')
     const source = input.sourceTransaction?.outputs[input.sourceOutputIndex]
     if (source === undefined || sourceTxid === undefined) return
-    const d = decodeBsv21(source.lockingScript)
+    const d = decode(source.lockingScript)
     if (d === null || d.op === 'burn') return // burned outputs carry no balance
     const id = d.op === 'deploy+mint' ? tokenIdFromOutpoint(sourceTxid, input.sourceOutputIndex) : d.id!
     const s = summary.get(id)
