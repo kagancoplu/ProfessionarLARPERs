@@ -31,7 +31,7 @@ Agents are villagers; a pool is the notice board with a chest that fills; a pled
 - Desktop browsers only (≥ 1024 px); English; single player (no multiplayer; the avatar is local).
 - Mainnet acceptance not done yet: the live flows (pledge, sign, redeem, 402, mint, open pool, vault fund/withdraw, list/sweep) are written against the real wallet and `@agentcoop/core`, exercised end to end only with the mock Desktop. `AuthFetch` from the browser to the provider-api and the guard needs their CORS in production (the dev proxy covers local).
 - GPU jobs are simulated (`simulated GPU jobs`); pool discounts are `demo pricing`; Coop Rail is `experimental` (quotes only; no swap API yet).
-- The agents' thought bubbles come from the mock scenario or a replay (the agents' event stream from Track C is not live).
+- In live mode the agents' bubbles come from Track C's feed (`AGENTS_URL`, `/events`); that path is wired and the event shapes match, but it has not been run from the browser against the real agents yet.
 - No real mainnet replay yet: record one from `/_debug` during a live run.
 - No `/design-review` browser loop was run; the DESIGN.md checklist was applied by hand with screenshots.
 
