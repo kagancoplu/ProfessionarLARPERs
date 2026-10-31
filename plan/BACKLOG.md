@@ -14,7 +14,7 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 | BL-02 | **GitHub private vulnerability reporting'i aç**, sonra `SECURITY.md`'deki "when it is available" ve issue tabanlı yedek yolu sadeleştir | Repo sahibi (admin) | ☐ | `gh api repos/kagancoplu/ProfessionarLARPERs/private-vulnerability-reporting` → `{"enabled":true}` | HANDOFF §2.2 #3 |
 | BL-03 | **Projeyi Devfolio'ya gönder.** Denetim ödülüne otomatik girmenin tek koşulu | Ekip | ☐ | Gönderim linki STATUS'ta | HANDOFF §3 |
 | BL-04 | **Video (2–3 dk) ya da canlı demo**; ajan ödemesi dahil. Challenge'ın zorunlu şartı (`FINAL-IDEA.md` §1.1 S2) | Ekip | ☐ | Video linki README'de | HANDOFF §5.3 |
-| BL-05 | **Herkese açık URL:** web (Cloudflare Pages ya da VPS) ve servis URL'leri (planda S4) | Ekip / Track B, E | ☐ | README'de çalışan link | HANDOFF §5.3 |
+| BL-05 | **Herkese açık URL:** web (Cloudflare Pages ya da VPS) ve servis URL'leri (planda S4) | Ekip / Track B, E | ◐ 31.10 (web Vercel'de: <https://professionar-larpe-rs.vercel.app/>, README'de; servis URL'leri = hibrit demo backend yayınlamıyor) | README'de çalışan link | HANDOFF §5.3 |
 | BL-06 | **Gerçek servislerle prova (mainnet):** `npm run infra`, provider, guard, `npm run agents`, iki makinede `npm run web`, birinde `?avatar=1`. Sırasında `/_debug` → "record a replay" ile gerçek bir mainnet kaydı al | İnsan + BSV Desktop + sats | ☐ | İki ekran aynı havuzu görüyor; `apps/web/public/replays/mainnet-<tarih>.jsonl` commit'li | HANDOFF §4.5, `apps/relay/README.md` › Demo |
 | BL-07 | **Sunumda güvenlik paketini öne çıkar:** `docs/AUDIT-READINESS.md`, `docs/THREAT-MODEL.md`, ROADMAP'teki "How we would use audit credits", F-10'u kendimizin bulup düzeltmesi | Sunumu yapan | ☐ | Sunumda bir slayt ya da bölüm | HANDOFF §3 |
 
@@ -32,7 +32,7 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 | BL-17 | **Slither** ile `contracts/base-htlc/HTLC.sol` statik analizi; çıktıyı AUDIT §7'ye ekle | Herkes | ✅ 31.10 `b5d8531` (CI `slither --fail-high`) | Rapor AUDIT'te | HANDOFF §2.2 #10 |
 | BL-18 | **Bağımlılık triage:** `zod` < 4.6.6 (`@anthropic-ai/sdk`, `viem`), `tmp` (`solc`), `jimp` (`free-tex-packer-core`, dev). Yükseltme davranış değiştirebilir; testle | Herkes | ✅ 31.10 `b5d8531` (runtime 0; `jimp` dev kabul, AUDIT §7) | `npm audit --omit=dev` 0 high ya da gerekçeli kabul | AUDIT §7 |
 | BL-19 | **RLS testi CI'da:** `apps/relay/test/schema.local.test.ts` yalnızca yerel Supabase'le koşuyor. CI'a Supabase servisi ekle ya da ayrı bir job yap | Supabase katmanı | ✅ 31.10 `b9c2202` (CI `supabase-rls`) | CI'da "anon cannot write" koşuyor | THREAT-MODEL T-22 |
-| BL-20 | **`SUPABASE_SECRET_KEY` GitHub secret'ı:** hiçbir workflow kullanmıyor. Tut ya da sil kararı | Repo sahibi | ☐ | Karar STATUS'ta | HANDOFF §4.2 |
+| BL-20 | **`SUPABASE_SECRET_KEY` GitHub secret'ı:** hiçbir workflow kullanmıyor. Tut ya da sil kararı | Repo sahibi | ✅ 31.10 (tutuldu; secret GitHub Actions tarafında, repoda değil, `.env`/`.env.*` gitignore'lu) | Karar STATUS'ta | HANDOFF §4.2 |
 
 ## P2: ürün ve temizlik
 
