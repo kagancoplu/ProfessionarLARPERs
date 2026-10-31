@@ -12,6 +12,8 @@ export interface CoordinatorConfig {
   /** MASTER §3.2: signing round timeout (~60 s) and max rounds (3). */
   roundTimeoutMs: number
   maxRounds: number
+  /** No signing round this long after start, so WS participants can reconnect (default 30 s from env; tests 0). */
+  startupGraceMs?: number
   /** Pre-round on-chain spent check of pledge coins: WhatsOnChain bulk, or none. */
   spentCheck: 'woc' | 'none'
   network: 'main' | 'test'
@@ -32,6 +34,7 @@ export function configFromEnv (env: NodeJS.ProcessEnv = process.env): Coordinato
     pollMs: Number(env.COORDINATOR_POLL_MS ?? 5_000),
     roundTimeoutMs: Number(env.ROUND_TIMEOUT_MS ?? 60_000),
     maxRounds: Number(env.MAX_ROUNDS ?? 3),
+    startupGraceMs: envInt(env.STARTUP_GRACE_MS, 30_000),
     spentCheck: env.SPENT_CHECK === 'none' ? 'none' : 'woc',
     network: env.NETWORK === 'test' ? 'test' : 'main',
     lighthouseGuards: (env.LIGHTHOUSE_GUARDS ?? env.GUARD_URL ?? 'http://localhost:8091').split(',').map(s => s.trim()).filter(s => s !== ''),

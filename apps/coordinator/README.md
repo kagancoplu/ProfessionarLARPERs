@@ -25,6 +25,7 @@ npx vitest run apps/coordinator             # mock chain: API, WS, signing round
 | `COORDINATOR_POLL_MS` | `5000` | how often the WS feed and the engine re-read pools |
 | `ROUND_TIMEOUT_MS` | `60000` | signing round timeout (MASTER §3.2) |
 | `MAX_ROUNDS` | `3` | rounds per lock attempt (MASTER §3.2) |
+| `STARTUP_GRACE_MS` | `30000` | no signing round this long after start: WS participants reconnect first (otherwise a restart finds everyone `offline`) |
 | `SPENT_CHECK` | `woc` | pre-round check that pledge coins are unspent (WhatsOnChain bulk `POST /utxos/spent`), or `none` |
 | `NETWORK` | `main` | for the spent check |
 | `LIGHTHOUSE_GUARDS` | `GUARD_URL`, else `http://localhost:8091` | comma-separated guard URLs that co-sign lighthouse pledges; each guard's identity key comes from its `GET /healthz` |

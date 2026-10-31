@@ -42,6 +42,12 @@ export interface EngineOptions {
   /** MASTER §3.2: at most 3 rounds */
   maxRounds: number
   tickMs: number
+  /**
+   * No round for this long after start(): participants' WS sessions die with the old process and
+   * need time to reconnect, or the first round finds everyone "offline" and blacklists them all
+   * (mainnet restart, 31.10). Default 0 (tests).
+   */
+  startupGraceMs?: number
 }
 
 export interface CoordinatorStatus {
@@ -108,7 +114,12 @@ export class CoordinatorEngine {
     this.deps.store.saveProgress(poolId, json).catch(e => this.deps.log('persist_failed', { poolId, error: String((e as Error).message ?? e) }))
   }
 
+  private roundsFrom = 0
+
   start (): void {
+    const grace = this.opts.startupGraceMs ?? 0
+    this.roundsFrom = Date.now() + grace
+    if (grace > 0) this.deps.log('startup_grace', { ms: grace })
     void this.tick()
     this.timer = setInterval(() => { void this.tick() }, this.opts.tickMs)
   }
@@ -170,6 +181,7 @@ export class CoordinatorEngine {
         const offer = await this.deps.offers.find(pool.poolId, pool)
         if (offer === undefined) continue
         if (BigInt(pool.pledgedCredits) < BigInt(pool.target)) continue
+        if (Date.now() < this.roundsFrom) continue // startup grace: let participants reconnect first
         await this.startRound(pool, offer, height)
       }
     } catch (e) {

@@ -8,7 +8,7 @@
  *
  * Env: PORT (8090), OVERLAY_URL (http://localhost:8080), ARCADE_URL (block
  * height for `failed`), COORDINATOR_DB (./data/coordinator.db), COORDINATOR_POLL_MS (5000),
- * ROUND_TIMEOUT_MS (60000), MAX_ROUNDS (3), SPENT_CHECK (woc|none), NETWORK (main|test),
+ * ROUND_TIMEOUT_MS (60000), MAX_ROUNDS (3), STARTUP_GRACE_MS (30000: no round right after a restart), SPENT_CHECK (woc|none), NETWORK (main|test),
  * LIGHTHOUSE_GUARDS (comma-separated guard URLs; default GUARD_URL or http://localhost:8091),
  * public edge (B-P5a): RATE_LIMIT (on|off), RATE_GET_PER_MIN (120), RATE_POST_PER_MIN (10),
  * WS_MAX_PER_IP (20), WS_MAX_CLIENTS (1000), WS_MAX_MSGS_PER_10S (40).
@@ -95,7 +95,7 @@ export async function startCoordinator (config: CoordinatorConfig, opts: Coordin
       feed,
       log: opts.log ?? jsonLogger,
       lighthouse
-    }, { roundTimeoutMs: config.roundTimeoutMs, maxRounds: config.maxRounds, tickMs: config.pollMs })
+    }, { roundTimeoutMs: config.roundTimeoutMs, maxRounds: config.maxRounds, tickMs: config.pollMs, startupGraceMs: config.startupGraceMs ?? 0 })
     feed.onParticipantMessage = (identity, msg) => engine!.onParticipantMessage(identity, msg)
   }
   await engine?.load()
