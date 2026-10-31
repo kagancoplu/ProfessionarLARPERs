@@ -2,7 +2,7 @@
 
 > **Yeni oturum için:** önce bu dosyayı, sonra `plan/STATUS.md`'yi oku (CLAUDE.md kuralı). Bu dosya, 31.10 gecesi tek bir Claude oturumunda yapılanların ve **hiçbir başka belgede olmayan** bilgilerin dökümüdür. Güvenlik tarafına bakacak kişi doğrudan **§2**'ye gitsin.
 >
-> Yazılış: 31.10.2026 ~08:00. Son commit'ler `main`'de; CI yeşil.
+> Yazılış: 31.10.2026 ~08:00, F-10 düzeltmesi ve doğrulama 4 sonrası güncellendi. Son commit'ler `main`'de.
 
 ## 0. İçindekiler
 
@@ -26,7 +26,8 @@
 | Supabase katmanının bağımsız incelemesi: 1 kritik + 9 önemli düzeltme | — | `cffaaee`, `404a164`, `78bfb0e`, `cc02f38` |
 | Denetim hazırlık paketi | `plan/phases/AUDIT-PRIZE.md` (plan), `docs/AUDIT-READINESS.md`, `docs/THREAT-MODEL.md`, `docs/ROADMAP.md`, `SECURITY.md`, `LICENSE`, `.github/workflows/ci.yml`, `scripts/check-docs.mjs` | `86bc2fc` … `ad04620` |
 | Yeni testler (yalnızca test, ürün kodu değişmedi) | `apps/maker/test/htlc.boundaries.evm.test.ts`, `test/provider.return-vault.test.ts` | `360dde7`, `27c0eab` |
-| Prova betiği (mock chain + yerel Supabase + 2 tarayıcı) | `scripts/rehearsal-supabase.ts` | bu dosyayla aynı commit |
+| Prova betiği (mock chain + yerel Supabase + 2 tarayıcı) | `scripts/rehearsal-supabase.ts` | `6539b56` |
+| **F-10 düzeltmesi + doğrulama 4 (mainnet)**: repo sahibinin oturumu ("B oturumu"), bu oturumla paralel | `apps/provider-api/src/redeem.ts`, `test/provider.return-vault.test.ts` (artık `it`, 3/3), belgeler | `740f893` |
 
 Test durumu (31.10): kök `npm test` 86 dosya geçti / 4 atlandı (CI ve yerel aynı); web 101 test; Playwright e2e 8/8; typecheck temiz; `npm run check:docs` 198 yol, 15 link, 83 test adı.
 
@@ -44,7 +45,7 @@ Test durumu (31.10): kök `npm test` 86 dosya geçti / 4 atlandı (CI ve yerel a
   - bağımlılık ve sır taraması, mainnet kanıtı, denetçiye sorular.
 - **`docs/THREAT-MODEL.md`:**
   - Mainnet sütunu txid'lerle dolduruldu (✅ kontrol mainnet'te çalıştı / ◐ akış çalıştı, saldırı yolu yalnızca mock chain'de / ☐).
-  - **T-10 yeniden açıldı (F-10).**
+  - **T-10 yeniden açıldı (F-10)**; F-10 sonra düzeltildi (`740f893`), T-10 yeniden kapalı.
   - Yeni T-22 (canlı ayna, Supabase), T-23 (Coop Rail zamanlama ve zincirler arası varsayımlar).
 - **`SECURITY.md`:** bildirim yolu, kapsam, test kuralları, anahtar politikası. `LICENSE`: MIT.
 - **CI** `.github/workflows/ci.yml`:
@@ -54,22 +55,26 @@ Test durumu (31.10): kök `npm test` 86 dosya geçti / 4 atlandı (CI ve yerel a
   - `npm test`'e **bilerek dahil değil**: başka bir track test adı değiştirince onun paketi kırmızı olmasın diye. CI'da ayrı adım.
   - Sınırları: test adını alt dize olarak arar; atlanan (`skipIf`) testleri fark etmez.
 - **HTLC sınır testleri** (`apps/maker/test/htlc.boundaries.evm.test.ts`, 6 test). Mutasyon testiyle doğrulandı: kontratın 5 bozuk kopyasının 5'ini de yakaladı (yöntem §2.4'te).
-- **F-10 tekrarı** (`test/provider.return-vault.test.ts`): hata dururken geçen `it.fails` testi. **F-10 düzeltildiğinde bu test kırmızıya döner; o zaman `.fails` kaldırılmalı.**
+- **F-10 bulundu, tekrarlandı ve düzeltildi.** Bu oturum `it.fails` testiyle tekrarladı (`27c0eab`); repo sahibinin oturumu düzeltti (`740f893`):
+  - `returnCredits` kasayı debit'ten önce okuyor; iade başarısız olursa kasa eşlemesini de geri yazıyor.
+  - İlk kasadan bakiye varken ikinci kasadan redeem `409 ERR_OTHER_VAULT` alıyor.
+  - Test artık normal `it` (3/3). THREAT-MODEL T-10, AUDIT F-10/I-9, README ve ROADMAP güncel.
+  - Kalan risk (AUDIT F-10): bir kasa kaydı adını verdiği ajanın onayını gerektirmiyor, ama ondan yalnızca o ajan (kimliği doğrulanmış çağıran) redeem edebiliyor.
 - **`apps/web/src/proof/mainnet.ts`:** 7 yanlış etiket düzeltildi. S1 ve ajan txid'leri "BSV Desktop" değil "server wallet"; `5b5e452c…` kasa fonlaması ve BSV Desktop'tan yapıldı.
 - **İki bağımsız inceleme yapıldı** (ikisi de dış denetim değil, ayrı reviewer oturumları):
   - Supabase katmanı: 1 kritik bulgu (pledge'in ücret script'i mirror'dan okunuyordu), düzeltildi.
-  - Denetim belgeleri: 2 kritik, 5 önemli ve 18 küçük bulgu; hepsi belgelere işlendi. Kod gerektirenler (F-10, F-11) aşağıda açık olarak duruyor.
+  - Denetim belgeleri: 2 kritik, 5 önemli ve 18 küçük bulgu; hepsi belgelere işlendi. Kod gerektirenlerden F-10 düzeltildi (`740f893`); F-11 açık (§2.2).
 
 ### 2.2 Kalanlar (öncelik sırasıyla)
 
 | # | İş | Neden önemli | Kim / nasıl |
 |---|---|---|---|
-| 1 | **F-10'u düzelt** (High). Kasaya kilitli krediler sağlayıcının iadesiyle guard'dan kaçıyor. `returnCredits` önce `tryDebit` yapıyor (`apps/provider-api/src/redeem.ts:208`), kasayı sonra okuyor (`:213`). Debit bakiyeyi sıfırlarsa `CreditLedger.add` kasa eşlemesini siliyor (`apps/provider-api/src/credits.ts:108-111`) ve `kit.send` krediyi ajanın kendi anahtarına yolluyor. Ayrıca `noteVault` eşlemeyi her kasa kaynaklı redeem'de eziyor (`credits.ts:64-67`); kasa kayıtları ajanın ya da sahibin onayını gerektirmiyor (`packages/core/src/scripts/vault.ts:121-129`), bu yüzden başkasının ajan adına açtığı bir kasa iadeleri kendine çekebilir | Prompt-injected bir ajan "guard'la 20 redeem, hepsini iade" döngüsüyle bütün kasa kredilerini çeker; T-10'u tamamen boşa çıkarır | Track C'nin dosyası. **Kullanıcı ürün koduna dokunulmamasını istedi; düzeltme kararı bekliyor** (§7). Öneri: kasayı debit'ten önce oku, kasa kaynaklı birimler bitene kadar eşlemeyi tut, ilk kasadan bakiye varken ikinci kasadan redeem'i reddet. Sonra `test/provider.return-vault.test.ts`'teki `.fails`'i kaldır, THREAT-MODEL T-10 ve AUDIT F-10/I-9'u güncelle |
+| 1 | ~~F-10~~ **düzeltildi** (`740f893`, §2.1) | — | — |
 | 2 | **Herkese açık repodaki `WALLET_*` GitHub Actions secret'larını sil** (mainnet cüzdan özel anahtarları, bu oturumdan önce birisi yüklemiş) | Repo PUBLIC (`kagancoplu/ProfessionarLARPERs`). Bir secret'ı yalnızca ona referans veren bir workflow okuyabilir; fork PR'ları secret almaz. Ama push yetkisi olan herkes onu okuyan bir workflow yazabilir. Hiçbir workflow kullanmıyor | Admin yetkisi gerekir (repo sahibi). Anahtarlar `.env`'de duruyor; silmek onları yok etmez |
 | 3 | **GitHub "Private vulnerability reporting"i aç** | `SECURITY.md` ana kanal olarak bunu gösteriyor; şu an kapalı (`{"enabled":false}`). Bu oturumun hesabı (`kheif`) admin değil, `PUT` 404 döndü | Repo sahibi: Settings → Security → Private vulnerability reporting. Açılınca `SECURITY.md`'deki "when it is available" ifadesini sadeleştir |
 | 4 | **F-11** (Coop Rail canlıya çıkmadan önce, High). BSV HTLC claim dalı ön görüntünün uzunluğunu kontrol etmiyor (`packages/core/src/scripts/htlc.ts:22`), Base kontratı yalnızca `bytes32` kabul ediyor, secret'ı ajan seçiyor (`apps/maker/src/swap.ts:78`). Ajan uzun bir secret seçerse BSV'yi alır; maker USDC'yi hiç alamaz, ajan da timeout'tan sonra USDC'yi geri çeker | Rail canlıda değil, PoC ve tavanlı; şu an risk yok | Düzeltme: `OP_SIZE <32> OP_EQUALVERIFY`, `OP_SHA256`'dan önce. Track D/A. `docs/ROADMAP.md` kapı 3 |
 | 5 | **Coop Rail'in geri kalanı:** F-1 (ücret kesen token'da kilitler arası taşma), F-2 (`bool` döndürmeyen token'lar, USDC kara listesi), F-4 (yükseklik ile saniye karışık; iadeyi otomatik yayınlayan bir watchdog yok, `apps/maker/src/swap-demo.ts` iadeyi elle yayın için kaydediyor) | Rail canlıya çıkmadan önce | `docs/AUDIT-READINESS.md` §6, `docs/ROADMAP.md` kapı 3 |
-| 6 | **Mainnet doğrulamaları 3, 4, 6** ve T8 (market sweep), T11/T11b (Rail) mainnet'te | T-15 ve T-23 bunlara bağlı | Sats ve BSV Desktop gerekiyor (STATUS "Doğrulama testleri") |
+| 6 | **Mainnet doğrulamaları 3 ve 6**, T8 (market sweep), T11/T11b (Rail) mainnet'te. **Doğrulama 4 geçti** (31.10 07:32, [2f72e8b4…](https://whatsonchain.com/tx/2f72e8b489bcf3ebae7ce7b4ce0d5bc97202eade0272e59e18135d3dd851c146)). Bulgu: Arcade, tip = nLockTime iken de reddetti, bir sonraki blokta kabul edilir; Rail iadesi kilitten en az bir blok sonra gönderilmeli (T-23) | T-15 ve T-23 bunlara bağlı | Sats ve BSV Desktop gerekiyor (STATUS "Doğrulama testleri") |
 | 7 | **F-8:** `live_health.detail` servis hata metnini (iç URL'ler dahil) anonim okuyuculara açıyor; Kasaba `move` yayınları doğrulanmıyor | Bilgi sızıntısı, para yok | `apps/relay/src/sources.ts:56` (probe), `apps/web/src/town/multiplayer.ts:76` |
 | 8 | **Bağımlılık uyarıları:** üretimde 3 high: `zod` < 4.6.6 (GHSA-mrhx-c7xc-m3w5; `@anthropic-ai/sdk` ve `viem` üzerinden), `tmp` (GHSA-7c78-jf6q-g5cm; `solc` üzerinden, yalnızca derleme zamanı). Tüm ağaçta ek 29 high, hepsi `jimp` → `free-tex-packer-core` (web sprite aracı, devDependency) | Sürüm yükseltmek davranış değiştirebilir; bu oturumda dokunulmadı | Derin triage yapılmadı |
 | 9 | **Mutasyon testi yalnızca HTLC'de yapıldı.** `packages/core/src/pool/verify.ts` ve script şablonları için yapılmadı. I-2'deki "para üstü (change) kontrolü"nün özel bir kurcalama testi yok (`verify.ts:102-104` kontrol ediyor ama test etmiyor) | Denetçi bunları soracak | `docs/ROADMAP.md` kapı 6 |
@@ -279,7 +284,7 @@ Track E bölümü `POST /pledges/lighthouse`'u "açık" diye listeliyor. Uç nok
 
 ## 7. Kararı bekleyen konular
 
-- **F-10'u kim düzeltecek?** Kullanıcıya soruldu: bu oturum mu düzeltsin, Track C'ye mi bırakılsın? **Cevap gelmedi.** Kullanıcının kuralı ürün kodunda davranış değişikliği yapmamak; bu yüzden onay olmadan dokunma.
+- ~~F-10'u kim düzeltecek?~~ Repo sahibinin oturumu düzeltti (`740f893`).
 - "Siparişlerim" ekranı (§5.2): kullanıcı olumlu, başlanmadı.
 - Video / canlı demo planı ve gerçek servislerle prova: insan işi.
 - `WALLET_*` secret'larının silinmesi ve private vulnerability reporting: repo sahibi (admin).
