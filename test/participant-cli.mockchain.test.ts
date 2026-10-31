@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Wallet } from '@bsv/wallet-toolbox'
 import { TokenKit } from '@agentcoop/core'
 import type { ActivePledge } from '../apps/agents/src/participant'
-import { cancel, pledge, pools, sign, type ParticipantContext } from '../apps/participant-cli/src/commands'
+import { cancel, pledge, pledgeLighthouse, pools, sign, sync, type ParticipantContext } from '../apps/participant-cli/src/commands'
 import { startMockStack, type MockStack } from '../apps/agents/src/demo/harness'
 
 describe('participant-cli: a human pledges next to the agents', () => {
@@ -56,6 +56,49 @@ describe('participant-cli: a human pledges next to the agents', () => {
   it('withdraws a pledge; the coin returns and the overlay stops counting it', async () => {
     const other = (await stack.openPool({ credits: 30, priceSats: 750, deadline: '+144', feeSats: 100, minCredits: 5, label: 'H100 block · 30 GPU-hours' })).poolId!
     await pledge(ctx, other, 10)
+    const progress = async (): Promise<string> => (await (await fetch(`${stack.coopUrl}/pools/${other}`)).json()).pledgedCredits
+    expect(await progress()).toBe('10')
+    await cancel(ctx)
+    expect(await progress()).toBe('0')
+    expect(ctx.pledges.read().at(-1)!.status).toBe('withdrawn')
+  })
+})
+
+describe('participant-cli --lighthouse: sign now and leave (A-P5 5.5)', () => {
+  let stack: MockStack
+  let ctx: ParticipantContext
+  const lines: string[] = []
+
+  beforeAll(async () => {
+    stack = await startMockStack({ quiet: true })
+    const human = await stack.chain.makeWallet()
+    await stack.chain.fund(human)
+    let saved: ActivePledge[] = []
+    ctx = { wallet: human, overlay: stack.overlayClient(), coopApiUrl: stack.coopUrl, pledges: { read: () => saved, write: v => { saved = v } }, out: l => { lines.push(l) }, lineage: stack.lineage }
+  })
+  afterAll(async () => { await stack?.close() })
+
+  it('pledges once and goes offline; the guard co-signs the round; sync shows the credits', async () => {
+    const poolId = (await stack.openPool({ credits: 40, priceSats: 1000, deadline: '+144', feeSats: 100, minCredits: 5, label: 'lighthouse block' })).poolId!
+    const mine = await pledgeLighthouse(ctx, poolId, 12, { guardUrl: stack.guardUrl })
+    expect(mine).toMatchObject({ poolId, credits: '12', status: 'pending', lighthouse: true })
+    await expect(sign(ctx)).rejects.toThrow(/signed by its guard/) // nothing to keep open
+    const pledges = await (await fetch(`${stack.coopUrl}/pools/${poolId}/pledges`)).json()
+    expect(pledges.find((p: any) => p.outpoint === mine.outpoint)).toMatchObject({ mode: 'lighthouse', valid: true })
+
+    const finetune = await stack.agent('finetune')
+    const evalAgent = await stack.agent('eval')
+    expect(await finetune.procurement.considerPools()).toMatchObject({ credits: 17 })
+    expect(await evalAgent.procurement.considerPools()).toMatchObject({ credits: 11 }) // 12 + 17 + 11 = 40
+    await finetune.participant.until(() => finetune.participant.active?.status === 'settled', 90_000)
+    const balances = await sync(ctx)
+    expect(balances).toEqual([expect.objectContaining({ tokenId: stack.tokenId, overlay: 12n })])
+    expect(ctx.pledges.read()[0].status).toBe('settled')
+  })
+
+  it('withdraws a lighthouse pledge alone, without the guard', async () => {
+    const other = (await stack.openPool({ credits: 30, priceSats: 750, deadline: '+144', feeSats: 100, minCredits: 5, label: 'second block' })).poolId!
+    await pledgeLighthouse(ctx, other, 10, { guardUrl: stack.guardUrl })
     const progress = async (): Promise<string> => (await (await fetch(`${stack.coopUrl}/pools/${other}`)).json()).pledgedCredits
     expect(await progress()).toBe('10')
     await cancel(ctx)

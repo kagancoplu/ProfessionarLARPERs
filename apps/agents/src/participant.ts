@@ -50,6 +50,8 @@ export interface ActivePledge {
   pricePerCredit: number
   /** Set for a pledge made from a Mandate Vault. */
   vaultId?: string
+  /** A-P5 lighthouse pledge (participant-cli --lighthouse): signed once, its guard co-signs the round. */
+  lighthouse?: true
   /** The last plan this agent signed (needed to take its change back). */
   plan?: SettlementPlan
   settledTxid?: string

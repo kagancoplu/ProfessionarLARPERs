@@ -118,9 +118,16 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
   const overlay: RunningOverlay = await startOverlay({ port: randomPort(), dbFile: join(work, 'overlay.db'), chainTracker: chain.chainTracker, quiet: true })
   const overlayClient = (): OverlayClient => new OverlayClient(overlay.url, memoryOutbox(), 'main', undefined, COOP_TOPIC, COOP_SERVICE)
 
+  // Track D's guard, in-process, for agents in Mandate Vault mode and for lighthouse pledges (the coordinator asks it).
+  const guardWallet = await chain.makeWallet()
+  const guard = await Guard.create({ wallet: guardWallet, fetchTx, log: line => { if (/DENY/.test(line)) say(`\x1b[31mguard    ${line}\x1b[0m`) } })
+  const guardServer: Server = await new Promise(resolve => { const s = createGuardApp(guard, guardWallet).listen(0, () => resolve(s)) })
+  const guardUrl = `http://127.0.0.1:${(guardServer.address() as AddressInfo).port}`
+  const cosign: Cosigner = httpCosigner(guardUrl)
+
   const height = new ManualHeight(await chain.services.getHeight())
   const coop: RunningCoordinator = await startCoordinator(
-    { port: randomPort(), overlayUrl: overlay.url, arcadeUrl: 'http://unused.invalid', dbFile: join(work, 'coordinator.db'), pollMs: 400, roundTimeoutMs: 20_000, maxRounds: 3, spentCheck: 'none', network: 'main' },
+    { port: randomPort(), overlayUrl: overlay.url, arcadeUrl: 'http://unused.invalid', dbFile: join(work, 'coordinator.db'), pollMs: 400, roundTimeoutMs: 20_000, maxRounds: 3, spentCheck: 'none', network: 'main', lighthouseGuards: [guardUrl] },
     {
       height,
       protocol: coreProtocol({
@@ -162,12 +169,6 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
   const apiUrl = `http://localhost:${(api.address() as AddressInfo).port}`
 
   const agents: DemoAgent[] = []
-  // Track D's guard, in-process, for agents in Mandate Vault mode.
-  const guardWallet = await chain.makeWallet()
-  const guard = await Guard.create({ wallet: guardWallet, fetchTx, log: line => { if (/DENY/.test(line)) say(`\x1b[31mguard    ${line}\x1b[0m`) } })
-  const guardServer: Server = await new Promise(resolve => { const s = createGuardApp(guard, guardWallet).listen(0, () => resolve(s)) })
-  const guardUrl = `http://127.0.0.1:${(guardServer.address() as AddressInfo).port}`
-  const cosign: Cosigner = httpCosigner(guardUrl)
   const events = new AgentEvents()
   const roster: AgentInfo[] = []
 

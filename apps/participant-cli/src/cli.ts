@@ -3,6 +3,8 @@
  *
  *   pools                          open pools (coordinator GET /pools)
  *   pledge <poolId> <credits>      reserve a pledge coin in your wallet (T3)
+ *     [--lighthouse [--guard <url>]]  "sign now and leave": sign once; the guard (default GUARD_URL) co-signs the round
+ *   sync                           pick up credits that arrived and show balances
  *   sign [poolId]                  stay online; when the pool fills, check the whole
  *                                  settlement and sign your input (T5), then take your credits
  *   cancel [outpoint]              withdraw a pledge (the coin comes back)
@@ -16,10 +18,10 @@ import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { dataDir, loadDotEnv, network } from '@agentcoop/core/node/env'
 import { JsonFile } from '../../provider-api/src/jsonFile'
 import type { ActivePledge } from '../../agents/src/participant'
-import { cancel, pledge, pools, sign, type ParticipantContext } from './commands'
+import { cancel, pledge, pledgeLighthouse, pools, sign, sync, type ParticipantContext } from './commands'
 
 loadDotEnv()
-const USAGE = 'usage: participant-cli <pools | pledge <poolId> <credits> | sign [poolId] | cancel [outpoint]>'
+const USAGE = 'usage: participant-cli <pools | pledge <poolId> <credits> [--lighthouse [--guard <url>]] | sign [poolId] | cancel [outpoint] | sync>'
 
 async function main (): Promise<void> {
   const [command, a, b] = process.argv.slice(2)
@@ -36,12 +38,20 @@ async function main (): Promise<void> {
   }
   switch (command) {
     case 'pools': await pools(ctx); break
-    case 'pledge':
+    case 'pledge': {
       if (a === undefined || b === undefined) throw new Error(USAGE)
-      await pledge(ctx, a, Number(b))
+      const flags = process.argv.slice(5)
+      if (flags.includes('--lighthouse')) {
+        const g = flags.indexOf('--guard')
+        await pledgeLighthouse(ctx, a, Number(b), { guardUrl: g >= 0 && flags[g + 1] !== undefined ? flags[g + 1] : process.env.GUARD_URL ?? 'http://localhost:8091' })
+      } else {
+        await pledge(ctx, a, Number(b))
+      }
       break
+    }
     case 'sign': await sign(ctx, { poolId: a }); break
     case 'cancel': await cancel(ctx, a); break
+    case 'sync': await sync(ctx); break
     default: throw new Error(`unknown command ${command}\n${USAGE}`)
   }
 }

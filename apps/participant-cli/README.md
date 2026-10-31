@@ -18,3 +18,16 @@ A human joins on the same terms as the agents and with the same code (`apps/agen
 Approve the Desktop prompt within the coordinator's round timeout (60 s by default). If you miss it, the coordinator retries without you and you can sign the next round.
 
 Your pledges are recorded in `DATA_DIR/participant-cli/pledges.json`. The file holds no secrets; the keys stay in Desktop.
+
+## Sign now and leave (`--lighthouse`)
+
+You do not have to keep `sign` open. With `--lighthouse` you sign once, over your own credit output only, and name a guard; when the pool fills, the coordinator asks that guard, which checks the whole settlement as you would and co-signs. Your coin sits on a script that only you (alone) or you with that guard can spend, so the guard cannot take it and nobody can redirect your credits.
+
+```bash
+npm run participant-cli -- pledge <poolId> 12 --lighthouse            # guard = GUARD_URL (default http://localhost:8091)
+npm run participant-cli -- pledge <poolId> 12 --lighthouse --guard https://guard.example
+npm run participant-cli -- sync                                       # after the pool settles: your credits
+npm run participant-cli -- cancel                                     # take the coin back alone, any time before settlement
+```
+
+The coordinator must accept lighthouse pledges (`POST /pledges/lighthouse`) and be able to reach that guard; otherwise the CLI stops before anything is signed. Test: `test/participant-cli.mockchain.test.ts`.
