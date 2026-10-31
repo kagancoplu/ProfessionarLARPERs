@@ -49,7 +49,10 @@ async function main (): Promise<void> {
   const [command, arg] = positionals
   if (command === undefined) { console.log(USAGE); return }
 
-  const wallet = new WalletClient('auto', process.env.APP_ORIGINATOR ?? 'agentcoop.local')
+  // WALLET_SUBSTRATE pins the BSV Desktop transport (e.g. 'json-api' = http://localhost:3321).
+  // 'auto' probes every substrate and can trip on the self-signed https://localhost:2121 one.
+  const substrate = (process.env.WALLET_SUBSTRATE as ConstructorParameters<typeof WalletClient>[0] | undefined) ?? 'auto'
+  const wallet = new WalletClient(substrate, process.env.APP_ORIGINATOR ?? 'agentcoop.local')
   console.log('Connecting to BSV Desktop…')
   await wallet.waitForAuthentication({})
   const ctx: CliContext = {
