@@ -32,6 +32,7 @@ apps/web/playwright-report/
 apps/web/test-results/
 # film mode renders (tools/film-render.mjs)
 apps/web/film-out/
+apps/web/public/_film/
 
 .DS_Store
 backups/

@@ -26,6 +26,8 @@ export default function TownCanvas () {
         // headless automation (Playwright) has flaky WebGL framebuffers: draw with Canvas there, WebGL for people
         type: navigator.webdriver ? Phaser.CANVAS : Phaser.AUTO, parent, backgroundColor: '#1d1f2b',
         pixelArt: true, antialias: false, roundPixels: true, dom: { createContainer: true },
+        // render mode (film/vclock.ts) steps 33 ms frames; Phaser's smoothing would run the clock at half speed
+        ...(window.__vt !== undefined ? { fps: { smoothStep: false } } : {}),
         scale: { mode: Phaser.Scale.RESIZE, width: parent.clientWidth, height: parent.clientHeight },
         scene: [new TownScene({ store, bus, fx })]
       })

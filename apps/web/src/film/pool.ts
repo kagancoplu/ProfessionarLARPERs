@@ -1,21 +1,13 @@
 /**
  * "The Pool" (~48 s): the opening of the demo video. Axel needs 50 GPU-hours, the workshop sells 1000; the
  * village pools at the notice board, one transaction settles it, the camera pulls back to the whole town.
- * Times are film seconds; NARRATION is the voice-over script (VIDEO.md), shown as subtitles with `&subs=1`.
+ * Times are film seconds; the narrator's lines are in narration.ts (subtitles with `&subs=1`).
  */
 import type { Director } from './director'
 import { ZOOM } from './frame'
+import { duration } from './narration'
 
-export const POOL_DURATION = 48
-
-/** The narrator's lines, in order: start second, text, how long the subtitle stays. */
-export const NARRATION: ReadonlyArray<{ at: number, text: string, sec: number }> = [
-  { at: 0.6, text: 'Compute is sold wholesale. Most of us only need a slice.', sec: 4.6 },
-  { at: 10.6, text: 'So Axel posts a pool on the notice board.', sec: 3.8 },
-  { at: 16, text: 'Everyone pledges only what they need, and nobody hands their money to anyone. Even AI agents can join, within the budget their owner set.', sec: 10 },
-  { at: 30.8, text: 'When the pool fills, one Bitcoin transaction pays the provider and delivers everyone\'s share. All at once, or not at all.', sec: 8.6 },
-  { at: 43.5, text: 'Now let\'s look behind the town.', sec: 3 }
-]
+export const POOL_DURATION = duration('pool')
 
 const TARGET = 1000
 
@@ -57,7 +49,6 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   d.start()
 
   // ---- 1. the hook (0–10 s): Axel at the fountain, the workshop only sells wholesale
-  d.narrate(NARRATION[0]!.text, NARRATION[0]!.sec)
   await d.at(0.8, 'hook')
   d.think(axel, 'I need 50 GPU-hours…', 2.6)
   await d.at(3.0)
@@ -76,13 +67,13 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   await d.at(10.1, 'idea')
   d.emote(axel, '!', 0.8)
   await d.at(10.6)
-  d.narrate(NARRATION[1]!.text, NARRATION[1]!.sec)
   d.think(axel, 'What if we buy it together?', 2.2)
   await d.at(11.4)
   d.follow(axel, ZOOM.medium, 1.4)
   await d.walk(axel, slot.axel.x, slot.axel.y)
   board.showProgress(label(0), 0, TARGET)
   board.flyCredits('new pool')
+  d.cue('scroll')
   await d.at(12.8)
   await pledge(axel, 50)
   d.say(axel, 'Pledged 50. The coins stay in my wallet.', 2.6)
@@ -91,7 +82,6 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   await d.at(14.6, 'village')
   void d.move(board.x, board.y + 10, ZOOM.medium, 1.2)
   const bakerIn = d.walk(baker, slot.baker.x, slot.baker.y, 1.7)
-  d.narrate(NARRATION[2]!.text, NARRATION[2]!.sec)
   await Promise.all([bakerIn, d.at(17.0, 'baker')])
   d.say(baker, '200 for my bakery\'s AI!', 2.4)
   await pledge(baker, 200)
@@ -116,6 +106,7 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   d.say(fisher, '300, and that fills it!', 2.1)
   await pledge(fisher, 300)
   board.shine()
+  d.cue('fanfare')
   await d.at(27.8)
   for (const [i, v] of [axel, baker, farmer, agent, fisher].entries()) town.time.delayedCall(i * 110, () => { d.emote(v, '♪', 0.9) })
 
@@ -128,9 +119,10 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   await d.at(30.6)
   d.sparkle(fountain.x, fountain.y, 2.6)
   void town.bell.ring()
-  d.narrate(NARRATION[3]!.text, NARRATION[3]!.sec)
+  d.cue('bell')
   await d.at(31.0)
   void town.cart.ride(fountain.x - 230, fountain.x + 230, fountain.y + 48, 3000)
+  d.cue('hooves')
   const chests = new Map<typeof axel, ReturnType<Director['dropChest']>>()
   for (const [i, v] of crowd.entries()) {
     await d.wait(0.35)
@@ -150,7 +142,6 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   d.say(axel, '50 GPU-hours. Exactly what I needed.', 3)
   for (const v of [baker, farmer, fisher, agent, guard]) void d.walk(v, v.home.x, v.home.y, 1.2)
   await d.at(43.5, 'pull-back')
-  d.narrate(NARRATION[4]!.text, NARRATION[4]!.sec)
   await d.move(384, 288, ZOOM.map, 3.0)
   await d.at(POOL_DURATION, 'end')
 }

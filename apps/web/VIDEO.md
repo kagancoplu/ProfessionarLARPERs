@@ -17,41 +17,65 @@ Keys in replay mode: `1` pool opens · `2` lock-in · `3` settlement · `4` guar
 
 Honesty tags must stay in frame where they apply: `demo pricing`, `simulated GPU jobs`, `experimental`, `MOCK`.
 
-## Film mode: the opening of the demo video
+## Film mode: the demo video (2:30)
 
-`/film` plays a scripted scene in the Town on a black 16:9 stage, outside the app shell, the same way in every take. The script drives the Town's own entities (villagers, board, fountain, horse); no protocol events, no data, no chain. The first script is **"The Pool"** (`src/film/pool.ts`, 48 s): Axel needs 50 GPU-hours, the workshop sells 1000, the village pools at the notice board, one transaction settles it, the camera pulls back to the whole town. After it, the video cuts to the app (Pools, Market, My agents) and the real mainnet payment.
+The video is made from code, so every take is the same and the picture lines up with the narrator to the frame. Four segments, 48 + 70 + 18 + 14 s:
 
-### Watch it, record it, render it
+| s | Segment | Where | What |
+|---|---|---|---|
+| 0:00–0:48 | **The Pool** | `/film?film=pool` (`src/film/pool.ts`) | Axel needs 50 GPU-hours, the workshop sells 1000; the village pools at the notice board; the fountain lights up, the horse crosses, a chest for everyone; the camera pulls back |
+| 0:48–1:58 | **App tour** | `/?tour=main` over the real app in mock mode (`src/film/tourMain.ts`) | the film shrinks into the Town; a pixel cursor visits **Town** (0 sat in custody), **Pools** (the provider's offer signed once, a pool that did not fill, the settlement), **Market** (an agent buys spare credits), **My Agents** (vault and budget, the 5 checks, "Inject now" and the guard's refusal, Coop Rail); two **real mainnet transactions** read from the WhatsOnChain API |
+| 1:58–2:16 | **Why BSV** | `/film?film=why` (`src/film/WhyBsv.tsx`) | split screen: Ethereum escrow (5 deposits + 5 refunds) against one BSV transaction; the BSV stack |
+| 2:16–2:30 | **Manifesto** | `/film?film=manifesto` (`src/film/manifesto.ts`) | the square at dusk, then the end card (live demo URL, repo) |
+
+Every narrator line lives in `src/film/narration.ts` (segment, start second, subtitle length, spoken form); `test/film.test.ts` checks they fit. Honesty: the app tour shows the `MOCK` and `demo pricing` tags as the app does; the two transactions are real (T5 settlement `6d320c9a…`, T8 market sweep `675c3334…`), shown as our own card with data read from the WhatsOnChain API, not as a copy of the site. Screenshots of the real WhatsOnChain pages can replace the cards: save them as `public/_film/woc-settlement.png` and `woc-sweep.png` (the site's bot check blocks a headless browser).
+
+### Make it
+
+```bash
+npm i --no-save kokoro-js
+```
+
+```bash
+VOICE=af_heart npm -w apps/web run film:voice
+```
+
+```bash
+npm -w apps/web run film:make
+```
+
+- `film:voice`: Kokoro-82M (Apache-2.0, CPU) speaks every line into `film-out/voice/`; `VOICE` picks the voice (`af_heart`, `am_michael`, `bm_george`, …), `SPEED` the pace (1.1). The model downloads from Hugging Face on the first run (behind a proxy: `NODE_USE_ENV_PROXY=1`).
+- `film:make` runs, in order: `film:render` for "The Pool"; `film:assets` (the two transactions from the WhatsOnChain API and the film's last frame, into `public/_film/`); `film:render` with `SEG=tour`, `SEG=why`, `SEG=manifesto`; `film:mix`. `ONLY=tour,mix` runs only those steps.
+- `film:render` steps the page's clock one frame at a time (`src/film/vclock.ts`: timers, animation frames, Date, CSS animations) and screenshots each frame into ffmpeg: smooth 30 fps on any machine. `FPS=60`, `SUBS=1` (burn in subtitles), `GPU=1`, `CHROMIUM=<binary>`. Its own dev server runs without hot reload, so editing `src/` during a render is safe.
+- `film:mix` writes the soundtrack and the cut: an original chiptune generated in code (120 bpm, so the segments fall on bar lines; it ducks under the narrator), sound effects synthesised from the cues the scripts logged (the app's own effect scores plus speech blips, hooves, sparkles, clicks), the narrator, then `film-out/agentcoop-demo.mp4` (1920×1080, H.264/AAC, −16 LUFS), `agentcoop-demo.srt` (subtitles for the upload), `mix.wav` and `music.wav`. `film-out/` and `public/_film/` are not committed.
+
+### Watch a segment live
 
 ```bash
 npm run dev:mock -w apps/web
 ```
 
-Then open `http://localhost:5173/film?subs=1&tc=1` and press Space (or click) to roll.
+Then open `http://localhost:5173/film?film=pool&subs=1&tc=1` (or `film=why`, `film=manifesto`) and press Space. The tour: `http://localhost:5173/?tour=main&presenter=1&subs=1&tc=1`, Space (it waits until the mock scenario reaches its first beat, about 25 s after the page loads).
 
 | Parameter | What it does |
 |---|---|
-| `film=pool` | which script (`src/film/films.ts`) |
-| `subs=1` | the narrator's lines as subtitles (to rehearse the voice-over) |
-| `tc=1` | timecode, current beat and late beats in the top-left corner |
+| `film=pool` / `why` / `manifesto` | which segment (`src/film/films.ts`) |
+| `tour=main` | the app tour, on any app page (`src/film/TourRunner.tsx`) |
+| `subs=1` | the narrator's lines as subtitles |
+| `tc=1` | timecode, current beat and late beats in the corner |
 | `autostart=1` | roll at once instead of waiting for Space |
-| `render=1` | frame-by-frame mode for the renderer (the clock only moves when stepped) |
+| `render=1` | virtual clock for the frame-by-frame renderer |
 
-- **Live take (OBS, Screen Studio):** browser full screen at 1920×1080, `/film`, press Space. The canvas is 1920×1080 scaled to the window; on a smaller screen the pixels are resampled, so prefer the renderer.
-- **Render (recommended):** `npm -w apps/web run film:render` writes `apps/web/film-out/pool.mp4` (1920×1080, 30 fps, H.264). It steps the game clock one frame at a time and screenshots each frame, so the result is smooth and on time on any machine, and lines up with the voice-over to the frame. `FPS=60`, `SUBS=1` (burn in subtitles), `GPU=1`, `CHROMIUM=<binary>`; needs ffmpeg. `film-out/` is not committed.
+To change timing, edit the `d.at(seconds, 'beat')` sync points in the segment's script and the line's `at` in `narration.ts`; a beat reached later than scheduled is listed in the `tc=1` overlay and by the renderer.
 
-### "The Pool": beats, lines, voice-over
+### "The Pool": beats and lines
 
 Framing (1920×1080): close = zoom 6 (320×180 world px), medium = 4, wide = 3, the whole map = 2.5.
 
-| s | Beat | Camera | On screen (bubbles) | Narrator (voice-over) |
-|---|---|---|---|---|
-| 0–10 | hook | close on Axel at the fountain; pans to the workshop's sign "wholesale only · min. 1000" and back | *(thought)* "I need 50 GPU-hours…" · "…but they only sell 1000." · "…" | 0.6 s: "Compute is sold wholesale. Most of us only need a slice." |
-| 10–15 | idea | follows Axel to the notice board, zooms to medium | "!" · *(thought)* "What if we buy it together?" · board: "GPU pool · 50 / 1,000" · "Pledged 50. The coins stay in my wallet." | 10.6 s: "So Axel posts a pool on the notice board." |
-| 15–28 | village | medium on the board | Baker: "200 for my bakery's AI!" · Farmer: "150 for crop forecasts." · AI agent (AGENT tag, its guard beside it): "My owner set my budget: 300." · guard: "✓ within policy" · Fisher: "300, and that fills it!" · board 1,000 / 1,000 · full! · ♪ | 16 s: "Everyone pledges only what they need, and nobody hands their money to anyone. Even AI agents can join, within the budget their owner set." |
-| 28–39 | settlement | wide on the square | the fountain lights up, the horse crosses, a coin from each to the workshop ("paid in full ✓"), a chest drops in front of each, parchment "1 transaction · 5 participants · 0 sat held by anyone" | 30.8 s: "When the pool fills, one Bitcoin transaction pays the provider and delivers everyone's share. All at once, or not at all." |
-| 39–48 | payoff, pull-back | close on Axel, then out to the whole town | Axel opens his chest: "50 GPU-hours. Exactly what I needed." | 43.5 s: "Now let's look behind the town." |
-
-The narrator's text lives in `NARRATION` in `src/film/pool.ts` (one place for subtitles and the ElevenLabs script); `test/film.test.ts` checks every line fits its slot at 2.6 words a second. To change timing, edit the `d.at(seconds, 'beat')` sync points in the same file; a beat reached later than scheduled (a walk took longer) is listed in the `tc=1` overlay and by the renderer.
-
-The film is an illustration of the mechanism: no txid is shown in it. The real mainnet transaction is shown afterwards, in the app.
+| s | Beat | On screen (bubbles) |
+|---|---|---|
+| 0–10 | hook | *(thought)* "I need 50 GPU-hours…" · the workshop's sign "wholesale only · min. 1000" · "…but they only sell 1000." · "…" |
+| 10–15 | idea | "!" · *(thought)* "What if we buy it together?" · board "GPU pool · 50 / 1,000" · "Pledged 50. The coins stay in my wallet." |
+| 15–28 | village | Baker "200 for my bakery's AI!" · Farmer "150 for crop forecasts." · AI agent (AGENT tag, its guard beside it) "My owner set my budget: 300." · guard "✓ within policy" · Fisher "300, and that fills it!" · 1,000 / 1,000 full · ♪ |
+| 28–39 | settlement | the fountain lights up, the horse crosses, a coin from each to the workshop ("paid in full ✓"), a chest in front of each, "1 transaction · 5 participants · 0 sat held by anyone" |
+| 39–48 | payoff | Axel opens his chest: "50 GPU-hours. Exactly what I needed." · the camera pulls back to the whole town |

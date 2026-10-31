@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Outlet, useNavigate } from 'react-router'
 import { useApproval, approvalStore } from '../mock/approvals'
 import { store, useStore } from '../store'
@@ -9,6 +9,10 @@ import { handleShortcut } from './shortcuts'
 import { useRuntime } from '../app-context'
 import { ReplayBar } from '../replay/ReplayBar'
 import { SignCenter } from '../wallet/SignCenter'
+
+/** film mode's app tour (?tour=main, VIDEO.md): loaded only when asked for */
+const TourRunner = lazy(() => import('../film/TourRunner'))
+const TOUR = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tour') !== null
 
 function NarrowScreenNotice () {
   return (
@@ -66,6 +70,7 @@ export function AppShell () {
       <SignCenter />
       <ReplayBar />
       <MockApprovalDialog />
+      {TOUR && <Suspense fallback={null}><TourRunner /></Suspense>}
     </div>
   )
 }

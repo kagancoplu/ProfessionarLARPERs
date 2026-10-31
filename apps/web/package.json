@@ -20,7 +20,11 @@
     "packs": "node tools/packs/index.mjs",
     "map": "tsx tools/town-map.mjs",
     "ui": "node tools/ui.mjs",
-    "film:render": "node tools/film-render.mjs"
+    "film:render": "node tools/film-render.mjs",
+    "film:voice": "tsx tools/voice.mjs",
+    "film:assets": "node tools/film-assets.mjs",
+    "film:mix": "tsx tools/film-mix.mjs",
+    "film:make": "node tools/film-make.mjs"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0",

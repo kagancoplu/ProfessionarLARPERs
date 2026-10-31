@@ -19,15 +19,14 @@ const NAME_PX = 20
 const NAMES_FROM_ZOOM = 3.5
 
 export interface CastSpec { id: string, name: string, char: string, at: { x: number, y: number }, house?: boolean, profile?: 'finetune' | 'eval' | 'inference' }
-export interface NarrationLine { at: number, text: string, until: number }
 
 export interface DirectorHooks {
-  /** a narrator line starts (subtitles, VO timing); `undefined` clears */
-  onNarrate?: (line: NarrationLine | undefined) => void
   /** a beat starts (timecode overlay) */
   onBeat?: (name: string, at: number) => void
   /** a beat was reached later than scheduled: the walk before it took longer than the script allows */
   onLate?: (beat: string, bySeconds: number) => void
+  /** the end card fades in or out (FilmPage draws it) */
+  onCard?: (show: boolean) => void
 }
 
 export class Director {
@@ -37,7 +36,6 @@ export class Director {
   private lift = new Map<Villager, number>()
   private tags = new Map<Villager, Phaser.GameObjects.DOMElement>()
   readonly late: Array<{ beat: string, by: number }> = []
-  private narrationTimer?: Phaser.Time.TimerEvent
 
   constructor (readonly town: TownScene, private readonly hooks: DirectorHooks = {}) {
     // name tags keep their size on screen while the camera zooms
@@ -85,6 +83,8 @@ export class Director {
     const cam = this.cam
     cam.stopFollow()
     const ms = sec * 1000
+    // a quick pan or zoom gets a whoosh on the soundtrack
+    if (sec <= 1.3 && (Math.hypot(x - cam.midPoint.x, y - cam.midPoint.y) > 80 || Math.abs(zoom - cam.zoom) >= 1)) this.cue('whoosh')
     return new Promise(resolve => {
       let left = 2
       const done = (): void => { if (--left === 0) resolve() }
@@ -149,10 +149,12 @@ export class Director {
 
   say (v: Villager, text: string, sec = 3, tone: LabelTone = 'parchment'): void {
     v.say(text, tone === 'ink' ? 'parchment' : tone, sec * 1000, { shape: tone === 'parchment' ? 'speech' : 'box', ...this.bubbleStyle(v) })
+    this.cue(tone === 'grass' ? 'approve' : 'blip')
   }
 
   think (v: Villager, text: string, sec = 3): void {
     v.say(text, 'parchment', sec * 1000, { shape: 'thought', ...this.bubbleStyle(v, 'thought') })
+    this.cue('think')
   }
 
   /** a one-glyph reaction over the head ("!", "…", "?") */
@@ -160,6 +162,7 @@ export class Director {
     v.say(glyph, tone, sec * 1000, { size: (BUBBLE_PX * 1.3) / this.cam.zoom, maxWidth: 60, y: v.headTop - (this.lift.get(v) ?? 0) })
     v.sprite.setY(0)
     this.town.tweens.add({ targets: v.sprite, y: -2, duration: 90, yoyo: true, repeat: 1 })
+    this.cue(glyph === '!' ? 'pop' : glyph === '♪' ? 'cheer' : 'sigh')
   }
 
   /** a small tag that stays over a villager (e.g. AGENT) */
@@ -172,19 +175,19 @@ export class Director {
     return el
   }
 
-  /** the narrator speaks (shown as a subtitle when asked; the voice-over is laid over the render) */
-  narrate (text: string, sec: number): void {
-    const at = this.now()
-    this.narrationTimer?.remove()
-    this.hooks.onNarrate?.({ at, text, until: at + sec })
-    this.narrationTimer = this.town.time.delayedCall(sec * 1000, () => { this.hooks.onNarrate?.(undefined) })
-  }
+  /** the end card over the stage */
+  card (show: boolean): void { this.hooks.onCard?.(show); if (show) this.cue('card') }
+
+  /** a sound effect at this moment (tools/film-make.mjs lays it on the soundtrack) */
+  cue (name: string): void { this.cues.push({ t: this.now(), name }) }
+  readonly cues: Array<{ t: number, name: string }> = []
 
   // ---- props and effects
 
   /** a coin arcs from a villager to a point (a pledge into the board's chest, gold to the workshop) */
   coin (from: { x: number, y: number }, to: { x: number, y: number }, sec = 0.6): Promise<void> {
     const c = this.town.add.sprite(from.x, from.y - 16, 'icons', 4).setOrigin(0.5, 1).setDepth(950)
+    this.cue('coin')
     const midY = Math.min(from.y, to.y) - 30
     return new Promise(resolve => {
       this.town.tweens.addCounter({
@@ -199,10 +202,12 @@ export class Director {
   dropChest (v: Villager, dx = 0, dy = 12): Phaser.GameObjects.Sprite {
     const chest = this.town.add.sprite(v.x + dx, v.y + dy - 34, 'town', 'chest_gold_0').setOrigin(0.5, 1).setDepth(v.y + dy).setAlpha(0)
     this.town.tweens.add({ targets: chest, y: v.y + dy, alpha: 1, duration: 550, ease: 'Bounce.Out' })
+    this.cue('thud')
     return chest
   }
 
   openChest (chest: Phaser.GameObjects.Sprite): Promise<void> {
+    this.cue('chest')
     return new Promise(resolve => {
       let f = 0
       this.town.time.addEvent({ delay: 70, repeat: 5, callback: () => { chest.setFrame(`chest_gold_${Math.min(5, ++f)}`); if (f >= 5) resolve() } })
@@ -218,6 +223,7 @@ export class Director {
       g.generateTexture('film_spark', 3, 3)
       g.destroy()
     }
+    this.cue('sparkle')
     const glow = scene.add.image(x, y - 14, 'glow').setTint(0xfee761).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0).setScale(0.4).setDepth(951)
     scene.tweens.add({ targets: glow, alpha: 0.9, scale: 1.6, duration: 450, yoyo: true, hold: sec * 1000 - 900, onComplete: () => glow.destroy() })
     const sparks = scene.add.particles(x, y - 18, 'film_spark', {
@@ -230,6 +236,7 @@ export class Director {
 
   /** a parchment in the world (the settlement summary); stays `sec` seconds */
   parchment (x: number, y: number, html: string, sec: number): void {
+    this.cue('scroll')
     const el = makeLabel(this.town, x, y, html, { size: BUBBLE_PX / this.cam.zoom, tone: 'parchment', maxWidth: 900 / this.cam.zoom })
     el.setDepth(960).setAlpha(0)
     ;(el.node as HTMLElement).style.textAlign = 'center'

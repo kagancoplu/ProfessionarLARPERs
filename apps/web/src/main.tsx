@@ -1,3 +1,5 @@
+// render mode's virtual clock must be in place before any other module schedules a timer
+import './film/render-boot'
 import '@fontsource/pixelify-sans/400.css'
 import '@fontsource/pixelify-sans/500.css'
 import '@fontsource/pixelify-sans/700.css'

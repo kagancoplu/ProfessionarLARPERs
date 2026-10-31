@@ -34,6 +34,8 @@ export class MockScenario {
   private index = 0
   private timer: ReturnType<typeof setTimeout> | undefined
   private elapsed = 0
+  /** Date.now() when the first cycle started (film mode lines its app tour up with the cycle) */
+  startedAt?: number
 
   constructor (private readonly opts: ScenarioOptions) {
     opts.bus.subscribe(e => { if (e.type === 'wallet_connected') this.humanConnected = true; if (e.type === 'wallet_disconnected') { this.humanConnected = false; this.sweepWaits = 0 } })
@@ -256,6 +258,7 @@ export class MockScenario {
 
   start (): void {
     if (this.status === 'running') return
+    this.startedAt ??= Date.now()
     this.steps = this.buildCycle(this.cycle, Date.now())
     this.index = 0
     this.elapsed = 0
