@@ -6,9 +6,9 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
-**Live demo:** <https://professionar-larpe-rs.vercel.app/> (Vercel + Supabase, no backend; the flow is mocked but every payment is a real mainnet transaction — see [plan/DEMO-HYBRID.md](plan/DEMO-HYBRID.md)).
+**Live demo:** <https://professionar-larpe-rs.vercel.app/> (Vercel + Supabase, no backend). Today it plays the scripted mock flow. Next, each payment in it becomes a real mainnet transaction from the visitor's BSV Desktop, while the flow stays mocked; see [plan/DEMO-HYBRID.md](plan/DEMO-HYBRID.md).
 
-New here and not a programmer? Start with [README-SIMPLE.md](README-SIMPLE.md).
+New here and not a programmer? Start with [README-SIMPLE.md](README-SIMPLE.md): the problem, the step-by-step story and what is real, without code.
 
 > Status (31 Oct): the core flows run **on mainnet**: settlements through the coordinator, a vault agent, a Lighthouse settlement, redeems, 402 payments and the Mandate Vault (see [Example transactions](#example-transactions)). Every flow also runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`, run by CI on every push). Security: [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md).
 

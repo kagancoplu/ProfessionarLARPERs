@@ -40,7 +40,7 @@ Bu repoda beş track (A protokol, B overlay + koordinatör, C sağlayıcı + aja
   - `docs/starter/bsv21-token-kit/`.
 - **Bileşenler**
   - `README.md`: genel bakış, tx tablosu, güvenlik bölümü.
-  - `README-SIMPLE.md`: teknik olmayan okur için, şeker dükkânı benzetmesiyle sade anlatım.
+  - `README-SIMPLE.md`: teknik olmayan okur için sade anlatım (toptancı ve GPU kiralama benzetmesi, adım adım hikâye, temel terimler).
   - Paketler: `packages/core/README.md`, `packages/overlay/README.md`.
   - Uygulamalar: `apps/agents/README.md`, `apps/coordinator/README.md`, `apps/guard/README.md`, `apps/owner-cli/README.md`, `apps/participant-cli/README.md`, `apps/provider-api/README.md`, `apps/provider-cli/README.md`, `apps/relay/README.md`, `apps/web/README.md`.
   - Web: `apps/web/DESIGN.md` (tasarım sistemi), `apps/web/VIDEO.md` (video çekim senaryosu), `apps/web/assets/LICENSES.md`, `apps/web/assets/packs/README.md` (git'te olmayan sanat paketleri).
