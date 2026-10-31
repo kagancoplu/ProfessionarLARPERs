@@ -8,6 +8,7 @@
  * State in <DATA_DIR>: wallets/provider-api.sqlite, provider/jobs.json,
  * provider/balances.json (prepaid credits), provider/outbox.json (overlay queue).
  */
+import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { dataDir, loadDotEnv, network, requireEnv } from '@agentcoop/core/node/env'
 import { openServerWallet } from '@agentcoop/core/node/serverWallet'
@@ -44,7 +45,10 @@ const overlay = new OverlayClient(
 )
 const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL, corsOrigin: process.env.PROVIDER_CORS_ORIGIN })
 
-const server = app.listen(port, () => {
+// BRC-105 payments travel in a header as BEEF with every unconfirmed ancestor: an agent paying every
+// ~30 s between blocks outgrows Node's 16 KB default and got "431 Request Header Fields Too Large"
+// after it had already paid (mainnet, 31.10). 1 MB.
+const server = createServer({ maxHeaderSize: 1_048_576 }, app).listen(port, () => {
   console.log(`provider-api on http://localhost:${port}  (server identity ${identityKey}, ${network()}net, overlay ${overlay.url})`)
   for (const p of products) console.log(`  ${p.id}: ${p.label}, ${p.retailSatsPerCredit} sat/${p.unit} retail, token ${p.tokenId ?? '(not minted yet)'}`)
 })
