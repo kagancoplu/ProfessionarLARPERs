@@ -32,8 +32,9 @@ npm run demo-injection -w @agentcoop/scripts # the injection demo, offline (mock
 | `PUT` | `/policies/:agentIdentity` | BRC-103, identity = owner | `{ allowProviders[], maxPerPoolSats, weeklyCapSats, maxFeeSats, hotWalletDailySats }`, stored for the (owner, agent) pair |
 | `GET` | `/vaults/:vaultId` | BRC-103, owner or agent | Record, script, policy, `spentLast7dSats`, `hotLast24hSats` |
 | `GET` | `/policies/:agentIdentity` | BRC-103, owner or agent | `{ owner, agent, policy, updatedAt }` (the agent gets the latest policy stored for it); 404 if none |
-| `GET` | `/decisions?agent=&limit=` | BRC-103, the agent or an owner of one of its vaults | `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason? }] }`, newest first (≤ 500) |
-| `GET` | `/events` | none | SSE, MASTER §3.10 `CoopEvent` (`src:'guard'`): `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`; last 500 kept, `Last-Event-ID` resumes, `: keepalive` every 15 s. Identity keys are public; no secrets |
+| `GET` | `/decisions?agent=&limit=` | BRC-103, the agent or an owner of one of its vaults | `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason?, txid? }] }`, newest first (≤ 500) |
+| `POST` | `/decisions/:id/txid` | none (checked on chain) | `{ txid }`: the transaction an approved co-signature went into. The guard fetches it and records it only if it spends the decision's vault outpoint (`decision-txids.jsonl`); 409 if a different txid is already recorded, 422 if the tx does not spend it. `httpCosigner` reports it after every broadcast; `/cosign` answers carry `decisionId` |
+| `GET` | `/events` | none | SSE, MASTER §3.10 `CoopEvent` (`src:'guard'`): `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`, `decision_txid`; last 500 kept, `Last-Event-ID` resumes, `: keepalive` every 15 s. Identity keys are public; no secrets |
 | `POST` | `/cosign` | none (the agent's signature is in the request) | see below → `{ signatureHex, guardPub }` or `403 / 400 { reason }` |
 | `GET` | `/healthz` | none | `{ ok, identityKey, network }` |
 

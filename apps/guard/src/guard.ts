@@ -47,7 +47,7 @@ export interface GuardEvent {
   id: string
   ts: string
   src: 'guard'
-  type: 'cosign_approved' | 'cosign_denied' | 'policy_updated' | 'vault_registered'
+  type: 'cosign_approved' | 'cosign_denied' | 'policy_updated' | 'vault_registered' | 'decision_txid'
   data: Record<string, unknown>
   poolId?: string
   agent?: string
@@ -64,6 +64,8 @@ export interface DecisionView {
   sats?: number
   outcome: 'approved' | 'denied'
   reason?: string
+  /** BL-35: the transaction carrying this co-signature, once reported */
+  txid?: string
 }
 
 const EVENT_BUFFER = 500
@@ -149,9 +151,30 @@ export class Guard {
       ...(d.poolId !== undefined ? { poolId: d.poolId } : {}),
       ...(d.outflowSats !== undefined ? { sats: d.outflowSats } : {}),
       outcome: d.decision === 'allow' ? 'approved' : 'denied',
-      ...(d.reason !== undefined ? { reason: d.reason } : {})
+      ...(d.reason !== undefined ? { reason: d.reason } : {}),
+      ...(d.txid !== undefined ? { txid: d.txid } : {})
     }))
     return { status: 200, body: { agent: who, decisions: rows } }
+  }
+
+  /**
+   * POST /decisions/:id/txid (BL-35): the transaction an approved co-signature went into. Anyone may report it; the
+   * guard fetches it and records it only if it spends the decision's outpoint, which only one transaction can do.
+   */
+  async reportTxid (id: number, body: unknown): Promise<GuardResult> {
+    const txid = (body as { txid?: unknown } | null)?.txid
+    if (typeof txid !== 'string' || !/^[0-9a-f]{64}$/.test(txid)) return fail(400, 'txid must be 64 hex')
+    const d = Number.isSafeInteger(id) ? this.store.decision(id) : undefined
+    if (d === undefined) return fail(404, 'no such decision')
+    if (d.decision !== 'allow' || d.outpoint === undefined) return fail(409, 'only an approved co-signature has a transaction')
+    if (d.txid !== undefined) return d.txid === txid ? { status: 200, body: { id, txid } } : fail(409, `decision ${id} already has txid ${d.txid}`)
+    let tx
+    try { tx = await this.fetchTx(txid) } catch (e) { return fail(502, `could not fetch ${txid}: ${(e as Error).message}`) }
+    const spends = tx.inputs.some((_, i) => inputOutpoint(tx, i) === d.outpoint)
+    if (!spends) return fail(422, `${txid} does not spend ${d.outpoint}`)
+    this.store.linkTxid(id, txid, new Date(this.now()).toISOString())
+    this.emit('decision_txid', { id, txid, agent: d.agent, vaultId: d.vaultId, kind: d.kind }, { agent: d.agent, ...(d.poolId !== undefined ? { poolId: d.poolId } : {}) })
+    return { status: 200, body: { id, txid } }
   }
 
   /** PUT /vaults/:vaultId — the owner (authenticated identity) registers a vault naming this guard. */
@@ -370,7 +393,7 @@ export class Guard {
 
   private decide (d: Omit<Decision, 'at'>, status: number, ok?: Record<string, unknown>): GuardResult {
     const decision: Decision = { at: new Date(this.now()).toISOString(), ...d }
-    this.store.logDecision(decision)
+    const logged = this.store.logDecision(decision)
     const approved = d.decision === 'allow'
     this.emit(approved ? 'cosign_approved' : 'cosign_denied', {
       agent: d.agent, vaultId: d.vaultId, kind: d.kind, poolId: d.poolId, sats: d.outflowSats,
@@ -381,7 +404,8 @@ export class Guard {
     const extra = `${d.poolId !== undefined ? ` pool=${short(d.poolId)}` : ''}${d.committedSats !== undefined ? ` committed=${d.committedSats}` : ''}${d.hotSats !== undefined ? ` hot=${d.hotSats}` : ''}${d.inflowSats !== undefined ? ` inflow=${d.inflowSats}` : ''}${creditsText}`
     const amounts = d.decision === 'allow' ? ` outflow=${d.outflowSats} paid=${d.paidSats} fee=${d.feeSats}${extra}` : ` reason="${d.reason}"`
     this.log(`[guard] ${d.decision.toUpperCase()} ${d.kind} agent=${short(d.agent)} vault=${short(d.vaultId)}${amounts}`)
-    return ok !== undefined ? { status, body: ok } : fail(status, d.reason ?? 'denied')
+    // an approval carries its decision id, so the agent can report the txid after broadcast (BL-35)
+    return ok !== undefined ? { status, body: { ...ok, decisionId: logged.id } } : fail(status, d.reason ?? 'denied')
   }
 }
 

@@ -24,7 +24,7 @@ Nothing below changes the protocol's shape; each one closes a known gap.
 
 - **A real provider.** SmartRoute, an LLM router selling reserved model capacity, plugs in as a product file and a runner (README › How to add a provider or product); pools, credits, redeem and agents stay the same.
 - ~~Order history~~ **done (31 Oct):** `GET /v1/jobs` lists the caller's jobs with their payments, and `/me` shows them as "My orders".
-- **Guard decision log with txids,** so an owner can match every co-signature to the chain.
+- ~~Guard decision log with txids~~ **done (31 Oct):** each approved co-signature is linked to the transaction that spent the vault coin, checked on chain, and the owner console shows it.
 - **Coop Rail's reverse direction** (BSV → USDC), so agents in unfilled pools can exit to Base (T-16).
 
 ## How we would use audit credits

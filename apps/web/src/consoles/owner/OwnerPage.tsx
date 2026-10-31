@@ -90,7 +90,7 @@ function VaultCard ({ vault }: { vault: MyVault }) {
           <p className="label text-ink-muted">Guard decisions for this vault</p>
           {decisions.length === 0 ? <p className="text-[14px] text-ink-muted">None yet. They appear when the agent spends (approved) or is refused (denied).</p> : (
             <table className="w-full border-collapse text-[14px] leading-5" data-testid="vault-decisions">
-              <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-2 py-1">When</th><th className="px-2 py-1">Kind</th><th className="px-2 py-1 text-right">Sats</th><th className="px-2 py-1">Outcome</th><th className="px-2 py-1">Reason</th></tr></thead>
+              <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-2 py-1">When</th><th className="px-2 py-1">Kind</th><th className="px-2 py-1 text-right">Sats</th><th className="px-2 py-1">Outcome</th><th className="px-2 py-1">Reason / tx</th></tr></thead>
               <tbody>{decisions.slice(0, 12).map(d => (
                 <tr key={d.id} className="border-b border-surface-3">
                   <td className="px-2 py-1 counter text-[18px] text-ink-muted">{new Date(d.ts).toLocaleTimeString('en-GB', { hour12: false })}</td>

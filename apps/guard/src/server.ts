@@ -34,6 +34,8 @@ export function createGuardApp (guard: Guard, wallet: WalletInterface, opts: { n
 
   app.get('/healthz', (_req, res) => { res.json({ ok: true, identityKey: guard.identityKey, network: opts.network ?? 'main' }) })
   app.post('/cosign', async (req, res) => { send(res, await guard.cosign(req.body)) })
+  // BL-35: no authentication: the guard checks on chain that the transaction spends the decision's outpoint
+  app.post('/decisions/:id/txid', async (req, res) => { send(res, await guard.reportTxid(Number(req.params.id), req.body)) })
   app.get('/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')

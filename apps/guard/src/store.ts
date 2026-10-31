@@ -59,6 +59,8 @@ export interface Decision {
   inflowSats?: number
   /** 'redeem' / 'list' (D-P2b): the credits moved. */
   credits?: { tokenId: string, amount: string, delivered?: string, kept?: string, askSats?: number }
+  /** BL-35: the transaction that carried this co-signature, reported after broadcast and checked to spend `outpoint`. */
+  txid?: string
 }
 
 interface GuardState {
@@ -85,6 +87,15 @@ export class GuardStore {
       const lines = readFileSync(log, 'utf8').split('\n').filter(l => l.trim() !== '')
       this.seq = lines.length
       lines.slice(-1000).forEach((l, i) => { this.decisions.push({ id: lines.length - Math.min(lines.length, 1000) + i + 1, ...JSON.parse(l) as Decision }) })
+    }
+    // txids come later than their decision: a separate append-only file, so decisions.jsonl line numbers stay the ids
+    const links = join(dir, 'decision-txids.jsonl')
+    if (existsSync(links)) {
+      for (const l of readFileSync(links, 'utf8').split('\n').filter(x => x.trim() !== '')) {
+        const { id, txid } = JSON.parse(l) as { id: number, txid: string }
+        const d = this.decisions.find(x => x.id === id)
+        if (d !== undefined) d.txid = txid
+      }
     }
   }
 
@@ -191,6 +202,16 @@ export class GuardStore {
     kept.push(next)
     this.state.ledger = kept
     this.save()
+  }
+
+  decision (id: number): Decision | undefined { return this.decisions.find(d => d.id === id) }
+
+  /** Record the txid of decision `id` (checked by the caller). */
+  linkTxid (id: number, txid: string, at: string): void {
+    const d = this.decision(id)
+    if (d === undefined) return
+    d.txid = txid
+    if (this.dir !== undefined) appendFileSync(join(this.dir, 'decision-txids.jsonl'), `${JSON.stringify({ id, txid, at })}\n`)
   }
 
   logDecision (d: Decision): Decision {

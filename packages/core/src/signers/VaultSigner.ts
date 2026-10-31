@@ -106,9 +106,21 @@ export interface CosignResponse {
   /** Checksig format (DER ‖ 0x41), hex. */
   signatureHex: string
   guardPub: string
+  /** The guard's decision for this co-signature; report the txid to it after broadcast (BL-35). */
+  decisionId?: number
 }
 
-export type Cosigner = (req: CosignRequest) => Promise<CosignResponse>
+export interface Cosigner {
+  (req: CosignRequest): Promise<CosignResponse>
+  /** Tell the guard which transaction carried decision `decisionId` (it checks the tx spends the vault coin). Optional. */
+  report?: (decisionId: number, txid: string) => Promise<void>
+}
+
+/** After broadcast: report the txid of every co-signature it carried. Best effort, never throws (BL-35). */
+export async function reportCosigned (cosign: Cosigner, decisionIds: number[], txid: string): Promise<void> {
+  if (cosign.report === undefined) return
+  for (const id of decisionIds) await cosign.report(id, txid).catch(() => {})
+}
 
 export class CosignRejected extends Error {
   constructor (readonly status: number, readonly reason: string) {
@@ -117,15 +129,20 @@ export class CosignRejected extends Error {
   }
 }
 
-/** Cosigner that calls a guard over HTTP (`POST {guardUrl}/cosign`). */
+/** Cosigner that calls a guard over HTTP (`POST {guardUrl}/cosign`, and `POST {guardUrl}/decisions/:id/txid` to report). */
 export function httpCosigner (guardUrl: string): Cosigner {
-  const url = `${guardUrl.replace(/\/+$/, '')}/cosign`
-  return async (req) => {
-    const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req) })
+  const base = guardUrl.replace(/\/+$/, '')
+  const cosign: Cosigner = async (req) => {
+    const res = await fetch(`${base}/cosign`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(req) })
     const body = await res.json().catch(() => ({})) as Partial<CosignResponse> & { reason?: string }
     if (!res.ok || typeof body.signatureHex !== 'string') throw new CosignRejected(res.status, body.reason ?? `HTTP ${res.status}`)
-    return { signatureHex: body.signatureHex, guardPub: String(body.guardPub) }
+    return { signatureHex: body.signatureHex, guardPub: String(body.guardPub), ...(typeof body.decisionId === 'number' ? { decisionId: body.decisionId } : {}) }
   }
+  cosign.report = async (decisionId, txid) => {
+    const res = await fetch(`${base}/decisions/${decisionId}/txid`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txid }) })
+    if (!res.ok) throw new Error(`guard refused the txid of decision ${decisionId}: HTTP ${res.status}`)
+  }
+  return cosign
 }
 
 /**
@@ -187,6 +204,8 @@ export interface VaultSignerOptions {
 /** Agent + guard 2-of-2: `OP_0 <sigAgent> <sigGuard> OP_0`. Throws CosignRejected when the guard refuses. */
 export class VaultSigner implements InputSigner {
   readonly unlockingScriptLength = VAULT_COSIGN_UNLOCK_LENGTH
+  /** The guard's decisions for the co-signatures made so far; report their txid after broadcast (BL-35). */
+  readonly decisionIds: number[] = []
 
   constructor (private readonly wallet: WalletInterface, private readonly opts: VaultSignerOptions) {}
 
@@ -200,7 +219,7 @@ export class VaultSigner implements InputSigner {
     const sighash = vaultSighash(tx, inputIndex, scope)
     const sigAgent = await signVaultInput(this.wallet, sighash, vaultId, originator, scope)
     const context = typeof this.opts.context === 'function' ? this.opts.context(tx, inputIndex) : this.opts.context
-    const { signatureHex } = await this.opts.cosign({
+    const { signatureHex, decisionId } = await this.opts.cosign({
       // settle: the guard rebuilds the transaction from the plan itself
       ...(this.opts.plan !== undefined ? { plan: this.opts.plan } : { txBEEF: Utils.toHex(tx.toAtomicBEEF(true)) }),
       inputIndex,
@@ -210,6 +229,7 @@ export class VaultSigner implements InputSigner {
     })
     const sigGuard = Utils.toArray(signatureHex, 'hex')
     if (!verifyVaultSignature(keys.guardPub, sighash, sigGuard, scope)) throw new Error('guard returned a signature that does not verify')
+    if (decisionId !== undefined) this.decisionIds.push(decisionId)
     return vaultCosignUnlock(sigAgent, sigGuard)
   }
 }
@@ -401,6 +421,7 @@ export async function spendFromVault (wallet: WalletInterface, args: {
   const signable = created.signableTransaction
   if (signable === undefined) throw new Error('createAction returned no signable transaction')
   let signed: SignActionResult
+  let signer: VaultSigner
   try {
     const tx = Transaction.fromAtomicBEEF(signable.tx)
     const [txid, vout] = utxo.outpoint.split('.')
@@ -410,7 +431,7 @@ export async function spendFromVault (wallet: WalletInterface, args: {
     const payees: PayeeProof[] = args.outputs.flatMap((o, i) => o.payee !== undefined ? [{ vout: i, ...o.payee }] : [])
     const hotWallet: HotWalletProof[] = args.outputs.flatMap((o, i) => o.hot !== undefined ? [{ vout: i, ...o.hot }] : [])
     const context: CosignContext = { ...args.context, kind: 'pay', payees, ...(hotWallet.length > 0 ? { hotWallet } : {}) }
-    const signer = new VaultSigner(wallet, { vaultId, cosign: args.cosign, context, originator })
+    signer = new VaultSigner(wallet, { vaultId, cosign: args.cosign, context, originator })
     const unlockingScript = await signer.sign(tx, vi)
     signed = await wallet.signAction({ reference: signable.reference, spends: { [vi]: { unlockingScript: unlockingScript.toHex() } } }, originator)
   } catch (e) {
@@ -419,6 +440,7 @@ export async function spendFromVault (wallet: WalletInterface, args: {
   }
   try {
     const result = broadcastResult(signed)
+    await reportCosigned(args.cosign, signer.decisionIds, result.txid)
     return { ...result, ...(change > 0 ? { changeVout: args.outputs.length } : {}) }
   } catch (e) {
     await wallet.relinquishOutput({ basket: VAULT_BASKET, output: utxo.outpoint }, originator).catch(() => {})

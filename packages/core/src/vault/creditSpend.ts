@@ -27,7 +27,7 @@ import { VAULT_COSIGN_UNLOCK_LENGTH, VAULT_LIST_SIGHASH } from '../scripts/vault
 import { offerSkeleton } from '../pool/offer'
 import { VAULT_CREDITS_BASKET, type Listing, type SettlementPlan } from '../types'
 import { coopOutpoint, parseOutpoint, toWalletOutpoint } from '../util/outpoint'
-import { broadcastResult, VaultSigner, vaultTag, type CosignContext, type Cosigner } from '../signers/VaultSigner'
+import { broadcastResult, reportCosigned, VaultSigner, vaultTag, type CosignContext, type Cosigner } from '../signers/VaultSigner'
 
 export interface VaultCredit {
   /** "txid_vout" */
@@ -122,13 +122,14 @@ export async function transferVaultCredits (wallet: WalletInterface, args: {
   const signable = created.signableTransaction
   if (signable === undefined) throw new Error('createAction returned no signable transaction')
   let signed
+  let signer: VaultSigner | undefined
   try {
     const tx = Transaction.fromAtomicBEEF(signable.tx)
     const [txid, vout] = credit.outpoint.split('_')
     const vi = tx.inputs.findIndex(i => (i.sourceTXID ?? i.sourceTransaction?.id('hex')) === txid && i.sourceOutputIndex === Number(vout))
     if (vi < 0) throw new Error('vault credit input missing from the signable transaction')
     outputs.forEach((o, i) => { if (tx.outputs[i]?.lockingScript.toHex() !== o.lockingScript) throw new Error(`output ${i} moved`) })
-    const signer = new VaultSigner(wallet, { vaultId: args.vaultId, cosign: args.cosign, context: { ...args.context, kind: args.kind, tokenId: credit.tokenId }, originator })
+    signer = new VaultSigner(wallet, { vaultId: args.vaultId, cosign: args.cosign, context: { ...args.context, kind: args.kind, tokenId: credit.tokenId }, originator })
     const unlockingScript = await signer.sign(tx, vi)
     signed = await wallet.signAction({ reference: signable.reference, spends: { [vi]: { unlockingScript: unlockingScript.toHex() } } }, originator)
   } catch (e) {
@@ -136,6 +137,7 @@ export async function transferVaultCredits (wallet: WalletInterface, args: {
     throw e
   }
   const { txid, tx } = broadcastResult(signed)
+  await reportCosigned(args.cosign, signer?.decisionIds ?? [], txid)
   return {
     txid,
     beef: tx,

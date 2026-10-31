@@ -24,7 +24,7 @@ import {
   sha256Hex
 } from '@agentcoop/core/scripts/htlc'
 import { toChecksigSignature, vaultSighash, verifyVaultSignature } from '@agentcoop/core/scripts/vault'
-import { broadcastResult, vaultTag, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
+import { broadcastResult, reportCosigned, vaultTag, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
 import type { Address, Hex } from 'viem'
 import { getLock } from './base'
 import type { EvmPort } from './evm'
@@ -169,11 +169,13 @@ export async function claimHtlc (agent: WalletInterface, a: { funding: Funding, 
     if (i < 0) throw new Error('HTLC input missing from the signable transaction')
     const sigAgent = await signRail(agent, tx, i, a.keys.swapId, originator)
     const { publicKey: me } = await agent.getPublicKey({ identityKey: true }, originator)
-    const { signatureHex, guardPub } = await a.cosign({ txBEEF: Utils.toHex(tx.toAtomicBEEF(true)), inputIndex: i, agent: me, agentSignatureHex: Utils.toHex(sigAgent), context: { kind: 'rail', swapId: a.keys.swapId } })
+    const { signatureHex, guardPub, decisionId } = await a.cosign({ txBEEF: Utils.toHex(tx.toAtomicBEEF(true)), inputIndex: i, agent: me, agentSignatureHex: Utils.toHex(sigAgent), context: { kind: 'rail', swapId: a.keys.swapId } })
     const sigGuard = Utils.toArray(signatureHex, 'hex')
     if (!verifyVaultSignature(guardPub, vaultSighash(tx, i), sigGuard)) throw new Error('guard returned a signature that does not verify')
     const unlock = htlcClaimUnlock(sigAgent, sigGuard, a.secret)
-    return broadcastResult(await agent.signAction({ reference: st.reference, spends: { [i]: { unlockingScript: unlock.toHex() } } }, originator))
+    const claimed = broadcastResult(await agent.signAction({ reference: st.reference, spends: { [i]: { unlockingScript: unlock.toHex() } } }, originator))
+    if (decisionId !== undefined) await reportCosigned(a.cosign, [decisionId], claimed.txid)
+    return claimed
   } catch (e) {
     await agent.abortAction({ reference: st.reference }, originator).catch(() => {})
     throw e

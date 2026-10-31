@@ -71,7 +71,9 @@ describe('Mandate Vault (mock chain)', () => {
     ;[owner, agent, guardWallet, provider, otherProvider, stranger] = await Promise.all(Array.from({ length: 6 }, async () => await chain.makeWallet()))
     await chain.fund(owner, 200_000)
     await chain.fund(agent, 50_000)
-    guard = await Guard.create({ wallet: guardWallet, log: l => logs.push(l) })
+    // the guard reads reported txids from the mock chain (BL-35), not from Arcade
+    const fetchTx = async (txid: string): Promise<Transaction> => Transaction.fromBinary(Array.from((await (chain.services as any).storage.getTransaction(txid)).rawTx as number[]))
+    guard = await Guard.create({ wallet: guardWallet, log: l => logs.push(l), fetchTx })
     server = createGuardApp(guard, guardWallet).listen(0)
     url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
     cosign = httpCosigner(url)
@@ -132,6 +134,16 @@ describe('Mandate Vault (mock chain)', () => {
     expect(agentBefore - (await poolBalance(agent)).spendableSatoshis).toBeLessThan(200) // the agent paid only the miner fee
     const status = await getVaultStatus(new AuthFetch(owner), url, vault.record.vaultId)
     expect(status.spentLast7dSats).toBe(1_000)
+
+    // BL-35: the agent reported the txid after broadcast; the guard checked it spends the vault coin
+    const { decisions } = await (await new AuthFetch(owner).fetch(`${url}/decisions?agent=${agent.identityKey}&limit=1`, { method: 'GET' })).json()
+    expect(decisions[0]).toMatchObject({ outcome: 'approved', txid: r.txid })
+    const report = async (id: unknown, txid: unknown): Promise<number> =>
+      (await fetch(`${url}/decisions/${String(id)}/txid`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ txid }) })).status
+    expect(await report(decisions[0].id, r.txid)).toBe(200) // the same txid again: idempotent
+    expect(await report(decisions[0].id, 'ab'.repeat(32))).toBe(409) // it already has one
+    expect(await report(999_999, r.txid)).toBe(404)
+    expect(await report(decisions[0].id, 'not-a-txid')).toBe(400)
   })
 
   it('4. prompt injection: payment to a provider outside the allowlist → 403, nothing signed or broadcast', async () => {
@@ -212,6 +224,13 @@ describe('Mandate Vault (mock chain)', () => {
     await new VaultSigner(agent, { vaultId: vault.record.vaultId, cosign: twice, context: { kind: 'pay', payees: [{ vout: 0, provider: provider.identityKey, keyID: 'pool-1' }] } }).sign(tx, vi)
     await agent.abortAction({ reference: st.reference })
     expect(guard.store.spentInWindow(owner.identityKey, agent.identityKey, Date.now())).toBe(before + 1_000)
+
+    // BL-35: this approval was never broadcast; a transaction that does not spend its coin is not accepted as its txid
+    const last = guard.store.decisions[guard.store.decisions.length - 1]!
+    const other = guard.store.decisions.find(d => d.txid !== undefined)!.txid!
+    const res = await guard.reportTxid(last.id!, { txid: other })
+    expect(res.status).toBe(422)
+    expect(guard.store.decision(last.id!)?.txid).toBeUndefined()
   })
 
   it('8. the owner withdraws alone (OP_IF branch), without guard or agent', async () => {
