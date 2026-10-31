@@ -9,6 +9,7 @@ export function watchCoordinator (wsUrl: string, onMessage: (msg: Json) => void)
   let closed = false
   let ws: WebSocket | undefined
   let backoff = 2_000
+  let retry: ReturnType<typeof setTimeout> | undefined
   const connect = (): void => {
     ws = new WebSocket(wsUrl)
     ws.on('open', () => { backoff = 2_000 })
@@ -21,10 +22,10 @@ export function watchCoordinator (wsUrl: string, onMessage: (msg: Json) => void)
     ws.on('error', () => {}) // 'close' follows and reconnects
     ws.on('close', () => {
       if (closed) return
-      setTimeout(connect, backoff)
+      retry = setTimeout(connect, backoff)
       backoff = Math.min(backoff * 2, 30_000)
     })
   }
   connect()
-  return { close () { closed = true; ws?.close() } }
+  return { close () { closed = true; if (retry !== undefined) clearTimeout(retry); ws?.close() } }
 }

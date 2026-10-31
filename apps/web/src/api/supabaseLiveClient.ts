@@ -55,7 +55,7 @@ export function createLiveClient (sb: SupabaseClient, opts: { pageSize?: number 
     subscribeTicks (onTick, onStatus) {
       const channel = sb.channel(`live-ticks-${Math.random().toString(36).slice(2, 10)}`)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'live_ticks' }, p => { onTick((p.new as { tick: LiveTick }).tick) })
-        .subscribe((status, err) => { onStatus(status === 'SUBSCRIBED', err?.message ?? status) })
+        .subscribe((status, err) => { onStatus(status === 'SUBSCRIBED', err !== undefined ? `${status}: ${err.message}` : status) })
       return () => { void sb.removeChannel(channel) }
     }
   }

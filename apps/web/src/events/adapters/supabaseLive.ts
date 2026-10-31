@@ -9,7 +9,7 @@ import type { LiveTick } from '@agentcoop/relay/contract'
 import type { AppStoreApi } from '../../store'
 import type { EventBus } from '../bus'
 import type { CoopEvent } from '../types'
-import { applySnapshot, applyTick, hydrateHistory, type LiveSnapshot } from './supabaseApply'
+import { applySnapshot, applyTick, hydrateHistory, sanitizeTick, type LiveSnapshot } from './supabaseApply'
 
 /** The three reads the adapter needs (api/supabase.ts implements it on supabase-js; tests fake it). */
 export interface LiveClient {
@@ -26,6 +26,12 @@ export interface SupabaseLiveOptions {
   onStale: () => void
   staleMs?: number
   snapshotTimeoutMs?: number
+  /** a channel error or timeout that is not back up within this falls back at once, not after staleMs (BL-34 #11). Default 5 s */
+  errorGraceMs?: number
+  /** a tab hidden this long drops its subscription (free-plan quota) and rejoins when shown. Default 60 s; 0 = never */
+  hiddenAfterMs?: number
+  /** the page's visibility (tests pass their own); default `document` when there is one */
+  visibility?: { hidden: boolean, addEventListener: (type: 'visibilitychange', fn: () => void) => void, removeEventListener: (type: 'visibilitychange', fn: () => void) => void }
 }
 
 const HISTORY = 200
@@ -58,19 +64,58 @@ export function startSupabaseLive (opts: SupabaseLiveOptions): { close: () => vo
       if (!closed && applying) applyTick(bus, store, { v: 1, ts: new Date().toISOString(), ...snap } as unknown as LiveTick)
     } catch (err) { opts.onStatus?.(false, `resync failed: ${String((err as Error).message ?? err)}`) }
   }
-  const unsubscribe = client.subscribeTicks(tick => {
-    if (closed) return
-    arm()
-    if (applying) applyTick(bus, store, tick)
-    else buffer.push(tick)
-  }, (ok, detail) => {
-    opts.onStatus?.(ok, detail)
-    if (ok && !wasUp) {
-      if (!everUp) { everUp = true; subscribed() } else void resync()
-    }
-    wasUp = ok
-  })
+  let grace: ReturnType<typeof setTimeout> | undefined
+  const fallBackNow = (): void => {
+    if (closed || staleFired) return
+    staleFired = true
+    opts.onStale()
+  }
+  let unsubscribe = (): void => {}
+  const subscribe = (): void => {
+    unsubscribe = client.subscribeTicks(raw => {
+      if (closed) return
+      const tick = sanitizeTick(raw)
+      if (tick === undefined) return // not a tick: never let it reach the reducers
+      arm()
+      if (applying) applyTick(bus, store, tick)
+      else buffer.push(tick)
+    }, (ok, detail) => {
+      opts.onStatus?.(ok, detail)
+      if (ok) { if (grace !== undefined) { clearTimeout(grace); grace = undefined } } else if (/CHANNEL_ERROR|TIMED_OUT/.test(detail ?? '') && grace === undefined) {
+        // a broken channel rarely heals by itself: give it a moment, then read the services directly
+        grace = setTimeout(fallBackNow, opts.errorGraceMs ?? 5_000)
+      }
+      if (ok && !wasUp) {
+        if (!everUp) { everUp = true; subscribed() } else void resync()
+      }
+      wasUp = ok
+    })
+  }
+  subscribe()
   arm()
+
+  // a hidden tab costs Realtime quota for nothing: leave after hiddenAfterMs, rejoin (and resync) when shown again
+  const page = opts.visibility ?? (typeof document !== 'undefined' ? document : undefined)
+  let away: ReturnType<typeof setTimeout> | undefined
+  let parked = false
+  const onVisibility = (): void => {
+    if (closed || page === undefined) return
+    if (page.hidden) {
+      if ((opts.hiddenAfterMs ?? 60_000) <= 0 || away !== undefined) return
+      away = setTimeout(() => {
+        away = undefined
+        if (closed || !page.hidden) return
+        parked = true
+        unsubscribe()
+        wasUp = false
+        if (stale !== undefined) clearTimeout(stale)
+      }, opts.hiddenAfterMs ?? 60_000)
+    } else {
+      if (away !== undefined) { clearTimeout(away); away = undefined }
+      if (parked) { parked = false; subscribe(); arm() }
+    }
+  }
+  page?.addEventListener('visibilitychange', onVisibility)
 
   let timeout: ReturnType<typeof setTimeout> | undefined
   const load = async (): Promise<void> => {
@@ -98,6 +143,9 @@ export function startSupabaseLive (opts: SupabaseLiveOptions): { close: () => vo
     close () {
       closed = true
       if (stale !== undefined) clearTimeout(stale)
+      if (grace !== undefined) clearTimeout(grace)
+      if (away !== undefined) clearTimeout(away)
+      page?.removeEventListener('visibilitychange', onVisibility)
       unsubscribe()
     }
   }

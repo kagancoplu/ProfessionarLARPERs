@@ -9,6 +9,8 @@ import type { Sink } from './sink'
 type PoolInput = Json & { poolId: string, status: string, pledges?: Json[] }
 
 const fp = (x: unknown): string => JSON.stringify(x)
+/** Events kept while Supabase is down; older ones are dropped beyond this (history only, the services keep the truth). */
+export const MAX_PENDING_EVENTS = 5_000
 
 export class Mirror {
   /** fingerprints of what the last successful flush wrote, `${kind}:${key}` → JSON */
@@ -24,6 +26,9 @@ export class Mirror {
   private readonly vaultData = new Map<string, Json>()
   /** when flushes started failing (cleared by a successful one): heartbeats stop after 30 s of it */
   private failingSince?: number
+  /** when the last tick went out: a heartbeat is only needed when nothing else did */
+  private lastTickAt = 0
+  private dropped = 0
 
   constructor (private readonly sink: Sink, private readonly now: () => Date = () => new Date()) {}
 
@@ -56,6 +61,10 @@ export class Mirror {
   pushEvent (e: CoopEnvelope, opts: { live?: boolean } = {}): void {
     if (Number.isNaN(Date.parse(e.ts))) { console.error(`[relay] dropped ${e.src} event ${e.id}: bad ts`); return }
     this.events.push({ e, live: opts.live !== false })
+    if (this.events.length > MAX_PENDING_EVENTS) {
+      this.events.splice(0, this.events.length - MAX_PENDING_EVENTS)
+      if (this.dropped++ % 1000 === 0) console.error(`[relay] Supabase unreachable: keeping the newest ${MAX_PENDING_EVENTS} events, dropping older ones`)
+    }
   }
 
   private empty (): boolean {
@@ -122,15 +131,21 @@ export class Mirror {
       const live = events.filter(x => x.live).map(x => x.e)
       if (live.length > 0) tick.events = live
     }
-    await this.sink.publishTick(tick)
+    // a flush with only history-only events changes nothing a browser shows: no tick for it
+    if (Object.keys(tick).some(k => k !== 'v' && k !== 'ts')) {
+      await this.sink.publishTick(tick)
+      this.lastTickAt = this.now().getTime()
+    }
 
     // committed: remember what is now in Supabase, clear what was staged before this flush started
-    for (const p of pools) { this.written.set(`pool:${p.poolId}`, fp(p)); if (this.pools.get(p.poolId) === p) this.pools.delete(p.poolId) }
-    if (listings !== undefined) { this.written.set('listings:', fp(listings)); if (this.listings === listings) this.listings = undefined }
-    for (const [id, v] of vaults) { this.written.set(`vault:${id}`, fp(v)); if (this.vaults.get(id) === v) this.vaults.delete(id) }
-    for (const [id, c] of credits) { this.written.set(`credits:${id}`, fp(c)); if (this.credits.get(id) === c) this.credits.delete(id) }
-    for (const [id, a] of agents) { this.written.set(`agent:${id}`, fp(a)); if (this.agents.get(id) === a) this.agents.delete(id) }
-    for (const h of health) { this.written.set(`health:${h.service}`, fp(h)); if (this.health.get(h.service) === h) this.health.delete(h.service) }
+    // a refresh during the writes may have staged the same content again: that is written now, not pending
+    const same = (a: unknown, b: unknown): boolean => a === b || fp(a) === fp(b)
+    for (const p of pools) { this.written.set(`pool:${p.poolId}`, fp(p)); if (same(this.pools.get(p.poolId), p)) this.pools.delete(p.poolId) }
+    if (listings !== undefined) { this.written.set('listings:', fp(listings)); if (same(this.listings, listings)) this.listings = undefined }
+    for (const [id, v] of vaults) { this.written.set(`vault:${id}`, fp(v)); if (same(this.vaults.get(id), v)) this.vaults.delete(id) }
+    for (const [id, c] of credits) { this.written.set(`credits:${id}`, fp(c)); if (same(this.credits.get(id), c)) this.credits.delete(id) }
+    for (const [id, a] of agents) { this.written.set(`agent:${id}`, fp(a)); if (same(this.agents.get(id), a)) this.agents.delete(id) }
+    for (const h of health) { this.written.set(`health:${h.service}`, fp(h)); if (same(this.health.get(h.service), h)) this.health.delete(h.service) }
     this.events = this.events.slice(events.length)
     return tick
   }
@@ -140,9 +155,15 @@ export class Mirror {
     return w === undefined ? undefined : JSON.parse(w) as VaultOutput[]
   }
 
-  /** A heartbeat says the mirror is current: none while flushes have been failing for over 30 s, so browsers fall back. */
-  async heartbeat (): Promise<void> {
-    if (this.failingSince !== undefined && this.now().getTime() - this.failingSince > 30_000) return
+  /**
+   * A heartbeat says the mirror is current: none while flushes have been failing for over 30 s, so browsers fall back,
+   * and none when a tick went out within `quietMs` (that tick already said so).
+   */
+  async heartbeat (quietMs = 0): Promise<void> {
+    const now = this.now().getTime()
+    if (this.failingSince !== undefined && now - this.failingSince > 30_000) return
+    if (now - this.lastTickAt < quietMs) return
     await this.sink.publishTick({ v: 1, ts: this.now().toISOString(), heartbeat: true })
+    this.lastTickAt = now
   }
 }

@@ -29,6 +29,28 @@ describe('followSse', () => {
     expect(got).toEqual([['{"a":1}', 'g:1']])
   })
 
+  it('BL-34 #8: a stream that goes silent is dropped after idleMs and reopened', async () => {
+    let calls = 0
+    const impl = (async (_url: string, init?: RequestInit) => {
+      calls++
+      const signal = init?.signal
+      // sends one event, then nothing at all (no keepalive) until aborted
+      const stream = new ReadableStream<Uint8Array>({
+        start (c) {
+          c.enqueue(new TextEncoder().encode(`id: s:${calls}\ndata: x\n\n`))
+          signal?.addEventListener('abort', () => { c.error(new Error('aborted')) })
+        }
+      })
+      return new Response(stream, { status: 200 })
+    }) as unknown as typeof fetch
+    const got: string[] = []
+    const h = followSse('http://x/events', data => got.push(data), { fetchImpl: impl, minBackoffMs: 1, idleMs: 30 })
+    await until(() => calls >= 2)
+    h.close()
+    expect(calls).toBeGreaterThanOrEqual(2)
+    expect(got.length).toBeGreaterThanOrEqual(2)
+  })
+
   it('reconnects after the stream ends and sends Last-Event-ID', async () => {
     const { impl, calls } = fakeFetch([['id: g:1\ndata: x\n\n'], ['id: g:2\ndata: y\n\n']])
     const got: string[] = []

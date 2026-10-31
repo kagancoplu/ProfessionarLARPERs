@@ -141,6 +141,8 @@ export interface Settings {
 export interface StoreData {
   mode: DataMode
   replayName?: string
+  /** live mode: where the Town's data comes from (BL-34 #14): the relay's Supabase mirror, or the services directly */
+  transport?: 'mirror' | 'direct'
   me: MeState
   health: Record<ServiceName, ServiceHealth>
   pools: { byId: Record<string, PoolEntry>, order: string[] }

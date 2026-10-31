@@ -23,6 +23,34 @@ export interface LiveSnapshot {
   health: HealthRow[]
 }
 
+const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
+const withKey = (k: string) => (x: unknown): boolean => isObj(x) && typeof x[k] === 'string'
+
+/**
+ * A tick as it came off the wire, or undefined if it is not one (BL-34 #4): a truncated or malformed payload must
+ * not reach the reducers. Malformed entries inside a valid tick are dropped one by one.
+ */
+export function sanitizeTick (raw: unknown): LiveTick | undefined {
+  if (!isObj(raw) || raw.v !== 1 || typeof raw.ts !== 'string' || Number.isNaN(Date.parse(raw.ts))) return undefined
+  const t: LiveTick = { v: 1, ts: raw.ts, ...(raw.heartbeat === true ? { heartbeat: true } : {}) }
+  const list = (k: string, ok: (x: unknown) => boolean): unknown[] | undefined => Array.isArray(raw[k]) ? (raw[k] as unknown[]).filter(ok) : undefined
+  const pools = list('pools', x => withKey('poolId')(x) && typeof (x as Record<string, unknown>).status === 'string')
+  if (pools !== undefined) t.pools = pools as LiveTick['pools']
+  if (isObj(raw.pledges)) t.pledges = Object.fromEntries(Object.entries(raw.pledges).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).filter(withKey('outpoint'))])) as LiveTick['pledges']
+  const listings = list('listings', withKey('outpoint'))
+  if (listings !== undefined) t.listings = listings as LiveTick['listings']
+  const vaults = list('vaults', withKey('vaultId'))
+  if (vaults !== undefined) t.vaults = vaults as LiveTick['vaults']
+  if (isObj(raw.vaultCredits)) t.vaultCredits = Object.fromEntries(Object.entries(raw.vaultCredits).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).filter(withKey('tokenId'))])) as LiveTick['vaultCredits']
+  const agents = list('agents', withKey('identity'))
+  if (agents !== undefined) t.agents = agents as LiveTick['agents']
+  const health = list('health', x => withKey('service')(x) && typeof (x as Record<string, unknown>).ok === 'boolean')
+  if (health !== undefined) t.health = health as LiveTick['health']
+  const events = list('events', x => isObj(x) && typeof x.id === 'string' && typeof x.ts === 'string' && typeof x.src === 'string' && typeof x.type === 'string' && 'data' in x)
+  if (events !== undefined) t.events = events as LiveTick['events']
+  return t
+}
+
 export function applyTick (bus: EventBus, store: AppStoreApi, tick: LiveTick): void {
   const ts = tick.ts
   const pools = tick.pools as unknown as ApiPool[] | undefined

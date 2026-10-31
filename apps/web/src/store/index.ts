@@ -24,6 +24,7 @@ export interface StoreActions {
   setHealth: (service: ServiceName, h: ServiceHealth) => void
   setMe: (patch: Partial<MeState>) => void
   setMode: (mode: DataMode, replayName?: string) => void
+  setTransport: (transport: 'mirror' | 'direct') => void
   openDrawer: (kind: DrawerKind, id: string) => void
   closeDrawer: () => void
   pushToast: (toast: Omit<Toast, 'id' | 'ts'>) => void
@@ -68,6 +69,9 @@ export function createAppStore (mode: DataMode = 'live', replayName?: string, se
         byId[p.poolId] = poolEntryFromApi(p, ts, byId[p.poolId])
         if (!order.includes(p.poolId)) order.push(p.poolId)
       }
+      // oldest pool first by its block height, then by id: the same board in every browser and transport (BL-34 #1)
+      const h = (id: string): number => byId[id]?.height ?? Number.POSITIVE_INFINITY
+      order.sort((a, b) => h(a) - h(b) || (a < b ? -1 : a > b ? 1 : 0))
       return { pools: { byId, order } }
     }),
     setPledges: (poolId, pledges) => set(s => {
@@ -100,6 +104,7 @@ export function createAppStore (mode: DataMode = 'live', replayName?: string, se
     setHealth: (service, h) => set(s => ({ health: { ...s.health, [service]: h } })),
     setMe: patch => set(s => ({ me: { ...s.me, ...patch } })),
     setMode: (mode, replayName) => set({ mode, ...(replayName !== undefined ? { replayName } : {}) }),
+    setTransport: transport => set({ transport }),
     openDrawer: (kind, id) => set(s => ({ ui: { ...s.ui, drawer: { kind, id } } })),
     closeDrawer: () => set(s => { const { drawer: _d, ...rest } = s.ui; return { ui: rest } }),
     pushToast: toast => set(s => ({ ui: { ...s.ui, toasts: [...s.ui.toasts, { ...toast, id: `toast:local:${++toastSeq}`, ts: new Date().toISOString() }].slice(-TOAST_LIMIT) } })),

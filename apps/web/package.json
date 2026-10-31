@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AgentCoop frontend: role consoles + pixel-art live town. Browser \u2192 BSV Desktop (WalletClient), services via REST/WS/SSE.",
+  "description": "AgentCoop frontend: role consoles + pixel-art live town. Browser → BSV Desktop (WalletClient), services via REST/WS/SSE.",
   "engines": {
     "node": ">=22"
   },

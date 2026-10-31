@@ -110,14 +110,16 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   }
   // transport 'supabase' (plan/phases/SUPABASE-MVP.md): one connection to the relay's mirror instead of the streams above
   const sb = await getSupabase()
-  if (sb === undefined) startDirect()
+  if (sb === undefined) { store.getState().setTransport('direct'); startDirect() }
   else {
+    store.getState().setTransport('mirror')
     let live: { close: () => void } | undefined
     const fallBack = (why: string): void => {
       if (direct) return
       live?.close()
       console.warn(`[live] Supabase mirror unavailable (${why}); using the services directly`)
       store.getState().pushToast({ kind: 'warn', text: 'Live mirror unavailable: reading the services directly' })
+      store.getState().setTransport('direct')
       startDirect()
     }
     const started = startSupabaseLive({ client: createLiveClient(sb), bus, store, onStale: () => fallBack('no ticks from the relay') })

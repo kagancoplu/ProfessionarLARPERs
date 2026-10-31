@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CoopEnvelope, Json, LiveTick } from '../src/contract'
-import { Mirror } from '../src/mirror'
+import { MAX_PENDING_EVENTS, Mirror } from '../src/mirror'
 import type { Sink } from '../src/sink'
 
 class FakeSink implements Sink {
@@ -72,6 +72,47 @@ describe('Mirror', () => {
     const tick = await m.flush()
     expect(sink.events.flat()).toEqual([g, c])
     expect(tick?.events).toEqual([g])
+  })
+
+  it('BL-34 #2: a flush with only history events writes them but publishes no tick', async () => {
+    const sink = new FakeSink()
+    const m = new Mirror(sink)
+    m.pushEvent(E('coordinator', 'coordinator:hello'), { live: false })
+    expect(await m.flush()).toMatchObject({ v: 1 })
+    expect(sink.events.flat()).toHaveLength(1)
+    expect(sink.ticks).toHaveLength(0)
+  })
+
+  it('BL-34 #7: while Supabase is down the pending events stay bounded, newest kept', async () => {
+    const m = new Mirror(new FakeSink())
+    for (let i = 0; i < MAX_PENDING_EVENTS + 10; i++) m.pushEvent(E('guard', `guard:${i}`))
+    const kept = (m as unknown as { events: Array<{ e: CoopEnvelope }> }).events
+    expect(kept).toHaveLength(MAX_PENDING_EVENTS)
+    expect(kept[0]?.e.id).toBe('guard:10')
+  })
+
+  it('BL-34 #18: no heartbeat while ticks are flowing; one once they have been quiet', async () => {
+    const sink = new FakeSink()
+    let now = Date.parse('2026-10-31T12:00:00.000Z')
+    const m = new Mirror(sink, () => new Date(now))
+    m.setHealth({ service: 'coop', ok: true })
+    await m.flush()
+    await m.heartbeat(15_000)
+    expect(sink.ticks.filter(t => t.heartbeat === true)).toHaveLength(0)
+    now += 15_000
+    await m.heartbeat(15_000)
+    expect(sink.ticks.filter(t => t.heartbeat === true)).toHaveLength(1)
+  })
+
+  it('BL-34 #5: a refresh that restages the same content during a flush is not written again', async () => {
+    const sink = new FakeSink()
+    const m = new Mirror(sink)
+    m.setPools([P('a_0', 'open', [])])
+    const flushing = m.flush()
+    m.setPools([P('a_0', 'open', [])]) // same content, new object, while the writes are in flight
+    await flushing
+    expect(await m.flush()).toBeUndefined()
+    expect(sink.rows('live_pools')).toHaveLength(1)
   })
 
   it('flush with nothing changed publishes no tick; heartbeat publishes { heartbeat: true }', async () => {

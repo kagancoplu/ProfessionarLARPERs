@@ -86,6 +86,43 @@ describe('startRelay', () => {
     expect(h.ticks.flatMap(t => t.events ?? []).filter(e => e.src === 'coordinator')).toEqual([])
   })
 
+  it('BL-34 #3: hello_ack and a pool_update repeating the last one are not stored', async () => {
+    const h = harness()
+    stop = startRelay(URLS, h.deps, h.timings).stop
+    h.coordinator({ type: 'hello_ack', poolIds: [] })
+    h.coordinator({ type: 'pool_update', poolId: 'a_0', pledgedCredits: '10', status: 'open' })
+    h.coordinator({ type: 'pool_update', poolId: 'a_0', pledgedCredits: '10', status: 'open' })
+    h.coordinator({ type: 'pool_update', poolId: 'a_0', pledgedCredits: '20', status: 'open' })
+    await until(() => h.stored.filter(e => e.src === 'coordinator').length >= 2)
+    await new Promise(r => setTimeout(r, 30))
+    expect(h.stored.filter(e => e.src === 'coordinator').map(e => [e.type, (e.data as Json).pledgedCredits])).toEqual([['pool_update', '10'], ['pool_update', '20']])
+  })
+
+  it('BL-34 #6: refreshes asked for while one runs are folded into one more, never run side by side', async () => {
+    const h = harness()
+    let running = 0
+    let most = 0
+    let reads = 0
+    h.deps.sources.poolsWithPledges = async () => { running++; reads++; most = Math.max(most, running); await new Promise(r => setTimeout(r, 20)); running--; return [] }
+    stop = startRelay(URLS, h.deps, { ...h.timings, debounceMs: 1 }).stop
+    for (let i = 0; i < 5; i++) { h.sse.get('http://overlay/agentcoop/events')?.(JSON.stringify({ type: 'admitted', txid: `t${i}` }), ''); await new Promise(r => setTimeout(r, 3)) }
+    await new Promise(r => setTimeout(r, 150))
+    expect(most).toBe(1)
+    expect(reads).toBeLessThanOrEqual(4)
+  })
+
+  it('BL-34 #17: stop() waits for a flush in flight, then writes what came after it', async () => {
+    const h = harness()
+    let slow = true
+    const publish = h.deps.sink.publishTick
+    h.deps.sink.publishTick = async t => { if (slow) { slow = false; await new Promise(r => setTimeout(r, 40)) } await publish(t) }
+    const relay = startRelay(URLS, h.deps, { ...h.timings, flushMs: 5 })
+    await new Promise(r => setTimeout(r, 10)) // the first flush is now stuck in publishTick
+    h.sse.get('http://guard/events')?.(JSON.stringify({ id: 'guard:last', ts: new Date().toISOString(), src: 'guard', type: 'cosign_approved', data: {} }), '')
+    await relay.stop()
+    expect(h.stored.map(e => e.id)).toContain('guard:last')
+  })
+
   it('events older than the relay\'s start are stored but not sent live (a service replaying its backlog)', async () => {
     const h = harness()
     stop = startRelay(URLS, h.deps, h.timings).stop

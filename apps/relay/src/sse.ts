@@ -1,13 +1,15 @@
 /**
  * Server-Sent Events over fetch (Node has no EventSource without a flag): MASTER §3.10 framing (`id:` +
  * `data:`, `:` comments are keepalives). Reconnects with 1 → 30 s backoff and resumes with Last-Event-ID.
+ * A stream silent for `idleMs` (default 45 s; the services send a keepalive every 15 s) is dropped and reopened.
  */
-export interface SseOptions { fetchImpl?: typeof fetch, minBackoffMs?: number, maxBackoffMs?: number, onStatus?: (ok: boolean, detail?: string) => void }
+export interface SseOptions { fetchImpl?: typeof fetch, minBackoffMs?: number, maxBackoffMs?: number, idleMs?: number, onStatus?: (ok: boolean, detail?: string) => void }
 
 export function followSse (url: string, onEvent: (data: string, id: string) => void, opts: SseOptions = {}): { close (): void } {
   const doFetch = opts.fetchImpl ?? fetch
   const min = opts.minBackoffMs ?? 1_000
   const max = opts.maxBackoffMs ?? 30_000
+  const idleMs = opts.idleMs ?? 45_000
   let closed = false
   let lastId = ''
   let ctrl: AbortController | undefined
@@ -25,9 +27,16 @@ export function followSse (url: string, onEvent: (data: string, id: string) => v
         backoff = min
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
         let buf = ''
+        let idle: ReturnType<typeof setTimeout> | undefined
+        const stream = ctrl
+        const wake = (): void => { if (idle !== undefined) clearTimeout(idle); idle = setTimeout(() => { stream.abort(new Error(`no data for ${idleMs} ms`)) }, idleMs) }
+        wake()
         for (;;) {
-          const { value, done } = await reader.read()
+          let chunk: ReadableStreamReadResult<string>
+          try { chunk = await reader.read() } finally { if (idle !== undefined) clearTimeout(idle) }
+          const { value, done } = chunk
           if (done) break
+          wake()
           buf += value
           let end: number
           while ((end = buf.indexOf('\n\n')) >= 0) {

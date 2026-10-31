@@ -12,20 +12,46 @@ import { acceptMove, JoinGate, MoveThrottle, peersFromPresence, TOWN_CHANNEL, ty
 import type { TownScene } from './scenes/TownScene'
 import type { Villager } from './entities/Villager'
 
-/** Per-tab id, so two tabs of one identity are two players. */
+const freshTabId = (): string => [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, '0')).join('')
+
+/** Per-tab id, so two tabs of one identity are two players. Kept in sessionStorage so a reload stays the same player. */
 function tabId (): string {
-  const fresh = (): string => [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, '0')).join('')
   try {
-    const id = sessionStorage.getItem('agentcoop.tab') ?? fresh()
+    const id = sessionStorage.getItem('agentcoop.tab') ?? freshTabId()
     sessionStorage.setItem('agentcoop.tab', id)
     return id
-  } catch { return fresh() }
+  } catch { return freshTabId() }
+}
+
+/**
+ * "Duplicate tab" copies sessionStorage, so two tabs would share one id and look like one player (BL-34 #9): ask the
+ * other tabs whether `id` is taken (BroadcastChannel, same origin) and draw a new one if it is. Keeps answering for
+ * the id it ends up with.
+ */
+export async function claimTabId (id: string, waitMs = 150): Promise<{ id: string, release: () => void }> {
+  if (typeof BroadcastChannel === 'undefined') return { id, release: () => {} }
+  const ch = new BroadcastChannel('agentcoop.tab')
+  let mine = id
+  let taken = false
+  ch.onmessage = (m: MessageEvent<{ ask?: string, taken?: string }>) => {
+    if (m.data.ask === mine) ch.postMessage({ taken: mine })
+    if (m.data.taken === mine) taken = true
+  }
+  ch.postMessage({ ask: mine })
+  await new Promise(resolve => setTimeout(resolve, waitMs))
+  if (taken) {
+    mine = freshTabId()
+    try { sessionStorage.setItem('agentcoop.tab', mine) } catch {}
+  }
+  return { id: mine, release: () => { ch.close() } }
 }
 
 const TOWN: Bounds = { w: MAP_W * TILE, h: MAP_H * TILE }
 
 export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => void {
-  const tab = tabId()
+  let tab = tabId()
+  let releaseTab = (): void => {}
+  const claimed = claimTabId(tab).then(c => { tab = c.id; releaseTab = c.release })
   let sb: SupabaseClient | undefined
   let channel: RealtimeChannel | undefined
   let selfKey = ''
@@ -61,6 +87,7 @@ export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => v
   }
 
   const join = async (): Promise<void> => {
+    await claimed
     sb ??= await getSupabase()
     if (sb === undefined || channel !== undefined) return
     selfKey = `${store.getState().me.identityKey ?? 'guest'}:${tab}`
@@ -119,5 +146,5 @@ export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => v
     if (s.settings.avatar) void join(); else leave()
   })
 
-  return () => { unsubscribe(); town.events.off('update', onUpdate); leave() }
+  return () => { unsubscribe(); town.events.off('update', onUpdate); leave(); void claimed.then(() => { releaseTab() }) }
 }

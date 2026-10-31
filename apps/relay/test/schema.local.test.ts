@@ -38,6 +38,20 @@ describe.skipIf(url === undefined)('supabase schema (local stack)', () => {
     await secret.from('live_pools').delete().eq('pool_id', 'x_0')
   })
 
+  it('BL-34 #13: an update stamps updated_at', async () => {
+    const secret = client(process.env.SUPABASE_LOCAL_SECRET_KEY)
+    try {
+      await secret.from('live_health').upsert({ service: 'touch_test', ok: true })
+      const first = (await secret.from('live_health').select('updated_at').eq('service', 'touch_test').single()).data?.updated_at as string
+      await new Promise(r => setTimeout(r, 20))
+      await secret.from('live_health').upsert({ service: 'touch_test', ok: false })
+      const second = (await secret.from('live_health').select('updated_at').eq('service', 'touch_test').single()).data?.updated_at as string
+      expect(Date.parse(second)).toBeGreaterThan(Date.parse(first))
+    } finally {
+      await secret.from('live_health').delete().eq('service', 'touch_test')
+    }
+  })
+
   it('T-22: on every table anon can neither insert, update nor delete', async () => {
     const anon = client(process.env.SUPABASE_LOCAL_ANON_KEY)
     const secret = client(process.env.SUPABASE_LOCAL_SECRET_KEY)

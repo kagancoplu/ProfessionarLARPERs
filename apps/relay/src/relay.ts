@@ -42,8 +42,18 @@ export function startRelay (urls: RelayConfig['urls'], deps: RelayDeps, timings:
   const every = (ms: number, fn: () => void): void => { const id = setInterval(fn, ms); stops.push(() => clearInterval(id)) }
   const history = new PoolHistory()
 
-  // pools + pledges, listings, vaults and their credits: one pass, each source failing on its own
+  // pools + pledges, listings, vaults and their credits: one pass, each source failing on its own. One at a time:
+  // a refresh asked for while one runs runs once more afterwards, so an older read never lands after a newer one.
+  let refreshing: Promise<void> | undefined
+  let again = false
   const refresh = async (): Promise<void> => {
+    if (refreshing !== undefined) { again = true; return await refreshing }
+    refreshing = (async () => {
+      do { again = false; await readAll() } while (again)
+    })().finally(() => { refreshing = undefined })
+    await refreshing
+  }
+  const readAll = async (): Promise<void> => {
     await Promise.all([
       src.poolsWithPledges().then(p => {
         // pool_opened / pledge_added / … for the feed history (BL-33); live browsers derive them from the tick
@@ -82,33 +92,41 @@ export function startRelay (urls: RelayConfig['urls'], deps: RelayDeps, timings:
       if (isEnvelope(e)) mirror.pushEvent(e, { live: !(Date.parse(e.ts) < startedAt - 5_000) })
     }).close)
   }
-  // the coordinator's broadcasts, for history only: the web keeps its own WS (signing rounds, settled → afterSettlement)
+  // the coordinator's broadcasts, for history only: the web keeps its own WS (signing rounds, settled → afterSettlement).
+  // Not stored: hello_ack (per connection) and a pool_update that repeats the last one for its pool (each hello re-sends them).
+  const lastUpdate = new Map<string, string>()
   stops.push(deps.watchCoordinator(`${urls.coop.replace(/^http/, 'ws')}/ws`, (msg: Json) => {
     const { type, ...data } = msg
-    if (typeof type !== 'string') return
+    if (typeof type !== 'string' || type === 'hello_ack') return
+    if (type === 'pool_update' && typeof data.poolId === 'string') {
+      const key = JSON.stringify([data.pledgedCredits, data.status])
+      if (lastUpdate.get(data.poolId) === key) return
+      lastUpdate.set(data.poolId, key)
+    }
     const poolId = typeof data.poolId === 'string' ? data.poolId : undefined
     const txid = typeof data.txid === 'string' ? data.txid : undefined
     const ts = now().toISOString()
     mirror.pushEvent({ id: `coordinator:${type}:${poolId ?? ''}:${txid ?? String(data.round ?? data.pledgedCredits ?? '')}`, ts, src: 'coordinator', type, data, ...(poolId !== undefined ? { poolId } : {}), ...(txid !== undefined ? { txid } : {}) }, { live: false })
   }).close)
 
-  let flushing = false
+  let flushing: Promise<void> | undefined
   const flush = async (): Promise<void> => {
-    if (flushing) return
-    flushing = true
-    try { await mirror.flush() } catch (err) { quiet('flush (kept for the next one)')(err) } finally { flushing = false }
+    if (flushing !== undefined) return
+    flushing = mirror.flush().then(() => {}, quiet('flush (kept for the next one)')).finally(() => { flushing = undefined })
+    await flushing
   }
   void refresh(); void agents(); void probe()
   every(t.reconcileMs, () => { void refresh() })
   every(t.agentsMs, () => { void agents() })
   every(t.probeMs, () => { void probe() })
   every(t.flushMs, () => { void flush() })
-  every(t.heartbeatMs, () => { void mirror.heartbeat().catch(quiet('heartbeat')) })
+  every(t.heartbeatMs, () => { void mirror.heartbeat(t.heartbeatMs).catch(quiet('heartbeat')) })
   every(t.pruneMs, () => { void deps.sink.pruneTicks(TICK_RETENTION_MS).catch(quiet('prune')) })
 
   return {
     stop: async () => {
       for (const s of stops) s()
+      await flushing // a flush in flight would make the last one a no-op: wait for it, then write what is left
       await flush()
     }
   }

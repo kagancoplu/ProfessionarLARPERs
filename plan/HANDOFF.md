@@ -185,27 +185,27 @@ Prova sonucu (31.10 07:55, repodaki betikle):
 - Edge Function: 150 sn.
 - PostgREST: istek başına `max_rows` 1000 (snapshot bu yüzden sayfalı okunuyor).
 
-### 4.4 Supabase incelemesinden ertelenen küçük maddeler (hiçbiri yapılmadı)
+### 4.4 Supabase incelemesinden ertelenen küçük maddeler (31.10: #16 dışında hepsi kapandı ya da BL-20'ye taşındı)
 
-1. Snapshot'taki havuz sırası anahtara göre; birden fazla açık havuz varsa pano tarayıcıdan tarayıcıya farklı olabilir.
-2. Yalnızca geçmiş olayı içeren bir flush boş tick gönderip kota harcıyor.
-3. `hello_ack` ve her hello'dan sonra gelen `pool_update` patlamaları geçmişe yazılıyor (gürültü).
-4. Eksik ya da kesilmiş bir tick yüküne karşı koruma yok.
-5. Flush sırasında gelen yenileme, değişmemiş veriyi bir kez daha yayınlıyor.
-6. Eşzamanlı yenilemeler sıraya konmamış; kısa süre eski veri sahnelenebiliyor.
-7. Supabase kesintisinde bekleyen olay listesi sınırsız büyüyor.
-8. Relay'in SSE bağlantısında boşta kalma zaman aşımı yok; koordinatör izleyicisinin `close()`'u yeniden bağlanma zamanlayıcısını temizlemiyor.
-9. "Sekmeyi çoğalt" sekme kimliğini (sessionStorage) kopyalıyor; iki sekme aynı oyuncu gibi görünüyor.
-10. Kasaba `move` mesajları doğrulanmıyor (gönderen presence'ta mı, koordinatlar sayı mı) → F-8.
-11. Kanal hatasında doğrudan moda geçiş 45 sn sürüyor; gizli sekmeler abone kalıp kota harcıyor.
-12. `live_health.detail` iç servis adreslerini herkese açık okutuyor → F-8.
-13. `updated_at` sütunu güncellemelerde değişmiyor.
-14. Geri dönüşte yalnızca toast var, kalıcı bir taşıma (transport) göstergesi yok.
-15. `SUPABASE_SECRET_KEY` GitHub'da duruyor ama hiçbir workflow kullanmıyor.
-16. Publishable key barındırılan projede denenmedi.
-17. Flush sürerken `stop()`'un son flush'ı hiçbir şey yapmıyor.
-18. Tick'ler akarken de heartbeat gönderiliyor.
-19. `apps/web/package.json` açıklamasındaki ok karakteri bağımlılık düzenlemesinde yeniden kodlandı.
+1. Snapshot'taki havuz sırası anahtara göre; birden fazla açık havuz varsa pano tarayıcıdan tarayıcıya farklı olabilir. ✅ (31.10, BL-34)
+2. Yalnızca geçmiş olayı içeren bir flush boş tick gönderip kota harcıyor. ✅ (31.10, BL-34)
+3. `hello_ack` ve her hello'dan sonra gelen `pool_update` patlamaları geçmişe yazılıyor (gürültü). ✅ (31.10, BL-34)
+4. Eksik ya da kesilmiş bir tick yüküne karşı koruma yok. ✅ (31.10, BL-34)
+5. Flush sırasında gelen yenileme, değişmemiş veriyi bir kez daha yayınlıyor. ✅ (31.10, BL-34)
+6. Eşzamanlı yenilemeler sıraya konmamış; kısa süre eski veri sahnelenebiliyor. ✅ (31.10, BL-34)
+7. Supabase kesintisinde bekleyen olay listesi sınırsız büyüyor. ✅ (31.10, BL-34)
+8. Relay'in SSE bağlantısında boşta kalma zaman aşımı yok; koordinatör izleyicisinin `close()`'u yeniden bağlanma zamanlayıcısını temizlemiyor. ✅ (31.10, BL-34)
+9. "Sekmeyi çoğalt" sekme kimliğini (sessionStorage) kopyalıyor; iki sekme aynı oyuncu gibi görünüyor. ✅ (31.10, BL-34)
+10. Kasaba `move` mesajları doğrulanmıyor (gönderen presence'ta mı, koordinatlar sayı mı) → F-8. ✅ (31.10, F-8)
+11. Kanal hatasında doğrudan moda geçiş 45 sn sürüyor; gizli sekmeler abone kalıp kota harcıyor. ✅ (31.10, BL-34)
+12. `live_health.detail` iç servis adreslerini herkese açık okutuyor → F-8. ✅ (31.10, F-8)
+13. `updated_at` sütunu güncellemelerde değişmiyor. ✅ (31.10, BL-34)
+14. Geri dönüşte yalnızca toast var, kalıcı bir taşıma (transport) göstergesi yok. ✅ (31.10, BL-34)
+15. `SUPABASE_SECRET_KEY` GitHub'da duruyor ama hiçbir workflow kullanmıyor. → BL-20 (repo sahibinin kararı)
+16. Publishable key barındırılan projede denenmedi. (açık: barındırılan projede elle denenmeli)
+17. Flush sürerken `stop()`'un son flush'ı hiçbir şey yapmıyor. ✅ (31.10, BL-34)
+18. Tick'ler akarken de heartbeat gönderiliyor. ✅ (31.10, BL-34)
+19. `apps/web/package.json` açıklamasındaki ok karakteri bağımlılık düzenlemesinde yeniden kodlandı. ✅ (31.10, BL-34)
 
 ### 4.5 Supabase uygulamasında verilen kararlar (özet)
 

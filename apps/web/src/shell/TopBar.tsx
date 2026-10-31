@@ -14,8 +14,14 @@ const NAV: Array<{ to: string, key: 'town' | 'pools' | 'market' | 'agents' | 'pr
 export function ModeBadge () {
   const mode = useStore(selectMode)
   const replayName = useStore(s => s.replayName)
+  const transport = useStore(s => s.transport)
   const tone = mode === 'live' ? 'ok' : mode === 'mock' ? 'neutral' : 'info'
-  return <Tag tone={tone} title={mode === 'replay' ? `replay: ${replayName ?? ''}` : undefined} data-testid="mode-badge">{t(`mode.${mode}`)}</Tag>
+  // live: always show where the data comes from, not only in the fallback toast (BL-34 #14)
+  const via = mode === 'live' && transport !== undefined ? ` · ${transport}` : ''
+  const title = mode === 'replay'
+    ? `replay: ${replayName ?? ''}`
+    : transport === 'mirror' ? 'Live data from the relay\'s Supabase mirror (wallet flows and signing rounds go to the services directly)' : transport === 'direct' ? 'Live data read from the services directly' : undefined
+  return <Tag tone={tone} title={title} data-testid="mode-badge">{t(`mode.${mode}`)}{via}</Tag>
 }
 
 export function TopBar () {
