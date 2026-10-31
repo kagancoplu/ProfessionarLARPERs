@@ -6,11 +6,16 @@ import { useStore } from '../../store'
 import { Counter, DemoPricingTag, IdentityChip, LoadingState, Tag, TxLink, formatInt } from '../../ui'
 import { blocksLeft, discount, satsPerCredit } from './sort'
 
+const STEP_TONE = { opened: 'info', pledge: 'ok', withdrawn: 'neutral', locking: 'warn', signed: 'ok', round_failed: 'danger', settled: 'gold', failed: 'danger', cancelled: 'danger' } as const
+const STEP_LABEL = { opened: 'opened', pledge: 'pledge', withdrawn: 'withdrawn', locking: 'lock-in', signed: 'signature', round_failed: 'round failed', settled: 'settled', failed: 'did not fill', cancelled: 'cancelled' } as const
+const clock = (ts: string): string => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+
 const STATUS_TONE = { open: 'info', locking: 'warn', settled: 'ok', failed: 'danger', cancelled: 'danger' } as const
 
 export function PoolDetail ({ poolId }: { poolId: string }) {
   const pool = useStore(s => s.pools.byId[poolId])
   const mode = useStore(s => s.mode)
+  const steps = useStore(s => s.history.poolSteps[poolId])
   const q = usePledges(mode === 'live' ? poolId : undefined)
   if (pool === undefined) return <p>This pool is not on the overlay.</p>
   const pledges = pool.pledges ?? []
@@ -56,6 +61,21 @@ export function PoolDetail ({ poolId }: { poolId: string }) {
               </tr>
             ))}</tbody>
           </table>
+        )}
+      </div>
+      <div>
+        <p className="label text-ink-muted">Timeline</p>
+        {steps === undefined || steps.length === 0 ? <p className="text-[14px] text-ink-muted">Nothing seen this session yet. The overlay still has the pool and its pledges above.</p> : (
+          <ol className="m-0 flex list-none flex-col border-l-2 border-surface-3 p-0 pl-3" data-testid="pool-timeline">{steps.map((st, i) => (
+            <li key={i} className="relative flex flex-wrap items-center gap-2 py-1 text-[14px] leading-5">
+              <span className="absolute -left-[19px] top-[9px] h-[10px] w-[10px] border-2 border-ink bg-surface-2" aria-hidden="true" />
+              <span className="mono text-ink-muted">{clock(st.ts)}</span>
+              <Tag tone={STEP_TONE[st.step]}>{STEP_LABEL[st.step]}</Tag>
+              <span>{st.text}</span>
+              {st.actor !== undefined && <IdentityChip identity={st.actor} role={st.step === 'opened' ? 'provider' : 'agent'} compact />}
+              {st.txid !== undefined && <TxLink txid={st.txid} chars={4} />}
+            </li>
+          ))}</ol>
         )}
       </div>
       {mode === 'live' && pool.status === 'settled' && <a className="text-[14px]" href={`${env.urls.coop}/pools/${pool.poolId}/audit`} target="_blank" rel="noopener noreferrer">Audit this settlement (coordinator) ↗</a>}

@@ -96,6 +96,28 @@ export interface Metrics {
   deniedByGuard: number
 }
 
+/** A point on the metrics charts. Kept apart from the 200-event feed so the charts cover the whole session. */
+export type HistoryPoint =
+  | { k: 'settled', ts: string, poolId: string, txid: string, savingsSats: number, participants: number }
+  | { k: 'denied', ts: string, agent: string, reason: string }
+  | { k: 'price', ts: string, satsPerCredit: number, credits: number, retail: number, filled: boolean }
+
+export type PoolStepKind = 'opened' | 'pledge' | 'withdrawn' | 'locking' | 'signed' | 'round_failed' | 'settled' | 'failed' | 'cancelled'
+/** One line of a pool's timeline (pool detail). */
+export interface PoolStep { ts: string, step: PoolStepKind, text: string, txid?: string, actor?: string }
+
+/** Per-agent tallies for the leaderboard. */
+export interface AgentStats { poolsJoined: string[], creditsBought: number, savingsSats: number, settlements: number }
+
+export interface History {
+  points: HistoryPoint[]
+  poolSteps: Record<string, PoolStep[]>
+  agentStats: Record<string, AgentStats>
+}
+
+export const HISTORY_LIMIT = 600
+export const POOL_STEP_LIMIT = 80
+
 export interface Toast { id: string, kind: 'info' | 'success' | 'error' | 'warn', text: string, ts: string }
 
 export type DrawerKind = 'pool' | 'agent' | 'tx' | 'vault' | 'listing' | 'me' | 'rail'
@@ -129,6 +151,7 @@ export interface StoreData {
   txs: TxRecord[]
   notifications: Notification[]
   metrics: Metrics
+  history: History
   /** last FEED_LIMIT events, newest last */
   feed: AnyCoopEvent[]
   ui: UiState
@@ -157,6 +180,7 @@ export function initialData (mode: DataMode = 'live', replayName?: string): Stor
     txs: [],
     notifications: [],
     metrics: { settlements: 0, participants: 0, feeSats: 0, custodiedSats: 0, villageSavingsSats: 0, failedPools: 0, deniedByGuard: 0 },
+    history: { points: [], poolSteps: {}, agentStats: {} },
     feed: [],
     ui: { toasts: [], narrowScreen: false },
     settings: { ...DEFAULT_SETTINGS },

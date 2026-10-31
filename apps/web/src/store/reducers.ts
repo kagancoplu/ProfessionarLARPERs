@@ -4,6 +4,7 @@
  */
 import type { AnyCoopEvent, CoopEvent } from '../events/types'
 import type { ApiPool, PledgeView } from '../api/types'
+import { applyHistory } from './history'
 import { FEED_LIMIT, SIGN_REQUEST_MS, TOAST_LIMIT, type AgentEntry, type Notification, type PoolEntry, type StoreData, type Toast, type TxKind, type TxRecord } from './types'
 
 const TX_LABELS: Record<TxKind, string> = {
@@ -88,8 +89,14 @@ export function poolEntryFromApi (pool: ApiPool, ts: string, previous?: PoolEntr
   return { ...previous, ...pool, ...(previous?.pledges !== undefined ? { pledges: previous.pledges } : {}), updatedAt: ts }
 }
 
-/** Apply one event. Returns the same object when nothing changes. */
+/** Apply one event: the state, then the session history (charts, pool timelines, leaderboard). */
 export function applyEventToData (data: StoreData, e: AnyCoopEvent): StoreData {
+  const d = applyState(data, e)
+  const history = applyHistory(data, d.history, e)
+  return history === d.history ? d : { ...d, history }
+}
+
+function applyState (data: StoreData, e: AnyCoopEvent): StoreData {
   let d: StoreData = {
     ...data,
     feed: [...data.feed, e].slice(-FEED_LIMIT),

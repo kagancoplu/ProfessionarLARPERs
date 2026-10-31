@@ -2,9 +2,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { coopApi } from '../../api/coop'
 import { keys } from '../../api/queries'
-import { useStore } from '../../store'
+import { useShallowStore, useStore } from '../../store'
 import { selectMetrics } from '../../store/selectors'
-import { Counter, DemoPricingTag, LoadingState, Signboard, SimulatedJobsTag } from '../../ui'
+import { Counter, DemoPricingTag, LoadingState, Signboard, SimulatedJobsTag, TimeChart } from '../../ui'
+import { refusalSeries, savingsSeries, sessionSpan } from './series'
+import { useMemo } from 'react'
 import { t } from '../../i18n/t'
 import { RailCard } from '../RailCard'
 import { CornerCounters } from '../town/CornerCounters'
@@ -12,6 +14,11 @@ import { CornerCounters } from '../town/CornerCounters'
 export function MetricsPage () {
   const m = useStore(selectMetrics)
   const mode = useStore(s => s.mode)
+  const points = useStore(s => s.history.points)
+  const agents = useStore(s => s.agents.byIdentity)
+  const savings = useMemo(() => [savingsSeries(points)], [points])
+  const refusals = useMemo(() => [refusalSeries(points, Object.fromEntries(Object.values(agents).map(a => [a.identity, a.name])))], [points, agents])
+  const span = useShallowStore(s => sessionSpan(s))
   const live = useQuery({ queryKey: keys.metrics, queryFn: () => coopApi.metrics(), enabled: mode === 'live', retry: 0 })
   return (
     <div className="mx-auto flex max-w-[1280px] flex-col gap-6 p-6">
@@ -24,6 +31,16 @@ export function MetricsPage () {
           <li>GPU jobs are <SimulatedJobsTag />; payments, credits and settlements are real transactions in live mode.</li>
         </ul>
       </Signboard>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Signboard title={<span className="flex items-center gap-2">Village savings <DemoPricingTag /></span>} data-testid="chart-savings">
+          <p className="mb-2 text-[14px] leading-5 text-ink-muted">Sats saved against retail, one step per settlement this session.</p>
+          <TimeChart series={savings} unit="sat" {...(span !== undefined ? { span } : {})} empty="No settlement yet this session." testId="savings-chart" />
+        </Signboard>
+        <Signboard title="Guard refusals" data-testid="chart-refusals">
+          <p className="mb-2 text-[14px] leading-5 text-ink-muted">Each step is a spend the guard would not co-sign. Nothing was sent for any of them.</p>
+          <TimeChart series={refusals} unit="refusals" {...(span !== undefined ? { span } : {})} empty="The guard has not refused anything this session." testId="refusals-chart" />
+        </Signboard>
+      </div>
       <Signboard title="Harbor · Coop Rail" data-testid="rail-signboard"><RailCard /></Signboard>
       {mode === 'live' && (
         <Signboard title="Coordinator /metrics (Track B, computed from the chain)">

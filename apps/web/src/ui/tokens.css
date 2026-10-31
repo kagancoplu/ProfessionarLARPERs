@@ -22,6 +22,9 @@
   --sky: #7EC8E3;
   --water: #3F7FB5;
   --warn: #D97B21;
+  /* chart series (validated for colour-blind separation on surface-2): asks and sales */
+  --chart-ask: #3F7FB5;
+  --chart-fill: #9C6B10;
   --link: var(--water);
   color-scheme: light;
 }
@@ -44,6 +47,8 @@
   --sky: #9FD8F0;
   --water: #5FA0D6;
   --warn: #F09A3E;
+  --chart-ask: #4F8FC4;
+  --chart-fill: #B98A1E;
   --link: var(--sky);
   color-scheme: dark;
 }

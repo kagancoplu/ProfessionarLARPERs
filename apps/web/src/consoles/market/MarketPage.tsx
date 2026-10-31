@@ -1,5 +1,5 @@
 /** /market — the stalls: listings (cheapest per credit first), buy several in one sweep, sell your credits, cancel (track-E §4.2 market). */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useFlows, useRuntime } from '../../app-context'
 import type { Listing } from '../../api/types'
@@ -7,7 +7,8 @@ import { t } from '../../i18n/t'
 import { useShallowStore, useStore } from '../../store'
 import { selectListings, selectPools } from '../../store/selectors'
 import { TownDrawer } from '../../town/TownDrawer'
-import { Counter, DemoPricingTag, EmptyState, IdentityChip, PixelButton, Scroll, Signboard, Tag, TxLink, formatInt } from '../../ui'
+import { Counter, DemoPricingTag, EmptyState, IdentityChip, PixelButton, Scroll, Signboard, Tag, TimeChart, TxLink, formatInt } from '../../ui'
+import { priceSeries, sessionSpan } from '../metrics/series'
 import { UnderTheHood } from '../../ui/UnderTheHood'
 
 const input = 'border-2 border-ink bg-surface-2 px-2 py-1'
@@ -21,6 +22,9 @@ export function MarketPage () {
   const pools = useShallowStore(selectPools())
   const retail = Number(pools[0]?.terms.retailSatsPerCredit ?? 50)
   const feedLen = useStore(s => s.feed.length)
+  const points = useStore(s => s.history.points)
+  const span = useShallowStore(s => sessionSpan(s))
+  const prices = useMemo(() => priceSeries(points), [points])
   const credits = useQuery({ queryKey: ['my-credits', me.identityKey, Math.floor(feedLen / 3)], queryFn: () => flows.credits(), enabled: me.status === 'connected', retry: 0 })
   const [selected, setSelected] = useState<string[]>([])
   const [review, setReview] = useState(false)
@@ -74,6 +78,9 @@ export function MarketPage () {
             </div>
           )}
           <p className="mt-2 text-[14px] leading-5 text-ink-muted">Listing = your credits moved to a listing key + one SIGHASH_SINGLE|ANYONECANPAY signature ("the output at my index pays me the ask"). Buyers can sweep it while you are offline; cancelling is spending it back.</p>
+        </Signboard>
+        <Signboard title="Price history · sat per credit" actions={<DemoPricingTag />} data-testid="price-history">
+          <TimeChart series={prices.series} unit="sat/credit" {...(span !== undefined ? { span } : {})} {...(prices.retail !== undefined ? { reference: { v: prices.retail, label: `retail ${prices.retail}` } } : {})} empty="No listing yet this session." testId="price-chart" />
         </Signboard>
         {error !== undefined && <p className="text-[14px] leading-5 text-danger-dark">{error}</p>}
         {last !== undefined && <p className="text-[14px] leading-5">Last: <TxLink txid={last} /></p>}
