@@ -49,8 +49,13 @@ jobs:
         with:
           node-version: 24
       - uses: supabase/setup-cli@v1
+        # Pin the version: `latest` resolves the newest release through the GitHub
+        # API, which rate-limits on shared runners ("Failed to resolve latest … rate
+        # limit exceeded"). A pinned version downloads the release asset directly.
         with:
-          version: latest
+          version: 2.120.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Install
         run: npx -y npm@11 ci
       - name: Local Supabase stack (migrations applied on start)
