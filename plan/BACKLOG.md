@@ -22,7 +22,7 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 
 | ID | İş | Sahip | Durum | Bitti sayılır | Referans |
 |---|---|---|---|---|---|
-| BL-10 | **F-11 (High):** BSV HTLC claim dalına `OP_SIZE <32> OP_EQUALVERIFY` (`OP_SHA256`'dan önce). Rail canlıya çıkmadan önce şart | Track D / A | ☐ | Script testi: 33 baytlık ön görüntü reddediliyor; AUDIT F-11 "Fixed" | `packages/core/src/scripts/htlc.ts:22`, AUDIT F-11 |
+| BL-10 | **F-11 (High):** BSV HTLC claim dalına `OP_SIZE <32> OP_EQUALVERIFY` (`OP_SHA256`'dan önce). Rail canlıya çıkmadan önce şart | Track D / A | ✅ 31.10 `d734c9c` | Script testi: 33 baytlık ön görüntü reddediliyor; AUDIT F-11 "Fixed" | `packages/core/src/scripts/htlc.ts:22`, AUDIT F-11 |
 | BL-11 | **Coop Rail sertleştirme:** F-1 (gelen bakiye farkını kaydet ya da token allowlist), F-2 (safe-transfer sarmalayıcısı), F-4 (iadeyi kesinleşir kesinleşmez yayınlayan maker watchdog'u; yavaş bloklara göre timeout payı). Doğrulama 4'ten öğrenilen: Arcade tip = nLockTime iken reddediyor; iade kilitten en az bir blok sonra gönderilmeli | Track D | ☐ | AUDIT F-1, F-2, F-4 "Fixed" ya da gerekçeli "Accepted" | AUDIT §6, ROADMAP kapı 3 |
 | BL-12 | **Doğrulama 3 ve 6 mainnet'te:** Desktop'ın ilk imzada kaç onay penceresi açtığı; v1 malleability | Track A / D + insan | ☐ | STATUS "Doğrulama testleri" ✅ | HANDOFF §2.2 #6 |
 | BL-13 | **T8 (market sweep) ve T11/T11b (Coop Rail; Base Sepolia deploy) mainnet'te** | Track C / D | ☐ | README tx tablosunda txid | THREAT-MODEL §3 |
@@ -65,3 +65,5 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 | F-10 bulundu ve tekrarlandı (bu oturum), düzeltildi (repo sahibinin oturumu) | `27c0eab`, `740f893` |
 | Doğrulama 4 mainnet'te geçti | `740f893` |
 | Devir belgesi + prova betiği repoda | `6539b56`, `7d5d0ef` |
+| F-11 düzeltildi (Coop Rail claim yalnızca 32 baytlık secret alıyor; `test/rail.htlc-preimage.test.ts`) | `d734c9c` |
+| Backlog, CLAUDE.md belge haritası | `07feaff`, `02001bc` |
