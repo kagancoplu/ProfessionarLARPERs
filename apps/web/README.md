@@ -13,7 +13,7 @@ Design rules: [`DESIGN.md`](./DESIGN.md). Plan: `plan/track-E-frontend.md`, phas
 - **Settings:** the ⚙ in the top bar (`/settings`): day/night, sound, walking, presenter mode, reduced motion, replay speed.
 - **Already on mainnet:** the Town and the Explorer list the project's real BSV transactions (the S1 run and the BSV Desktop mint, pool and offer) with WhatsOnChain links, in every mode.
 - **Sign now and leave:** in the join form, a person can pledge as a *lighthouse* (A-P5): one signature binds the coin to their own credits and the guard co-signs the settlement, so nobody waits for the 60-second round. Live mode needs the coordinator's `POST /pledges/lighthouse`.
-- **Avatar mode:** "Walk the town" under the canvas (or `V`, `?avatar=1`): your own villager walks with WASD / arrows, the camera follows, `E` opens whatever is in front of you (board, stall, house, vault chest, workshop, harbor). Works without a wallet as a guest.
+- **Avatar mode:** "Walk the town" under the canvas (or `V`, `?avatar=1`): your own villager starts in front of the fountain and walks with WASD / arrows, the camera follows, `E` opens whatever is in front of you (board, stall, house, vault chest, workshop, harbor). Works without a wallet as a guest. Outside avatar mode the view rests on the square (wheel zooms, nothing pans it away).
 
 ![The Town by day](../../docs/screenshots/web/01-town-day.png)
 

@@ -44,7 +44,7 @@ export default function TownCanvas () {
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <PixelButton size="sm" variant={avatar ? 'primary' : 'secondary'} onClick={() => store.getState().updateSettings({ avatar: !avatar })} data-testid="avatar-toggle">{avatar ? 'Walking · back to the map' : 'Walk the town'}</PixelButton>
-        <p className="label text-ink-muted">{avatar ? 'WASD / arrows to walk · E to open what is in front of you · V to leave' : 'drag to pan · wheel to zoom (2×–4×) · click a villager, the board or the workshop · V to walk'}</p>
+        <p className="label text-ink-muted">{avatar ? 'WASD / arrows to walk · E to open what is in front of you · V to leave' : 'the view rests on the square · wheel to zoom (2×–4×) · click a villager, the board or the workshop · V to walk'}</p>
       </div>
       <TownDrawer />
     </div>

@@ -53,15 +53,19 @@ export class Stranger extends Villager {
   async whisper (target: { x: number, y: number }, text: string, speed: number): Promise<void> {
     this.busy = true
     await this.walkTo(target.x - 16, target.y + 2)
+    if (this.gone) return
     this.say(`psst… “${text}”`, 'danger', 4500)
     await new Promise(r => this.scene.time.delayedCall(2600 / speed, r))
   }
 
   async flee (toX: number, toY: number): Promise<void> {
+    if (this.gone) return
     this.say('…', 'parchment', 800)
     // never linger: off the map (exact, past the gate) or gone after 6 s, whichever comes first
     const gone = new Promise<void>(resolve => this.scene.time.delayedCall(6_000, resolve))
     await Promise.race([this.walkTo(toX, toY, { exact: true }), gone])
+    if (this.gone) return
+    // destroy() stops a walk still under way (6 s were not enough to reach the edge)
     this.scene.tweens.add({ targets: this, alpha: 0, duration: 300, onComplete: () => this.destroy() })
   }
 }

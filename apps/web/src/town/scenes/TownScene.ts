@@ -50,7 +50,6 @@ export class TownScene extends Phaser.Scene {
   map!: Phaser.Tilemaps.Tilemap
   private waterFrame = 0
   private detach?: () => void
-  private dragStart?: { x: number, y: number, sx: number, sy: number }
   avatar?: AvatarController
   ambient?: Ambient
 
@@ -60,6 +59,10 @@ export class TownScene extends Phaser.Scene {
   /** false once the scene (or the game) is torn down; the bridge checks it before touching entities */
   get alive (): boolean { return this.sys !== undefined && this.sys.settings !== undefined && this.scene !== undefined && this.sys.isActive() }
   get squareCentre (): { x: number, y: number } { const p = POINTS['square-centre']!; return { x: p.x, y: p.y } }
+  /** where the map view rests (the fountain in the middle of the square) unless the viewer walks the town */
+  get viewCentre (): { x: number, y: number } { const c = this.squareCentre; return { x: c.x, y: c.y - 8 } }
+  /** where every walk starts: in front of the fountain, in the middle of the view */
+  get walkStart (): { x: number, y: number } { const p = POINTS['walk-start']!; return { x: p.x, y: p.y } }
 
   preload (): void {
     this.load.tilemapTiledJSON('map', '/game/map.json')
@@ -71,6 +74,7 @@ export class TownScene extends Phaser.Scene {
   }
 
   create (): void {
+    this.guardLoop()
     this.registry.set('speed', this.deps.fx.speed)
     this.makeGlowTexture()
     const map = this.make.tilemap({ key: 'map' })
@@ -119,18 +123,15 @@ export class TownScene extends Phaser.Scene {
     this.night = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x2b2d5e, 0.55).setOrigin(0, 0).setDepth(DEPTH.overlay).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(true).setAlpha(0)
     this.ambient = new Ambient(this, { reducedMotion: this.deps.fx.reducedMotion, showers: this.deps.film !== true })
 
+    // the map view rests on the fountain (no drag, no follow): only "Walk the town" moves the camera
     const cam = this.cameras.main
     cam.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE)
     cam.setZoom(ZOOM_DEFAULT)
-    cam.centerOn(this.squareCentre.x, this.squareCentre.y - 8)
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.lastTouch = this.time.now; this.dragStart = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY } })
-    this.input.on('pointerup', () => { this.dragStart = undefined })
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (this.dragStart === undefined || !p.isDown || this.avatar?.enabled === true) return
-      if (Math.abs(p.x - this.dragStart.x) + Math.abs(p.y - this.dragStart.y) > 4) { this.following = undefined; cam.stopFollow() }
-      cam.setScroll(Math.round(this.dragStart.sx - (p.x - this.dragStart.x) / cam.zoom), Math.round(this.dragStart.sy - (p.y - this.dragStart.y) / cam.zoom))
-    })
-    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.lastTouch = this.time.now; this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
+    this.homeCamera()
+    // the canvas follows its parent (Scale.RESIZE): a new size keeps the scroll, so the centre would drift
+    const onResize = (): void => { if (this.alive && this.deps.film !== true && this.avatar?.enabled !== true) this.homeCamera() }
+    this.scale.on('resize', onResize)
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
     const open = (kind: 'pool' | 'agent' | 'workshop', id: string) => () => { if (kind === 'workshop') this.deps.store.getState().openDrawer('me', 'workshop'); else this.deps.store.getState().openDrawer(kind, id) }
     this.board.on('pointerup', () => { if (this.board.poolId !== undefined) open('pool', this.board.poolId)() })
     for (const st of this.stalls) st.on('pointerup', () => { if (st.outpoint !== undefined) this.deps.store.getState().openDrawer('listing', st.outpoint) })
@@ -139,9 +140,24 @@ export class TownScene extends Phaser.Scene {
     this.workshop.on('pointerup', open('workshop', 'workshop'))
     this.detach = this.deps.film === true ? undefined : attachBridge(this, this.deps.store, this.deps.bus)
     const detachPlayers = this.deps.film === true ? () => {} : attachMultiplayer(this, this.deps.store)
-    const teardown = (): void => { this.detach?.(); this.detach = undefined; detachPlayers(); this.deps.fx.clear(); this.ambient?.destroy() }
+    const teardown = (): void => { this.scale.off('resize', onResize); this.detach?.(); this.detach = undefined; detachPlayers(); this.deps.fx.clear(); this.ambient?.destroy() }
     this.events.once('shutdown', teardown)
     this.events.once('destroy', teardown)
+  }
+
+  /**
+   * Phaser asks for the next animation frame only after the current one returns, so one exception inside a frame
+   * (a tween or timer calling into something already destroyed) stopped the Town for good. Log it and keep going.
+   */
+  private guardLoop (): void {
+    const loop = this.game.loop as unknown as { callback: ((time: number, delta: number) => void) & { guarded?: true } }
+    const step = loop.callback
+    if (step.guarded === true) return
+    let logged = 0
+    const guarded = Object.assign((time: number, delta: number): void => {
+      try { step(time, delta) } catch (err) { if (logged++ < 5) console.error('[town] frame error, the town keeps running', err) }
+    }, { guarded: true as const })
+    loop.callback = guarded
   }
 
   private tickWater (): void {
@@ -165,16 +181,50 @@ export class TownScene extends Phaser.Scene {
 
   update (_time: number, delta: number): void { this.avatar?.update(delta) }
 
-  /** Avatar mode on/off (settings.avatar): the player's villager is "you" when a wallet is connected, else a guest. */
+  /**
+   * Avatar mode on/off (settings.avatar): the player's villager is "you" when a wallet is connected, else a guest.
+   * The bridge calls this on every store change, so it acts only when something changed. A walk starts at the
+   * fountain (where the map view rests); leaving it brings the camera back there.
+   */
   setAvatarMode (on: boolean): void {
-    if (!on) { this.avatar?.enable(false); return }
+    const prev = this.avatar
+    if (!on) {
+      if (prev?.enabled === true) { prev.enable(false); this.homeCamera(true) }
+      return
+    }
     const me = this.deps.store.getState().me.identityKey
     const v = me !== undefined ? this.addVillager(me, 'visitor', 'you') : this.addVillager('guest', 'visitor', 'you (guest)')
-    if (this.avatar?.villager !== v) { this.avatar?.destroy(); this.avatar = new AvatarController(this, v) }
-    this.avatar.enable(true)
+    const walking = prev?.enabled === true
+    if (prev?.villager === v && walking) return
+    // a wallet connected (or left) while walking: the new villager takes over where the old one stood
+    const at = walking ? { x: prev.villager.x, y: prev.villager.y } : this.walkStart
+    if (prev?.villager !== v) {
+      prev?.destroy()
+      if (prev?.villager.identity === 'guest') this.removeVillager('guest')
+      this.avatar = new AvatarController(this, v)
+    }
+    v.halt()
+    v.setPosition(at.x, at.y).setDepth(at.y)
+    v.home = { ...at }
+    this.avatar!.enable(true)
   }
 
-  setZoom (z: number): void { this.cameras.main.setZoom(Phaser.Math.Clamp(Math.round(z), ZOOM_MIN, ZOOM_MAX)); this.applyLabelDetail() }
+  /** The map view: the camera rests on the fountain. `smooth` pans there (leaving avatar mode). */
+  homeCamera (smooth = false): void {
+    const cam = this.cameras.main
+    const c = this.viewCentre
+    cam.stopFollow()
+    if (smooth && Math.hypot(cam.midPoint.x - c.x, cam.midPoint.y - c.y) < 1) return
+    if (smooth && !this.deps.fx.reducedMotion) cam.pan(c.x, c.y, 600, 'Sine.easeInOut', true)
+    else { cam.panEffect.reset(); cam.centerOn(c.x, c.y) }
+  }
+
+  setZoom (z: number): void {
+    this.cameras.main.setZoom(Phaser.Math.Clamp(Math.round(z), ZOOM_MIN, ZOOM_MAX))
+    // zoom keeps the middle, but the bounds may have pushed the view off it at the edge of the map
+    if (this.deps.film !== true && this.avatar?.enabled !== true) this.homeCamera()
+    this.applyLabelDetail()
+  }
   /** dusk and dawn fade in 1.5 s instead of switching */
   setNight (on: boolean): void {
     if (this.isNight === on) return
@@ -195,29 +245,21 @@ export class TownScene extends Phaser.Scene {
   }
   setSpeed (speed: number): void { this.registry.set('speed', speed); this.deps.fx.speed = speed }
 
-  /** when the viewer last dragged or zoomed (cinematic pans leave them alone for 12 s) */
-  lastTouch = -Infinity
-  following?: Villager
-
-  /** keep a clicked villager in view until the viewer drags */
-  follow (v: Villager): void {
-    if (this.avatar?.enabled === true) return
-    this.following = v
-    this.cameras.main.startFollow(v, true, 0.08, 0.08)
+  /**
+   * A big moment (the settlement on the square). The map view already rests on the square, so the camera does
+   * not move; a walking viewer is left alone.
+   */
+  cinematic (_x: number, _y: number): Promise<void> {
+    if (this.avatar?.enabled !== true) this.homeCamera(true)
+    return Promise.resolve()
   }
 
-  /** a short camera move for a big moment, unless the viewer is busy looking elsewhere */
-  cinematic (x: number, y: number): Promise<void> {
-    const cam = this.cameras.main
-    if (this.avatar?.enabled === true || this.following !== undefined || this.time.now - this.lastTouch < 12_000) return Promise.resolve()
-    // camera effects take EaseMap names ('Sine.easeInOut'), not the tween shorthand; the timer keeps the scene going if a pan is cut short
-    return new Promise(resolve => {
-      const done = this.time.delayedCall(1_200, resolve)
-      cam.pan(x, y, 900, 'Sine.easeInOut', false, (_c: unknown, progress: number) => { if (progress >= 1) { done.remove(false); resolve() } })
-    })
+  /** What clicking (or `E` on) a villager does: an agent opens its card; anyone else (a visitor) says hello. */
+  interact (v: Villager): void {
+    const s = this.deps.store.getState()
+    if (s.agents.byIdentity[v.identity] !== undefined) s.openDrawer('agent', v.identity)
+    else v.say(v.identity.startsWith('peer:') ? 'Hello, neighbour!' : 'Hello!', 'parchment', 2200)
   }
-
-  focusOn (identity: string): void { const v = this.villagers.get(identity); if (v !== undefined) this.cameras.main.pan(v.x, v.y, 400) }
 
   houseOf (identity: string): House | undefined { return this.houses.find(h => h.owner === identity) }
 
@@ -293,7 +335,6 @@ export class TownScene extends Phaser.Scene {
   removeVillager (identity: string): void {
     const v = this.villagers.get(identity)
     if (v === undefined) return
-    if (this.following === v) { this.following = undefined; this.cameras.main.stopFollow() }
     v.destroy()
     this.villagers.delete(identity)
   }
@@ -306,14 +347,15 @@ export class TownScene extends Phaser.Scene {
     const prof: Profile = profile === 'finetune' || profile === 'eval' || profile === 'inference' ? profile : 'visitor'
     const house = prof === 'visitor' || opts.house === false ? undefined : this.houses.find(h => h.owner === undefined)
     const visitorSpawn = POINTS['visitor-spawn']
-    const spot = house !== undefined ? house.doorstep : prof === 'visitor' && visitorSpawn !== undefined ? { x: visitorSpawn.x, y: visitorSpawn.y } : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
+    // visitors (you, other players) appear around the fountain, a step apart
+    const spot = house !== undefined ? house.doorstep : prof === 'visitor' && visitorSpawn !== undefined ? { x: visitorSpawn.x + ((this.villagers.size % 5) - 2) * 14, y: visitorSpawn.y } : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
     house?.setOwner(identity, name)
     const char = opts.char ?? (prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!)
     const v = new Villager(this, identity, prof, name, spot.x, spot.y, char)
     v.wanderSpots = this.wanderSpots()
     v.showName(this.cameras.main.zoom >= 3)
     v.slotIndex = this.villagers.size
-    v.on('pointerup', () => { this.deps.store.getState().openDrawer('agent', identity); this.follow(v) })
+    v.on('pointerup', () => { this.interact(v) })
     this.villagers.set(identity, v)
     return v
   }

@@ -91,9 +91,14 @@ export const ANIMALS: AnimalSpawn[] = [
   { char: 'swan', x: POND.x + 3, y: POND.y + 2.5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true }
 ]
 
+/** In front of the fountain (one tile below its foot), in the middle of the map view: walks start here. */
+const FOUNTAIN_FRONT = { x: 24.5 * TILE, y: (PLAZA.y + 6) * TILE + 12 }
+
 export const POINTS: Record<string, Point> = {
   'square-centre': { name: 'square-centre', x: (PLAZA_COBBLE.x + PLAZA_COBBLE.w / 2) * TILE, y: (PLAZA_COBBLE.y + PLAZA_COBBLE.h / 2 + 1.5) * TILE },
-  'visitor-spawn': { name: 'visitor-spawn', x: 1.5 * TILE, y: (ROAD_Y + 1) * TILE },
+  'walk-start': { name: 'walk-start', ...FOUNTAIN_FRONT },
+  // visitors (you, other players) appear at the fountain too, not at the west edge
+  'visitor-spawn': { name: 'visitor-spawn', ...FOUNTAIN_FRONT },
   gate: { name: 'gate', x: 0, y: (ROAD_Y + 1) * TILE }
 }
 
