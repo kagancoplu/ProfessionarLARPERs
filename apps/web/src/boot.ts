@@ -1,6 +1,7 @@
 /**
  * Bootstrap for the three modes (track-E §2.3): one bus, one store, one wallet controller.
- *   live   → health polling, coordinator WS, overlay SSE (+ derive), guard/agents envelope SSE
+ *   live   → coordinator WS + either the Supabase mirror (transport 'supabase', falls back to direct) or
+ *            health polling, overlay SSE (+ derive), guard/agents envelope SSE, polls (transport 'direct')
  *   mock   → MSW worker + scenario + mock Desktop
  *   replay → ReplayPlayer over public/replays/<name>.jsonl
  * The UI never changes between modes; only adapters and the WalletInterface do.
@@ -10,6 +11,8 @@ import { agentsApi } from './api/agents'
 import { guardApi } from './api/guard'
 import { makerApi } from './api/maker'
 import { overlayApi } from './api/overlay'
+import { getSupabase } from './api/supabase'
+import { createLiveClient } from './api/supabaseLiveClient'
 import { startSfx } from './audio'
 import { invalidateFor, queryClient } from './api/queries'
 import type { AppRuntime } from './app-context'
@@ -18,6 +21,7 @@ import { createBus } from './events/bus'
 import { startCoordinatorFeed } from './events/adapters/coordinatorWs'
 import { startEnvelopeSse } from './events/adapters/envelopeSse'
 import { startOverlaySse } from './events/adapters/overlaySse'
+import { startSupabaseLive } from './events/adapters/supabaseLive'
 import { startHealthPolling } from './events/health'
 import { startLivePolling } from './events/livePoll'
 import { makeEvent } from './events/types'
@@ -75,9 +79,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
     return runtime
   }
 
-  // live
-  const health = startHealthPolling(bus, ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker'])
-  stops.push(health.close)
+  // live: the coordinator's WS and the wallet flows are direct in both transports (signing rounds, settled → afterSettlement)
   const status = (service: 'coop' | 'overlay' | 'guard' | 'agents' | 'maker') => (ok: boolean, detail?: string) => {
     const current = store.getState().health[service]
     if (current.ok === ok && current.detail === detail) return
@@ -91,13 +93,38 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
   const liveFeed = feed
   stops.push(liveFeed.close)
   flows = createLiveFlows({ env, store, bus, getWallet: () => wallet.wallet, getFeed: () => liveFeed })
-  const overlay = startOverlaySse({ url: `${env.urls.overlay}/agentcoop/events`, bus, store, coop: coopApi, onStatus: status('overlay') })
-  stops.push(overlay.close)
-  stops.push(startEnvelopeSse('guard', guardApi.eventsUrl, bus, status('guard')).close)
-  stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
-  stops.push(startEnvelopeSse('maker', makerApi.eventsUrl, bus, status('maker')).close)
-  // listings, the agents' roster and vaults have no stream of their own
-  stops.push(startLivePolling(bus, store, { listings: () => coopApi.listings(), agents: () => agentsApi.list(), vaults: () => overlayApi.vaults(), vaultCredits: h => overlayApi.vaultCredits(h) }))
+  // the services' own streams and polls (transport 'direct', or the fallback when the Supabase mirror is unavailable)
+  let direct = false
+  const startDirect = (): void => {
+    if (direct) return
+    direct = true
+    const health = startHealthPolling(bus, ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker'])
+    stops.push(health.close)
+    const overlay = startOverlaySse({ url: `${env.urls.overlay}/agentcoop/events`, bus, store, coop: coopApi, onStatus: status('overlay') })
+    stops.push(overlay.close)
+    stops.push(startEnvelopeSse('guard', guardApi.eventsUrl, bus, status('guard')).close)
+    stops.push(startEnvelopeSse('agents', agentsApi.eventsUrl, bus, status('agents')).close)
+    stops.push(startEnvelopeSse('maker', makerApi.eventsUrl, bus, status('maker')).close)
+    // listings, the agents' roster and vaults have no stream of their own
+    stops.push(startLivePolling(bus, store, { listings: () => coopApi.listings(), agents: () => agentsApi.list(), vaults: () => overlayApi.vaults(), vaultCredits: h => overlayApi.vaultCredits(h) }))
+  }
+  // transport 'supabase' (plan/phases/SUPABASE-MVP.md): one connection to the relay's mirror instead of the streams above
+  const sb = await getSupabase()
+  if (sb === undefined) startDirect()
+  else {
+    let live: { close: () => void } | undefined
+    const fallBack = (why: string): void => {
+      if (direct) return
+      live?.close()
+      console.warn(`[live] Supabase mirror unavailable (${why}); using the services directly`)
+      store.getState().pushToast({ kind: 'warn', text: 'Live mirror unavailable: reading the services directly' })
+      startDirect()
+    }
+    const started = startSupabaseLive({ client: createLiveClient(sb), bus, store, onStale: () => fallBack('no ticks from the relay') })
+    live = started
+    stops.push(started.close)
+    started.ready.catch(err => fallBack(String((err as Error).message ?? err)))
+  }
   // a wallet connection announces itself to the coordinator so sign_requests arrive
   stops.push(store.subscribe((s, prev) => {
     if (s.me.identityKey !== undefined && s.me.identityKey !== prev.me.identityKey) liveFeed.hello(s.me.identityKey, mine.getState().pledges.filter(p => p.status === 'pending' || p.status === 'signed').map(p => p.poolId))
