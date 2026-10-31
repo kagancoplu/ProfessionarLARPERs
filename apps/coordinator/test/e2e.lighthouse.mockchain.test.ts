@@ -144,4 +144,28 @@ describe('coordinator × lighthouse pledges (A-P5 5.5–5.7)', () => {
     const metrics = await (await fetch(`${coop.url}/metrics`)).json()
     expect(metrics).toMatchObject({ custodiedSats: 0, custodyCheck: { unaccountedOutputs: [] } })
   })
+
+  it('a pool filled by one lighthouse pledge alone settles: nobody on WS, the guard signs', async () => {
+    const height = await chain.services.getHeight()
+    const kitP = kitFor(provider)
+    const { tokenId } = await kitP.deploy({ sym: 'SOLO', amt: 10n, dec: 0 })
+    const reserved = await buildReserveAndAnnounce(provider, kitP, {
+      v: '1', providerApi: 'http://localhost:8092', tokenId, credits: '10', priceSats: '250', feeSats: '100',
+      minCredits: '5', deadlineHeight: String(height + 144), label: 'solo lighthouse', retailSatsPerCredit: '50'
+    })
+    const solo = reserved.terms
+    expect((await post('/offers', await signOffer(provider, solo.poolId, solo))).status).toBe(201)
+    const lp = await buildLighthousePledge(human1, solo, '10', { tokenIndex: await kitFor(human1).nextIndex(human1.identityKey), guard: guardWallet.identityKey })
+    expect((await post('/pledges/lighthouse', lp)).status).toBe(201)
+    const settled = await waitUntil(async () => {
+      const v = await (await fetch(`${coop.url}/pools/${solo.poolId}`)).json()
+      return v.status === 'settled' ? v : undefined
+    }, 30_000, 'solo settled')
+    const tx = await fetchTx(settled.settledTxid)
+    expect(tx.outputs.some(o => o.lockingScript.toHex() === lp.creditLockingScriptHex)).toBe(true)
+    expect(tx.outputs[0].satoshis).toBe(250)
+    const kit = kitFor(human1)
+    await kit.sync()
+    expect((await kit.balances()).find(b => b.tokenId === tokenId)?.overlay).toBe(10n)
+  })
 })
