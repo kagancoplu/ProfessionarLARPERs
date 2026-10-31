@@ -4,13 +4,13 @@
  * Needs WALLET_MAKER_KEY (BSV identity) and BASE_PRIVATE_KEY (only its address is used here; never printed).
  */
 import { join } from 'node:path'
-import { fetchChainPolicy } from '@agentcoop/core'
+import { arcadeTxFetcher, fetchChainPolicy } from '@agentcoop/core'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
 import { arcadeUrl, chain, DATA_DIR } from '../../../scripts/lib/env'
 import { openWallet } from '../../../scripts/wallets'
 import { createMakerApp } from './server'
-import { arcadeBroadcast, fileRecords, startWatchdog } from './watchdog'
+import { arcadeBroadcast, fileRecords, startWatchdog, usdcClaimFromEnv } from './watchdog'
 
 async function main (): Promise<void> {
   const url = new URL(process.env.MAKER_URL ?? 'http://localhost:8094')
@@ -34,6 +34,7 @@ async function main (): Promise<void> {
     records: fileRecords(join(DATA_DIR, 'rail')),
     tip: async () => (await fetchChainPolicy(arcade)).height,
     broadcast: arcadeBroadcast(arcade),
+    ...usdcClaimFromEnv(process.env, chain(), arcadeTxFetcher(arcade)),
     log: line => { console.log(`[maker] ${line}`) }
   })
 }

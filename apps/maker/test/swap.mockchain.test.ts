@@ -15,7 +15,7 @@ import { getAddress, type Address } from 'viem'
 import { Guard } from '../../guard/src/guard'
 import { createGuardApp } from '../../guard/src/server'
 import { createVault, putPolicy, registerVault, type VaultInfo } from '../../owner-cli/src/vault-ops'
-import { deployHtlc, deployMockUsdc, getLock, USDC_ABI, usdcBalance } from '../src/base'
+import { claimUsdc, deployHtlc, deployMockUsdc, getLock, USDC_ABI, usdcBalance } from '../src/base'
 import { MemoryEvm } from '../src/evm'
 import { RAIL_BASKET } from '../src/rail'
 import { MAX_SWAP_SATS, runSwap, type SwapParties, type SwapStep } from '../src/swap'
@@ -132,6 +132,38 @@ describe('runSwap: the swap-demo steps, offline', () => {
     // done: a second pass sends nothing
     expect((await watchOnce(deps(record.refundLockTime! + 5))).sent).toEqual([])
     expect(sent).toHaveLength(1)
+  })
+
+  it('F-4: the swap process dies right after the agent claims on BSV; the watchdog reads the secret and claims the USDC', async () => {
+    let record: RailRecord = {}
+    const onStep = (s: SwapStep): void => {
+      if (s.step === 'quote') Object.assign(record, { swapId: s.swapId, hash: s.hash })
+      if (s.step === 'base_locked') record.baseLock = { id: s.id }
+      if (s.step === 'funding_signed') Object.assign(record, { fundingTxid: s.txid, fundingVout: s.vout })
+      if (s.step === 'refund_ready') Object.assign(record, { refundEF: s.efHex, refundTxid: s.txid, refundLockTime: s.lockTime })
+      if (s.step === 'funding_sent') record.fundingSent = true
+      if (s.step === 'claimed') { claimTxid = s.txid; throw new Error('maker process died') } // before step 6, the Base claim
+    }
+    let claimTxid: string | undefined
+    const before = await usdcBalance(evm, parties.usdc, MAKER_EVM)
+    await expect(runSwap(parties, { amount: 250_000n, satsPerUsdc: 2_000, onStep })).rejects.toThrow(/maker process died/)
+    expect(await usdcBalance(evm, parties.usdc, MAKER_EVM)).toBe(before) // nothing claimed on Base yet
+    expect(record.claimTxid).toBeUndefined() // the dead process never wrote it
+
+    const r = await watchOnce({
+      records: () => [{ record, save: x => { record = x } }],
+      tip: async () => { throw new Error('not needed: the HTLC is claimed') },
+      broadcast: async () => { throw new Error('no refund for a claimed swap') },
+      spentBy: async (txid, vout) => (txid === record.fundingTxid && vout === record.fundingVout ? claimTxid : undefined),
+      fetchTx,
+      claimUsdc: async (id, secret) => (await claimUsdc(evm, { htlc: parties.htlc, from: MAKER_EVM, id, secret })).txHash
+    })
+    expect(r.claimed).toHaveLength(1)
+    expect(record).toMatchObject({ claimTxid, baseClaimTx: r.claimed[0] })
+    expect(await usdcBalance(evm, parties.usdc, MAKER_EVM)).toBe(before + 250_000n)
+    expect((await getLock(evm, parties.htlc, record.baseLock!.id)).state).toBe('claimed')
+    // done: another pass does nothing
+    expect(await watchOnce({ records: () => [{ record, save: x => { record = x } }], tip: async () => 0, broadcast: async () => '' })).toEqual({ sent: [], failed: [], claimed: [] })
   })
 
   it('F-4: the agent refuses to claim (and reveal the secret) when the refund is near final', async () => {
