@@ -17,6 +17,7 @@ import { ANIMALS, FOUNTAIN, PLACES, TREES } from '../map/places'
 import { Animal } from '../entities/Animal'
 import { MAP_H, MAP_W, TILE } from '../map/terrain'
 import { attachBridge } from '../bridge'
+import { attachMultiplayer } from '../multiplayer'
 import { DEPTH, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN } from '../game'
 import { AvatarController } from '../avatar'
 import { Ambient } from '../ambient'
@@ -136,7 +137,8 @@ export class TownScene extends Phaser.Scene {
     this.coop.on('pointerup', () => { const first = [...this.chests.keys()][0]; if (first !== undefined) this.deps.store.getState().openDrawer('vault', first) })
     this.workshop.on('pointerup', open('workshop', 'workshop'))
     this.detach = attachBridge(this, this.deps.store, this.deps.bus)
-    const teardown = (): void => { this.detach?.(); this.detach = undefined; this.deps.fx.clear(); this.ambient?.destroy() }
+    const detachPlayers = attachMultiplayer(this, this.deps.store)
+    const teardown = (): void => { this.detach?.(); this.detach = undefined; detachPlayers(); this.deps.fx.clear(); this.ambient?.destroy() }
     this.events.once('shutdown', teardown)
     this.events.once('destroy', teardown)
   }
@@ -285,6 +287,15 @@ export class TownScene extends Phaser.Scene {
 
   track (p: Promise<void>): Promise<void> { this.inFlight.add(p); return p.finally(() => { this.inFlight.delete(p) }) }
   settle (): Promise<void> { return Promise.all([...this.inFlight]).then(() => {}) }
+
+  /** Remove a villager that has left (a multiplayer visitor): visitors never own a house. */
+  removeVillager (identity: string): void {
+    const v = this.villagers.get(identity)
+    if (v === undefined) return
+    if (this.following === v) { this.following = undefined; this.cameras.main.stopFollow() }
+    v.destroy()
+    this.villagers.delete(identity)
+  }
 
   /** Add a villager for an agent: a free house or the square's edge (crowd mode). */
   addVillager (identity: string, profile: string, name: string): Villager {
