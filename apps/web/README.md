@@ -62,6 +62,10 @@ npm -w apps/web run map        # src/town/map/*.ts → public/game/map.json (Til
 npm -w apps/web run ui         # public/ui icons strip + 9-slice frames
 ```
 
+## Deploy (Vercel, public demo)
+
+The public pitch demo runs on Vercel + Supabase with no backend: see [`plan/DEMO-HYBRID.md`](../../plan/DEMO-HYBRID.md). Import the `web` (Vite) project with Root Directory `apps/web` and Node 22.x; `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build:demo`), output, the SPA rewrite and the headers below. Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (anon key only), `VITE_NETWORK=main`.
+
 ## Deploy (Cloudflare Pages)
 
 - Build command `npm run web:build`, output `apps/web/dist`, Node 22+. `public/_redirects` routes every path to `index.html`; `public/_headers` sets CSP and long caches for `/game`, `/ui`, `/assets` (fill the service origins into `connect-src`).

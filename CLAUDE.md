@@ -19,6 +19,7 @@ Bu repoda beş track (A protokol, B overlay + koordinatör, C sağlayıcı + aja
   - Track planları: `plan/track-A-protocol.md`, `plan/track-B-overlay-coordinator.md`, `plan/track-C-provider-agents.md`, `plan/track-D-vault-ops-rail.md`, `plan/track-E-frontend.md`.
   - Faz planları: `plan/phases/` (`<track>-P<n>.md`). Ayrıca `plan/phases/SUPABASE-MVP.md` (Supabase canlı katmanı), `plan/phases/AUDIT-PRIZE.md` (denetim hazırlığı), `plan/phases/A-P6-covenant-report.md`, `plan/phases/A-P6-ordlock-notes.md`.
   - `plan/SUPABASE-FLOW.md`: Supabase akış raporu.
+  - `plan/DEMO-HYBRID.md`: herkese açık pitch demosu (Vercel + Supabase, backend yok; akış mock, ödemeler gerçek mainnet).
   - `plan/MAINNET-RUNBOOK.md`: mainnet koşusu, adım adım.
   - `plan/SETUP-ACCOUNTS.md`: hesaplar ve servisler.
   - İlk fikirler (arşiv; `FINAL-IDEA.md`'ye birleşti): `idea.md`, `AnyRail-fikir.md`, `agent-spending-vault.md`.
@@ -44,6 +45,15 @@ Bu repoda beş track (A protokol, B overlay + koordinatör, C sağlayıcı + aja
   - Uygulamalar: `apps/agents/README.md`, `apps/coordinator/README.md`, `apps/guard/README.md`, `apps/owner-cli/README.md`, `apps/participant-cli/README.md`, `apps/provider-api/README.md`, `apps/provider-cli/README.md`, `apps/relay/README.md`, `apps/web/README.md`.
   - Web: `apps/web/DESIGN.md` (tasarım sistemi), `apps/web/VIDEO.md` (video çekim senaryosu), `apps/web/assets/LICENSES.md`, `apps/web/assets/packs/README.md` (git'te olmayan sanat paketleri).
 - **Proje skill'leri**: `.claude/skills/village-art-direction/SKILL.md` (Kasaba sanatı), `.claude/skills/pixelbolt-pixel-art/SKILL.md`.
+
+## Demo senaryoları (business)
+
+Business tarafındaki arkadaş başka bir Claude oturumundan senaryo, demo sahnesi ve akış getirebilir (ör. 5 kullanıcı ortak bir servis alır). Böyle bir senaryoyu uygularken önce `plan/DEMO-HYBRID.md`'yi oku ve kurallarına uy:
+
+- Demo yalnızca Vercel + Supabase üzerinde, ücretsiz çalışır; backend yayınlanmaz.
+- Akış mock ilerler, ama her ödeme gerçek mainnet işlemidir. Ödeyenin parası BSV Desktop'tan gerçekten düşer, karşı taraf `internalizeAction` ile gerçekten alır.
+- Lobi kurulmaz; taraflar arası iletişim Supabase Realtime ile ekranda gösterilir.
+- Senaryo backend gerektiriyorsa uygulamadan önce kullanıcıya sor.
 
 ## Her kullanıcı mesajından sonra
 

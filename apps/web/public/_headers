@@ -5,7 +5,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://arcade-v2-us-1.bsvblockchain.tech https://api.whatsonchain.com wss: https:; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://arcade-v2-us-1.bsvblockchain.tech https://api.whatsonchain.com wss: https: http://localhost:3301 http://localhost:3321; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'
 
 /game/*
   Cache-Control: public, max-age=31536000, immutable
