@@ -26,9 +26,14 @@ export class WocSpentChecker implements SpentChecker {
           body: JSON.stringify({ utxos: batch.map(o => { const [txid, vout] = o.split('_'); return { txid, vout: Number(vout) } }) })
         })
         if (!res.ok) continue
-        for (const item of await res.json() as Array<{ utxo?: { txid: string, vout: number }, spentIn?: { txid?: string } | null }>) {
+        for (const item of await res.json() as Array<{ utxo?: { txid: string, vout: number }, spentIn?: { txid?: string } | null, error?: string }>) {
           if (item.utxo === undefined) continue
-          result.set(`${item.utxo.txid}_${item.utxo.vout}`, item.spentIn?.txid !== undefined)
+          // Only a real spending txid means spent. WoC answers a just-broadcast tx it has not indexed
+          // with an error or an empty spentIn; that is unknown, not spent (a fresh mainnet pledge was
+          // blacklisted this way, 31.10). The broadcast stays the final check.
+          if (typeof item.error === 'string' && item.error !== '') continue
+          const by = item.spentIn?.txid
+          result.set(`${item.utxo.txid}_${item.utxo.vout}`, typeof by === 'string' && /^[0-9a-f]{64}$/i.test(by))
         }
       } catch {
         // unknown: the broadcast is the final check
