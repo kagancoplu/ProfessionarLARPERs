@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path'
 import { AuthFetch, Utils } from '@agentcoop/core/sdk'
 import { isVaultId } from '@agentcoop/core/scripts/vault'
+import { COOP_SERVICE, COOP_TOPIC, OverlayClient } from '@agentcoop/core'
 import { connectDesktop, flag, loadIdentities, option, run, short } from '../../../scripts/lib/cli'
 import { DATA_DIR, appOriginator, arcadeUrl, chain, wocTxUrl } from '../../../scripts/lib/env'
 import { findVaultUtxos } from './chain'
@@ -99,6 +100,17 @@ run(async () => {
       const handoff = join(vaultDir(vault.record.vaultId), `fund-${f.txid}.json`)
       writeFileSync(handoff, JSON.stringify({ vaultId: vault.record.vaultId, txid: f.txid, vout: f.vout, satoshis: f.satoshis, tx: Utils.toHex(f.tx) }, null, 2))
       console.log(`✓ funded ${amount} sats → ${wocTxUrl(f.txid)}`)
+      // The vault record must reach Track B's overlay: provider-api checks a vault-paid redeem against it
+      // (mainnet 31.10: without it a guard-approved redeem was refused as ERR_NOT_SENDER).
+      const url = overlayUrl()
+      if (url !== undefined) {
+        try {
+          await new OverlayClient(url, undefined, chain(), arcadeUrl(), COOP_TOPIC, COOP_SERVICE).submit(Array.from(f.tx))
+          console.log(`  vault record on the overlay (${url})`)
+        } catch (e) {
+          console.log(`  ! overlay submit failed (${(e as Error).message}); provider-api cannot see this vault until it is submitted`)
+        }
+      }
       console.log(`  agent hand-off: ${handoff} (apps/guard: npm run adopt -- <agent> ${vault.record.vaultId})`)
       console.log(`  STATUS: | ${new Date().toISOString().slice(0, 16)} | T9 vault fund | ${f.txid} | D | ${amount} sats |`)
       return
