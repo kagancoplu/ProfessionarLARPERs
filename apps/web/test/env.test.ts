@@ -40,4 +40,10 @@ describe('transport (plan/phases/SUPABASE-MVP.md)', () => {
     expect(resolveEnv({ ...sb, VITE_TRANSPORT: 'direct' }).transport).toBe('direct')
     expect(resolveEnv(sb, '?transport=direct').transport).toBe('direct')
   })
+
+  it('mock and replay never use Supabase, even with the keys in .env', () => {
+    expect(resolveEnv({ ...sb, MODE: 'mock' }).transport).toBe('direct')
+    expect(resolveEnv({ ...sb, MODE: 'mock' }).supabase).toBeUndefined()
+    expect(resolveEnv(sb, '?replay=mock-demo').transport).toBe('direct')
+  })
 })

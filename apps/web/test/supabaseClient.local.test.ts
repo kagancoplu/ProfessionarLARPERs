@@ -29,6 +29,17 @@ describe.skipIf(url === undefined)('createLiveClient (local stack)', () => {
     await db.from('live_vaults').delete().eq('vault_id', 'wv')
   })
 
+  it('snapshot pages through tables larger than one page (PostgREST caps a read at max_rows)', async () => {
+    const db = secret()
+    await db.from('live_pledges').upsert([{ outpoint: 'q1_0', pool_id: 'q_0', data: { outpoint: 'q1_0' } }, { outpoint: 'q2_0', pool_id: 'q_0', data: { outpoint: 'q2_0' } }, { outpoint: 'q3_0', pool_id: 'q_0', data: { outpoint: 'q3_0' } }])
+    const reads: string[] = []
+    const counting = createClient(url ?? '', process.env.SUPABASE_LOCAL_ANON_KEY ?? '', { ...opts, global: { fetch: async (input: RequestInfo | URL, init?: RequestInit) => { reads.push(String(input)); return await fetch(input, init) } } })
+    const snap = await createLiveClient(counting, { pageSize: 2 }).snapshot()
+    expect(snap.pledges.q_0?.map(p => p.outpoint).sort()).toEqual(['q1_0', 'q2_0', 'q3_0'])
+    expect(reads.filter(u => u.includes('/live_pledges')).length).toBeGreaterThanOrEqual(2)
+    await db.from('live_pledges').delete().eq('pool_id', 'q_0')
+  })
+
   it('history returns the latest events oldest first', async () => {
     const db = secret()
     const ev = (n: number) => ({ id: `web-test:${n}`, ts: `2030-01-01T00:00:0${n}.000Z`, src: 'agents', type: 'agent_thought', data: { text: String(n) } })

@@ -11,15 +11,22 @@ import { DEFAULT_SETTINGS } from '../src/store/types'
 const T = '2026-10-31T12:00:00.000Z'
 const empty: LiveSnapshot = { pools: [], pledges: {}, listings: [], vaults: [], vaultCredits: {}, agents: [], health: [] }
 
-function fakeClient (snapshot: () => Promise<LiveSnapshot>, history: CoopEvent[] = []) {
+function fakeClient (snapshot: () => Promise<LiveSnapshot>, history: CoopEvent[] = [], opts: { manualStatus?: boolean } = {}) {
   let onTick: ((t: LiveTick) => void) | undefined
+  let onStatus: ((ok: boolean, detail?: string) => void) | undefined
   const historyLimits: number[] = []
+  let snapshots = 0
   const client: LiveClient = {
-    snapshot,
+    snapshot: async () => { snapshots++; return await snapshot() },
     history: async limit => { historyLimits.push(limit); return history },
-    subscribeTicks: cb => { onTick = cb; return () => { onTick = undefined } }
+    subscribeTicks: (cb, status) => {
+      onTick = cb
+      onStatus = status
+      if (opts.manualStatus !== true) queueMicrotask(() => status(true, 'SUBSCRIBED'))
+      return () => { onTick = undefined }
+    }
   }
-  return { client, tick: (t: LiveTick) => onTick?.(t), historyLimits }
+  return { client, tick: (t: LiveTick) => onTick?.(t), status: (ok: boolean) => onStatus?.(ok, ok ? 'SUBSCRIBED' : 'CLOSED'), historyLimits, snapshots: () => snapshots }
 }
 
 function setup () {
@@ -81,6 +88,49 @@ describe('startSupabaseLive', () => {
     await vi.advanceTimersByTimeAsync(100_000)
     expect(stale).toBe(1)
     live.close()
+  })
+
+  it('waits for SUBSCRIBED before reading the snapshot', async () => {
+    const { store, bus } = setup()
+    const f = fakeClient(async () => empty, [], { manualStatus: true })
+    const live = startSupabaseLive({ client: f.client, bus, store, onStale: () => {} })
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+    expect(f.snapshots()).toBe(0)
+    f.status(true)
+    await live.ready
+    expect(f.snapshots()).toBe(1)
+    live.close()
+  })
+
+  it('re-reads the snapshot after a re-subscribe and publishes what changed', async () => {
+    const { store, bus, seen } = setup()
+    const a = makeMockPool(1, 10)
+    let snap: LiveSnapshot = { ...empty, pools: [a] }
+    const f = fakeClient(async () => snap, [], { manualStatus: true })
+    const live = startSupabaseLive({ client: f.client, bus, store, onStale: () => {} })
+    f.status(true)
+    await live.ready
+    const b = makeMockPool(2, 10)
+    snap = { ...empty, pools: [a, b] }
+    f.status(false)
+    f.status(true)
+    for (let i = 0; i < 20 && !seen.includes('pool_opened'); i++) await Promise.resolve()
+    expect(seen).toEqual(['pool_opened'])
+    expect(store.getState().pools.order).toEqual([a.poolId, b.poolId])
+    live.close()
+  })
+
+  it('a snapshot that arrives after close is not applied', async () => {
+    const { store, bus } = setup()
+    let release: ((s: LiveSnapshot) => void) | undefined
+    const f = fakeClient(async () => await new Promise<LiveSnapshot>(resolve => { release = resolve }))
+    const live = startSupabaseLive({ client: f.client, bus, store, onStale: () => {} })
+    const settled = live.ready.catch(() => {})
+    for (let i = 0; i < 20 && release === undefined; i++) await Promise.resolve()
+    live.close()
+    release?.({ ...empty, pools: [makeMockPool(1, 10)] })
+    await settled
+    expect(store.getState().pools.order).toEqual([])
   })
 
   it('hydrates the last 200 events from history before the snapshot, without bus listeners', async () => {

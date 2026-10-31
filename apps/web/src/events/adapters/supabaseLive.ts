@@ -1,6 +1,7 @@
 /**
- * Live mode over the relay's Supabase mirror (plan/phases/SUPABASE-MVP.md): subscribe first (ticks are buffered),
- * then the last 200 events into the store, then the tables' snapshot, then the buffered ticks in order. `ready`
+ * Live mode over the relay's Supabase mirror (plan/phases/SUPABASE-MVP.md): subscribe first and wait until it is
+ * live (ticks are buffered), then the last 200 events into the store, then the tables' snapshot, then the buffered
+ * ticks in order; every later rejoin re-reads the snapshot and publishes what changed. `ready`
  * rejects when the snapshot fails or takes too long; `onStale` fires once when no tick (heartbeats included)
  * arrives for `staleMs`. Either way boot.ts falls back to the direct streams.
  */
@@ -45,19 +46,42 @@ export function startSupabaseLive (opts: SupabaseLiveOptions): { close: () => vo
     }, opts.staleMs ?? 45_000)
   }
 
+  // Ticks are deltas: read the tables only once the subscription is live, and again after every rejoin, so a
+  // tick published while the channel was down (network blip, laptop sleep) cannot be lost for good.
+  let subscribed: () => void = () => {}
+  const firstSubscribe = new Promise<void>(resolve => { subscribed = resolve })
+  let wasUp = false
+  let everUp = false
+  const resync = async (): Promise<void> => {
+    try {
+      const snap = await client.snapshot()
+      if (!closed && applying) applyTick(bus, store, { v: 1, ts: new Date().toISOString(), ...snap } as unknown as LiveTick)
+    } catch (err) { opts.onStatus?.(false, `resync failed: ${String((err as Error).message ?? err)}`) }
+  }
   const unsubscribe = client.subscribeTicks(tick => {
     if (closed) return
     arm()
     if (applying) applyTick(bus, store, tick)
     else buffer.push(tick)
-  }, (ok, detail) => opts.onStatus?.(ok, detail))
+  }, (ok, detail) => {
+    opts.onStatus?.(ok, detail)
+    if (ok && !wasUp) {
+      if (!everUp) { everUp = true; subscribed() } else void resync()
+    }
+    wasUp = ok
+  })
   arm()
 
   let timeout: ReturnType<typeof setTimeout> | undefined
   const load = async (): Promise<void> => {
+    await firstSubscribe
     // history is a nicety: an empty feed beats no live mode
-    hydrateHistory(store, await client.history(HISTORY).catch(() => []))
-    applySnapshot(bus, store, await client.snapshot())
+    const history = await client.history(HISTORY).catch(() => [])
+    if (closed) return
+    hydrateHistory(store, history, bus)
+    const snap = await client.snapshot()
+    if (closed) return
+    applySnapshot(store, snap)
   }
   const limit = new Promise<never>((_resolve, reject) => {
     const ms = opts.snapshotTimeoutMs ?? 5_000

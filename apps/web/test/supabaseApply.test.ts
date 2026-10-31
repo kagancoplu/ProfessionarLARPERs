@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LiveTick } from '@agentcoop/relay/contract'
 import { createBus } from '../src/events/bus'
-import { applyTick, hydrateHistory } from '../src/events/adapters/supabaseApply'
+import { applySnapshot, applyTick, hydrateHistory } from '../src/events/adapters/supabaseApply'
 import { makeEvent } from '../src/events/types'
 import { makeMockPledge, makeMockPool, MOCK_IDS } from '../src/mock/data'
 import { createAppStore } from '../src/store'
@@ -80,7 +80,36 @@ describe('applyTick', () => {
   })
 })
 
+describe('applySnapshot', () => {
+  it('hydrates pools, pledges, listings and health without publishing events', () => {
+    const { store, seen } = setup()
+    const { pool, pledge } = poolTick()
+    applySnapshot(store, { pools: [pool], pledges: { [pool.poolId]: [pledge] }, listings: [L('a_0')], vaults: [], vaultCredits: {}, agents: [], health: [{ service: 'coop', ok: true }] })
+    expect(seen).toEqual([])
+    expect(store.getState().feed).toEqual([])
+    expect(store.getState().pools.byId[pool.poolId]?.pledges).toHaveLength(1)
+    expect(Object.keys(store.getState().listings.byOutpoint)).toEqual(['a_0'])
+    expect(store.getState().health.coop.ok).toBe(true)
+  })
+})
+
 describe('hydrateHistory', () => {
+  it('shows no toasts or unread notifications for past events', () => {
+    const { store, bus } = setup()
+    hydrateHistory(store, [makeEvent('guard', 'cosign_denied', { agent: '02a1', kind: 'pay', reason: 'cap' } as never, { id: 'guard:1', ts: T })], bus)
+    expect(store.getState().ui.toasts).toEqual([])
+    expect(store.getState().notifications).toEqual([])
+  })
+
+  it('an event in history is not applied again when a tick repeats it', () => {
+    const { store, bus, seen } = setup()
+    const e = makeEvent('agents', 'agent_thought', { text: 'once' }, { id: 'agents:5', ts: T })
+    hydrateHistory(store, [e], bus)
+    applyTick(bus, store, { v: 1, ts: T, events: [e] } as unknown as LiveTick)
+    expect(seen).toEqual([])
+    expect(store.getState().feed.filter(x => x.id === 'agents:5')).toHaveLength(1)
+  })
+
   it('fills the feed without calling bus listeners', () => {
     const { store, seen } = setup()
     hydrateHistory(store, [makeEvent('agents', 'agent_thought', { text: 'earlier' }, { id: 'agents:1', ts: T })])

@@ -14,20 +14,25 @@ export interface EventBus {
   subscribe: (fn: BusListener) => () => void
   /** ids already seen, so a reconnecting SSE/WS cannot double-apply (bounded) */
   seen: (id: string) => boolean
+  /** mark an event as already applied without publishing it (history loaded straight into the store) */
+  remember: (e: CoopEvent) => void
 }
 
 export function createBus (store: AppStoreApi, opts: { dedupe?: boolean, seenLimit?: number } = {}): EventBus {
   const listeners = new Set<BusListener>()
   const seen = new Set<string>()
   const limit = opts.seenLimit ?? 5_000
+  const add = (key: string): void => {
+    seen.add(key)
+    if (seen.size > limit) { const first = seen.values().next().value; if (first !== undefined) seen.delete(first) }
+  }
   return {
     publish (e) {
       if (!isCoopEvent(e)) return
       if (opts.dedupe !== false) {
         const key = `${e.src}|${e.id}`
         if (seen.has(key)) return
-        seen.add(key)
-        if (seen.size > limit) { const first = seen.values().next().value; if (first !== undefined) seen.delete(first) }
+        add(key)
       }
       store.getState().applyEvent(e)
       for (const fn of listeners) {
@@ -35,6 +40,7 @@ export function createBus (store: AppStoreApi, opts: { dedupe?: boolean, seenLim
       }
     },
     subscribe (fn) { listeners.add(fn); return () => { listeners.delete(fn) } },
-    seen: id => seen.has(id)
+    seen: id => seen.has(id),
+    remember: e => { add(`${e.src}|${e.id}`) }
   }
 }

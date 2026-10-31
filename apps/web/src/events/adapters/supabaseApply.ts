@@ -59,11 +59,31 @@ export function applyTick (bus: EventBus, store: AppStoreApi, tick: LiveTick): v
   for (const e of tick.events ?? []) bus.publish(e as CoopEvent)
 }
 
-export function applySnapshot (bus: EventBus, store: AppStoreApi, snap: LiveSnapshot): void {
-  applyTick(bus, store, { v: 1, ts: new Date().toISOString(), ...snap } as unknown as LiveTick)
+/**
+ * The tables at start, into the store without events: like the direct mode's first REST load, the Town and the
+ * feed show the state as it is, not a burst of "pool opened" / "pledge" for everything that already happened.
+ */
+export function applySnapshot (store: AppStoreApi, snap: LiveSnapshot): void {
+  const ts = new Date().toISOString()
+  const s = store.getState()
+  s.hydratePools(snap.pools, ts)
+  for (const [poolId, list] of Object.entries(snap.pledges)) s.setPledges(poolId, list)
+  s.hydrateListings(snap.listings)
+  s.hydrateVaults(snap.vaults.map(v => ({ ...v, ...(snap.vaultCredits[v.vaultId] !== undefined ? { credits: summariseCredits(snap.vaultCredits[v.vaultId] ?? []) } : {}) })))
+  s.hydrateAgents(snap.agents, ts)
+  for (const h of snap.health) {
+    if (s.health[h.service as ServiceName] === undefined) continue
+    s.setHealth(h.service as ServiceName, { ok: h.ok, checkedAt: ts, ...(h.detail !== undefined ? { detail: h.detail } : {}) })
+  }
 }
 
-/** Earlier events into the store (feed, tx ledger, charts) without the bus: no Town effects or sounds for the past. */
-export function hydrateHistory (store: AppStoreApi, events: CoopEvent[]): void {
-  for (const e of events) store.getState().applyEvent(e)
+/**
+ * Earlier events into the store (feed, tx ledger, charts) without the bus: no Town effects, sounds, toasts or
+ * unread notifications for the past. `bus` remembers their ids so a tick repeating one does not apply it twice.
+ */
+export function hydrateHistory (store: AppStoreApi, events: CoopEvent[], bus?: EventBus): void {
+  const before = store.getState()
+  for (const e of events) { store.getState().applyEvent(e); bus?.remember(e) }
+  const after = store.getState()
+  store.setState({ ui: { ...after.ui, toasts: before.ui.toasts }, notifications: before.notifications })
 }

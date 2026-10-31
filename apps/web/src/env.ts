@@ -75,7 +75,8 @@ export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
   const sbUrl = (raw.VITE_SUPABASE_URL ?? '').trim()
   const sbKey = (raw.VITE_SUPABASE_ANON_KEY ?? '').trim()
   const wantDirect = params.get('transport') === 'direct' || raw.VITE_TRANSPORT === 'direct'
-  const transport = !wantDirect && sbUrl !== '' && sbKey !== '' ? 'supabase' : 'direct'
+  // only live mode: mock and replay stay offline even when the root .env holds the keys
+  const transport = mode === 'live' && !wantDirect && sbUrl !== '' && sbKey !== '' ? 'supabase' : 'direct'
   const useProxy = dev && raw.VITE_USE_PROXY !== 'false'
   const pick = (service: ServiceName, value: string | undefined): string => {
     if (useProxy && service !== 'arcade') return PROXY_PATHS[service]

@@ -11,16 +11,28 @@ const rows = <T>(what: string, res: { data: T[] | null, error: { message: string
   return res.data ?? []
 }
 
-export function createLiveClient (sb: SupabaseClient): LiveClient {
+export function createLiveClient (sb: SupabaseClient, opts: { pageSize?: number } = {}): LiveClient {
+  // PostgREST caps one read at max_rows (1000 by default): page through, ordered by the primary key
+  const pageSize = opts.pageSize ?? 1000
+  const all = async <T>(table: string, columns: string, key: string): Promise<{ data: T[], error: { message: string } | null }> => {
+    const out: T[] = []
+    for (let from = 0; ; from += pageSize) {
+      const res = await sb.from(table).select(columns).order(key).range(from, from + pageSize - 1)
+      if (res.error !== null) return { data: out, error: res.error }
+      const page = (res.data ?? []) as T[]
+      out.push(...page)
+      if (page.length < pageSize) return { data: out, error: null }
+    }
+  }
   return {
     async snapshot (): Promise<LiveSnapshot> {
       const [pools, pledges, listings, vaults, agents, health] = await Promise.all([
-        sb.from('live_pools').select('data'),
-        sb.from('live_pledges').select('pool_id, data'),
-        sb.from('live_listings').select('data'),
-        sb.from('live_vaults').select('data, credits'),
-        sb.from('live_agents').select('data'),
-        sb.from('live_health').select('service, ok, detail')
+        all<{ data: ApiPool }>('live_pools', 'data', 'pool_id'),
+        all<{ pool_id: string, data: PledgeView }>('live_pledges', 'pool_id, data', 'outpoint'),
+        all<{ data: Listing }>('live_listings', 'data', 'outpoint'),
+        all<{ data: VaultView, credits: VaultOutput[] | null }>('live_vaults', 'data, credits', 'vault_id'),
+        all<{ data: AgentInfo }>('live_agents', 'data', 'identity'),
+        all<{ service: string, ok: boolean, detail: string | null }>('live_health', 'service, ok, detail', 'service')
       ])
       const byPool: Record<string, PledgeView[]> = {}
       for (const r of rows<{ pool_id: string, data: PledgeView }>('pledges', pledges)) (byPool[r.pool_id] ??= []).push(r.data)
