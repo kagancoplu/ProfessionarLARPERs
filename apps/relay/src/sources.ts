@@ -10,9 +10,22 @@ import type { RelayConfig } from './config'
 export type ServiceName = 'coop' | 'overlay' | 'provider' | 'guard' | 'agents' | 'arcade' | 'maker'
 export const SERVICES: ServiceName[] = ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker']
 
+/**
+ * What anonymous readers of `live_health.detail` may see (F-8): a short class of failure, never the error text,
+ * which carries internal URLs and hostnames. The full message goes to the relay's own log.
+ */
+export function publicDetail (err: unknown): string {
+  const e = err as { name?: string, message?: string, cause?: { code?: string } }
+  if (e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'timeout'
+  const status = /HTTP (\d{3})\b/.exec(e?.message ?? '')?.[1]
+  if (status !== undefined) return `HTTP ${status}`
+  if (e?.name === 'SyntaxError') return 'bad answer'
+  return 'unreachable'
+}
+
 interface LookupAnswer { type: string, outputs?: Array<{ outputIndex: number, context?: number[] }> }
 
-export function createSources (urls: RelayConfig['urls'], fetchImpl: typeof fetch = fetch) {
+export function createSources (urls: RelayConfig['urls'], fetchImpl: typeof fetch = fetch, log: (line: string) => void = () => {}) {
   const getJson = async <T>(url: string, timeoutMs = 10_000): Promise<T> => {
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`)
@@ -51,9 +64,12 @@ export function createSources (urls: RelayConfig['urls'], fetchImpl: typeof fetc
     /** credits locked to a vault: the overlay indexes them by sha256(vault script) */
     vaultCredits: async (scriptHex: string) => await lookup<VaultOutput>({ op: 'vaultCredits', vaultHash: createHash('sha256').update(Buffer.from(scriptHex, 'hex')).digest('hex') }),
     agents: async () => await getJson<Array<Json & { identity: string }>>(`${urls.agents}/agents`),
-    /** never throws: a failure is a row with ok:false and the error message */
+    /** never throws: a failure is a row with ok:false and a public detail (publicDetail); the message is logged */
     probe: async (service: ServiceName): Promise<HealthRow> => {
-      try { return { service, ok: await checks[service]() } } catch (err) { return { service, ok: false, detail: String((err as Error).message ?? err) } }
+      try { return { service, ok: await checks[service]() } } catch (err) {
+        log(`probe ${service}: ${String((err as Error).message ?? err)}`)
+        return { service, ok: false, detail: publicDetail(err) }
+      }
     }
   }
 }

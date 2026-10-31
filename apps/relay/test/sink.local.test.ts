@@ -8,6 +8,7 @@ import type { LiveTick } from '../src/contract'
 import { createSupabaseSink } from '../src/supabaseSink'
 
 const url = process.env.SUPABASE_LOCAL_URL
+if (process.env.SUPABASE_LOCAL_REQUIRED === '1' && url === undefined) throw new Error('SUPABASE_LOCAL_REQUIRED=1 but SUPABASE_LOCAL_URL is not set')
 
 describe.skipIf(url === undefined)('supabase sink (local stack)', () => {
   const anon = () => createClient(url ?? '', process.env.SUPABASE_LOCAL_ANON_KEY ?? '', { auth: { persistSession: false } })

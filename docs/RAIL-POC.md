@@ -12,7 +12,7 @@ BSV    maker: refund v1, nLockTime = H + 6, sequence 0xfffffffe → agent checks
 BSV    maker: sends the funding (its txid is the one the refund spends)
 BSV    agent + guard (kind:'rail'): OP_0 <sigA> <sigG> <s> OP_1 → the agent's vault script     (s is now public)
 Base   maker: claim(id, s) → USDC to the maker
-If it goes wrong: the maker sends its refund after H + 6; the agent calls refund(id) after T_base.
+If it goes wrong: the maker's watchdog sends its refund once the tip is past H + 6; the agent calls refund(id) after T_base.
 ```
 
 No `OP_CHECKLOCKTIMEVERIFY` on BSV (NOP since Genesis), so the BSV refund path is a pre-signed nLockTime transaction, not a script branch with a time lock.
@@ -27,6 +27,8 @@ No `OP_CHECKLOCKTIMEVERIFY` on BSV (NOP since Genesis), so the BSV refund path i
 | Guard `kind:'rail'` (R1–R6): the HTLC names this guard and agent for this swap, final tx, agent signature over the guard's sighash, **the HTLC's sats land in the agent's registered vault**, fee ≤ `maxFeeSats` | `apps/guard/src/rail.ts` | e2e: claim to the agent's own address → `rail funds must land in the vault`; another wallet → `agent mismatch` |
 | Agent-side refund checks before signing: spends the swap's HTLC, version 1, sequence enforces nLockTime, lockTime ≥ H + k | `checkAndSignRefund` | e2e: early lockTime and a final sequence are refused |
 | Refund path | e2e | the maker's pre-signed refund verifies (ELSE branch) and is accepted by the mock chain |
+| Refund watchdog and timing margins (F-4): the maker broadcasts the saved refund one block after its nLockTime (Arcade refuses it at the lock height, validation 4); funds only with a Base timeout that survives blocks 3× slower (`minBaseTimeLeftS`); the agent will not claim within 2 blocks of the refund | `apps/maker/src/watchdog.ts` (inside `npm run maker`, or `npm run watchdog -w @agentcoop/maker`), `apps/maker/src/rail.ts` | `apps/maker/test/swap.mockchain.test.ts`: the guard is down, the claim fails, the watchdog sends the refund at the right height; a late claim is refused |
+| Base HTLC token handling (F-1, F-2): a fee-on-transfer token is refused, a token returning nothing works, one returning false is refused; `nonReentrant` | `contracts/base-htlc/HTLC.sol` | `apps/maker/test/htlc.tokens.evm.test.ts` |
 | Maker HTTP for Track E: `GET /quote?dir=usdc-bsv&amount=`, `GET /events` (SSE, `CoopEvent` src `maker`), `/healthz` | `apps/maker/src/server.ts` (`npm run maker -w @agentcoop/maker`) | `apps/maker/test/server.test.ts` |
 
 ## Ready but not run (needs funds)

@@ -30,9 +30,27 @@ import { getLock } from './base'
 import type { EvmPort } from './evm'
 
 export const RAIL_BASKET = 'agentcoop rail'
-/** BSV refund delay in blocks (≈ 1 h) and the Base timeout the maker requires (seconds left). */
+/** BSV refund delay in blocks (≈ 1 h). */
 export const DEFAULT_REFUND_BLOCKS = 6
-export const MIN_BASE_TIMEOUT_LEFT_S = 3 * 3600
+/** Arcade accepts a height-locked tx only once the tip is past its nLockTime (validation 4, T-23). */
+export const REFUND_FINAL_MARGIN_BLOCKS = 1
+/** The agent claims only while the refund is at least this many blocks from final (F-4: never race the refund). */
+export const CLAIM_MARGIN_BLOCKS = 2
+/** Blocks may run this many times slower than 10 minutes before the Base timeout can pass first (F-4). */
+export const SLOW_BLOCKS_FACTOR = 3
+
+/**
+ * The Base timeout the maker requires, in seconds left when it funds (F-4): the BSV refund must be
+ * minable before the agent can refund its USDC, even with blocks `SLOW_BLOCKS_FACTOR` times slower.
+ */
+export const minBaseTimeLeftS = (refundBlocks = DEFAULT_REFUND_BLOCKS): number =>
+  (refundBlocks + REFUND_FINAL_MARGIN_BLOCKS) * 600 * SLOW_BLOCKS_FACTOR
+export const MIN_BASE_TIMEOUT_LEFT_S = minBaseTimeLeftS()
+
+/** Agent: refuse to reveal the secret when the maker's refund could be mined first (F-4). */
+export function assertClaimWindow (tip: number, refundLockTime: number, margin = CLAIM_MARGIN_BLOCKS): void {
+  if (tip + margin >= refundLockTime) throw new Error(`too late to claim: tip ${tip}, the refund is final at ${refundLockTime} (margin ${margin} blocks)`)
+}
 export const DEFAULT_SPREAD_BPS = 150
 
 export interface Quote { usdc: bigint, sats: number, satsPerUsdc: number, spreadBps: number, expiresAt: string }
@@ -126,10 +144,12 @@ export async function completeRefund (maker: WalletInterface, refund: Transactio
 /**
  * Agent: claim the HTLC with the secret into its vault (agent + guard, guard kind:'rail').
  * The agent's wallet pays the miner fee from its own funds; the whole HTLC amount lands in the vault.
+ * With `window`, it refuses to claim once the maker's refund is within CLAIM_MARGIN_BLOCKS of final.
  */
-export async function claimHtlc (agent: WalletInterface, a: { funding: Funding, keys: SwapKeys, secret: number[], vaultId: string, vaultScriptHex: string, cosign: Cosigner, originator?: string }): Promise<{ txid: string, tx: number[] }> {
+export async function claimHtlc (agent: WalletInterface, a: { funding: Funding, keys: SwapKeys, secret: number[], vaultId: string, vaultScriptHex: string, cosign: Cosigner, window?: { tip: number, refundLockTime: number }, originator?: string }): Promise<{ txid: string, tx: number[] }> {
   const { originator } = a
   if (sha256Hex(a.secret) !== a.keys.hash) throw new Error('secret does not match the hash')
+  if (a.window !== undefined) assertClaimWindow(a.window.tip, a.window.refundLockTime)
   const outpoint = `${a.funding.txid}.${a.funding.vout}`
   const created = await agent.createAction({
     description: 'AgentCoop Coop Rail: claim into the vault',

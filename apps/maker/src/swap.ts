@@ -12,7 +12,8 @@
  *   6 maker  read the secret from the claim; Base: claim the USDC
  *
  * `onStep` gets every step's result as it happens; a caller that stops halfway
- * (or crashes) still has the completed refund from step 3 to recover the maker's sats.
+ * (or crashes) still has the completed refund from step 3 to recover the maker's sats
+ * (`watchdog.ts` broadcasts it as soon as it is final).
  */
 import { createHash, randomBytes } from 'node:crypto'
 import { Transaction, type WalletInterface } from '@agentcoop/core/sdk'
@@ -23,7 +24,7 @@ import { claimUsdc, lockUsdc } from './base'
 import type { EvmPort } from './evm'
 import {
   broadcastFunding, buildRefund, checkAndSignRefund, claimHtlc, completeRefund, DEFAULT_REFUND_BLOCKS, extractSecret, fundHtlc,
-  makerRefundScript, quote, verifyBaseLock, type Quote, type SwapKeys
+  makerRefundScript, minBaseTimeLeftS, quote, verifyBaseLock, type Quote, type SwapKeys
 } from './rail'
 
 /** PoC caps (docs/RAIL-POC.md): at most 1 USDC and 1,000 sat per swap. */
@@ -62,7 +63,7 @@ export type SwapStep =
   | { step: 'quote', swapId: string, hash: string, quote: Quote }
   | { step: 'base_locked', id: Hex, txHash: Hex, timeout: string }
   | { step: 'funding_signed', txid: string, vout: number, satoshis: number }
-  | { step: 'refund_ready', lockTime: number, rawHex: string, txid: string }
+  | { step: 'refund_ready', lockTime: number, rawHex: string, efHex: string, txid: string }
   | { step: 'funding_sent', txid: string }
   | { step: 'claimed', txid: string, satoshis: number }
   | { step: 'base_claimed', txHash: Hex }
@@ -87,23 +88,26 @@ export async function runSwap (p: SwapParties, o: SwapOptions): Promise<SwapResu
   await step({ step: 'base_locked', id: lock.id, txHash: lock.txHash, timeout: new Date(Number(timeout) * 1000).toISOString() })
 
   // 2 BSV: the maker checks the lock and signs the funding (version 1, not sent)
-  await verifyBaseLock(p.evm, { htlc: p.htlc, id: lock.id, maker: p.makerEvm, token: p.usdc, minAmount: q.usdc, hash })
+  const refundBlocks = o.refundBlocks ?? DEFAULT_REFUND_BLOCKS
+  await verifyBaseLock(p.evm, { htlc: p.htlc, id: lock.id, maker: p.makerEvm, token: p.usdc, minAmount: q.usdc, hash, minTimeLeftS: minBaseTimeLeftS(refundBlocks) })
   const funding = await fundHtlc(p.maker, keys, q.sats, p.originator)
   await step({ step: 'funding_signed', txid: funding.txid, vout: funding.vout, satoshis: funding.satoshis })
 
   // 3 the refund, signed by both before the funding exists on chain
-  const lockTime = (await p.height()) + (o.refundBlocks ?? DEFAULT_REFUND_BLOCKS)
+  const lockTime = (await p.height()) + refundBlocks
   const refund = buildRefund(funding, await makerRefundScript(p.maker, keys.swapId, p.originator), lockTime)
   const agentSig = await checkAndSignRefund(p.agent, refund, { funding, keys, minLockHeight: lockTime, originator: p.originator })
   const complete = await completeRefund(p.maker, refund, agentSig, keys, p.originator)
-  await step({ step: 'refund_ready', lockTime, rawHex: complete.toHex(), txid: complete.id('hex') })
+  await step({ step: 'refund_ready', lockTime, rawHex: complete.toHex(), efHex: complete.toHexEF(), txid: complete.id('hex') })
 
   // 4 the maker sends the funding
   await broadcastFunding(p.maker, funding, p.originator)
   await step({ step: 'funding_sent', txid: funding.txid })
 
-  // 5 the agent claims into its vault with the guard (kind:'rail'); the secret becomes public here
-  const claim = await claimHtlc(p.agent, { funding, keys, secret, vaultId: p.vault.vaultId, vaultScriptHex: p.vault.lockingScriptHex, cosign: p.cosign, originator: p.originator })
+  // 5 the agent claims into its vault with the guard (kind:'rail'); the secret becomes public here,
+  //   so only while the maker's refund is still blocks away from final (F-4)
+  const window = { tip: await p.height(), refundLockTime: lockTime }
+  const claim = await claimHtlc(p.agent, { funding, keys, secret, vaultId: p.vault.vaultId, vaultScriptHex: p.vault.lockingScriptHex, cosign: p.cosign, window, originator: p.originator })
   await step({ step: 'claimed', txid: claim.txid, satoshis: funding.satoshis })
 
   // 6 the maker reads the secret from the claim and takes the USDC

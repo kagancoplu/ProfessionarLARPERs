@@ -1,0 +1,206 @@
+{
+  "name": "verifySettlementPlan (packages/core/src/pool/verify.ts)",
+  "tests": [
+    "packages/core/test/pool.plan.test.ts"
+  ],
+  "mutants": [
+    {
+      "id": "pool id check removed",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (plan.poolId !== t.poolId || offer.poolId !== t.poolId) bad('pool id mismatch')\n",
+      "replace": ""
+    },
+    {
+      "id": "no-participants check removed",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (n === 0) bad('no participants')\n",
+      "replace": ""
+    },
+    {
+      "id": "input count: != → <",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "tx.inputs.length !== n + 1",
+      "replace": "tx.inputs.length < n + 1"
+    },
+    {
+      "id": "output count: != → <",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "tx.outputs.length !== 1 + n + nI + 1",
+      "replace": "tx.outputs.length < 1 + n + nI + 1"
+    },
+    {
+      "id": "lighthouse order check removed",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (plan.participants.slice(nI).some(p => p.mode !== 'lighthouse')) bad('lighthouse participants must come after the interactive ones')\n",
+      "replace": ""
+    },
+    {
+      "id": "input 0 vout not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || tx.inputs[0].sourceOutputIndex !== offerOp.vout) bad('input 0 is not the offer')",
+      "replace": ") bad('input 0 is not the offer')"
+    },
+    {
+      "id": "offer unlock not compared",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (tx.inputs[0].unlockingScript?.toHex() !== offer.unlockingScriptHex) bad('input 0 does not carry the offer signature')\n",
+      "replace": ""
+    },
+    {
+      "id": "offer signature not verified",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (!inputScriptValid(tx, 0)) bad('offer signature does not verify against this transaction')\n",
+      "replace": ""
+    },
+    {
+      "id": "provider pay script not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "tx.outputs[0].lockingScript.toHex() !== t.payScriptHex || ",
+      "replace": ""
+    },
+    {
+      "id": "provider price not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || tx.outputs[0].satoshis !== Number(t.priceSats)) bad('output 0",
+      "replace": ") bad('output 0"
+    },
+    {
+      "id": "offer N credits not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || offerCredits.amount !== BigInt(t.credits)) bad",
+      "replace": ") bad"
+    },
+    {
+      "id": "participant input order not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "    if (txidOf(tx, vin) !== op.txid || tx.inputs[vin].sourceOutputIndex !== op.vout) bad(`input ${vin} is not ${p.outpoint}`)\n",
+      "replace": ""
+    },
+    {
+      "id": "credit token id not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || d.id !== t.tokenId",
+      "replace": ""
+    },
+    {
+      "id": "credit amount not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || d.amount !== BigInt(p.credits)",
+      "replace": ""
+    },
+    {
+      "id": "credit output 1 sat not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || credit.satoshis !== 1",
+      "replace": ""
+    },
+    {
+      "id": "creditLock not compared to the record",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "    if (p.creditLock !== lock) bad(`participant ${vin}: creditLock ≠ its pledge record`)\n",
+      "replace": ""
+    },
+    {
+      "id": "mode not compared to the record",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "    if ((p.mode === 'lighthouse') !== lighthouse) bad(`participant ${vin}: mode ≠ its pledge record`)\n",
+      "replace": ""
+    },
+    {
+      "id": "I-2 change script not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "      if (tx.outputs[n + 1 + j].lockingScript.toHex() !== coin.lockingScript.toHex()) bad(`change ${n + 1 + j} does not return to the pledge coin's script`)\n",
+      "replace": ""
+    },
+    {
+      "id": "I-2 change amount not compared to the plan",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "String(change.satoshis) !== p.changeSats || ",
+      "replace": ""
+    },
+    {
+      "id": "I-2 change ≥ 1 sat → ≥ 0",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "change.satoshis! < 1",
+      "replace": "change.satoshis! < 0"
+    },
+    {
+      "id": "my credits not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "      if (p.credits !== opts.expectedCredits) bad(`my credits are ${p.credits}, expected ${opts.expectedCredits}`)\n",
+      "replace": ""
+    },
+    {
+      "id": "my credit address not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "      if (opts.expectedCreditPkh !== undefined && d!.owner.kind === 'p2pkh' && d!.owner.pkh !== opts.expectedCreditPkh) bad('my credit output pays someone else')\n",
+      "replace": ""
+    },
+    {
+      "id": "cost cap off by one",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "if (cost > maxCost)",
+      "replace": "if (cost > maxCost + 1)"
+    },
+    {
+      "id": "cost cap check removed",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "      if (cost > maxCost) bad(`I would pay ${cost} sats, at most ${maxCost} accepted`)\n",
+      "replace": ""
+    },
+    {
+      "id": "my pledge presence not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (mine === -1) bad(`my pledge ${myOutpoint} is not in the plan`)\n",
+      "replace": ""
+    },
+    {
+      "id": "credit sum not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (total !== BigInt(t.credits)) bad(`credits sum to ${total}, expected ${t.credits}`)\n",
+      "replace": ""
+    },
+    {
+      "id": "duplicate pledge not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (new Set(plan.participants.map(p => p.outpoint)).size !== n) bad('duplicate pledge')\n",
+      "replace": ""
+    },
+    {
+      "id": "settle record op not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "  if (settle?.op !== 'settle') bad('last output is not an agentcoop settle record')\n",
+      "replace": ""
+    },
+    {
+      "id": "plan pledge-list hash not compared",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "listHash !== plan.pledgeListHash || ",
+      "replace": ""
+    },
+    {
+      "id": "on-chain pledge-list hash not compared",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || settle!.json.pledgeListHash !== listHash) bad",
+      "replace": ") bad"
+    },
+    {
+      "id": "settle poolId not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": "settle!.json.poolId !== t.poolId || ",
+      "replace": ""
+    },
+    {
+      "id": "settle termsHash not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || settle!.json.termsHash !== termsHash(t)",
+      "replace": ""
+    },
+    {
+      "id": "settle round not checked",
+      "file": "packages/core/src/pool/verify.ts",
+      "find": " || settle!.json.round !== String(plan.round)",
+      "replace": ""
+    }
+  ]
+}

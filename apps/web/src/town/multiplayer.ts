@@ -1,12 +1,14 @@
 /**
  * Multiplayer Town (track-E P7) over a public Supabase Realtime channel: Presence says who is in town (name, where
  * they stopped), Broadcast carries `move` destinations (peers.ts). Only in avatar mode with the Supabase transport;
- * cosmetic, so names are whatever each visitor announces. Remote players are visitor villagers `peer:<key>`.
+ * cosmetic, so names are whatever each visitor announces (trimmed, ≤ 24 chars). Remote players are visitor villagers
+ * `peer:<key>`; a `move` counts only from a player in presence, to a point inside the town (peers.ts, F-8).
  */
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { getSupabase } from '../api/supabase'
 import type { AppStoreApi } from '../store'
-import { JoinGate, MoveThrottle, peersFromPresence, TOWN_CHANNEL, type Move, type PeerMeta } from './peers'
+import { MAP_H, MAP_W, TILE } from './map/terrain'
+import { acceptMove, JoinGate, MoveThrottle, peersFromPresence, TOWN_CHANNEL, type Bounds, type Move, type PeerMeta } from './peers'
 import type { TownScene } from './scenes/TownScene'
 import type { Villager } from './entities/Villager'
 
@@ -19,6 +21,8 @@ function tabId (): string {
     return id
   } catch { return fresh() }
 }
+
+const TOWN: Bounds = { w: MAP_W * TILE, h: MAP_H * TILE }
 
 export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => void {
   const tab = tabId()
@@ -46,7 +50,7 @@ export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => v
   }
   const sync = (): void => {
     if (channel === undefined) return
-    const now = peersFromPresence(channel.presenceState<PeerMeta>(), selfKey)
+    const now = peersFromPresence(channel.presenceState<PeerMeta>(), selfKey, TOWN)
     const keep = new Set(now.map(p => p.key))
     for (const key of [...peers.keys()]) if (!keep.has(key)) { town.removeVillager(`peer:${key}`); peers.delete(key) }
     for (const p of now) {
@@ -74,9 +78,10 @@ export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => v
     }
     ch.on('presence', { event: 'sync' }, () => { sync(); decide(gate.onSync(others())) })
     ch.on('broadcast', { event: 'move' }, ({ payload }) => {
-      const m = payload as { key?: string, name?: string, to?: [number, number] }
-      if (typeof m.key !== 'string' || !Array.isArray(m.to) || m.key === selfKey) return
-      void peer(m.key, m.name ?? 'Visitor').walkTo(m.to[0], m.to[1])
+      const m = acceptMove(payload, new Set(Object.keys(ch.presenceState())), selfKey, TOWN)
+      if (m === undefined) return
+      const v = peers.get(m.key) ?? peer(m.key, peersFromPresence(ch.presenceState<PeerMeta>(), selfKey, TOWN).find(p => p.key === m.key)?.name ?? 'Visitor')
+      void v.walkTo(m.to[0], m.to[1])
     })
     ch.subscribe(status => {
       if (status !== 'SUBSCRIBED') return

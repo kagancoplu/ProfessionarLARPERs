@@ -36,16 +36,48 @@ export class MoveThrottle {
 
 export interface PeerMeta { name: string, at?: [number, number] }
 export interface Peer { key: string, name: string, at?: [number, number] }
+/** The town in pixels: a peer's position or destination outside it is dropped. */
+export interface Bounds { w: number, h: number }
+export const MAX_NAME = 24
+
+/**
+ * Anything on the public channel is attacker-supplied (F-8): a point is two finite numbers inside the town,
+ * a name a short string. Unbounded bounds accept any finite point.
+ */
+export function townPoint (v: unknown, b?: Bounds): [number, number] | undefined {
+  if (!Array.isArray(v) || v.length !== 2) return undefined
+  const [x, y] = v as unknown[]
+  if (typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)) return undefined
+  if (b !== undefined && (x < 0 || y < 0 || x > b.w || y > b.h)) return undefined
+  return [Math.round(x), Math.round(y)]
+}
+export function peerName (v: unknown): string {
+  const name = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MAX_NAME) : ''
+  return name === '' ? 'Visitor' : name
+}
 
 /** Other players from a Realtime presence state (key → metas, newest last), sorted by key. */
-export function peersFromPresence (state: Record<string, PeerMeta[]>, selfKey: string): Peer[] {
+export function peersFromPresence (state: Record<string, PeerMeta[]>, selfKey: string, bounds?: Bounds): Peer[] {
   const out: Peer[] = []
   for (const [key, metas] of Object.entries(state)) {
-    const meta = metas[metas.length - 1]
+    const meta = metas[metas.length - 1] as Partial<Record<keyof PeerMeta, unknown>> | undefined
     if (key === selfKey || meta === undefined) continue
-    out.push({ key, name: meta.name, ...(meta.at !== undefined ? { at: meta.at } : {}) })
+    const at = townPoint(meta.at, bounds)
+    out.push({ key, name: peerName(meta.name), ...(at !== undefined ? { at } : {}) })
   }
   return out.sort((a, b) => a.key.localeCompare(b.key))
+}
+
+/**
+ * A `move` broadcast, or undefined to drop it (F-8): the sender must be a player in presence (not us) and the
+ * destination a point in town. The name always comes from presence, never from the broadcast.
+ */
+export function acceptMove (payload: unknown, present: ReadonlySet<string>, selfKey: string, bounds: Bounds): { key: string, to: [number, number] } | undefined {
+  if (typeof payload !== 'object' || payload === null) return undefined
+  const m = payload as { key?: unknown, to?: unknown }
+  if (typeof m.key !== 'string' || m.key === selfKey || !present.has(m.key)) return undefined
+  const to = townPoint(m.to, bounds)
+  return to === undefined ? undefined : { key: m.key, to }
 }
 
 /** Room for one more player while fewer than MAX_PLAYERS others are in town; otherwise watch. */

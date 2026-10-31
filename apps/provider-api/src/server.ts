@@ -6,7 +6,8 @@
  * OVERLAY_URL (credit tokens), NETWORK, ARCADE_URL, COOP_API_URL, DATA_DIR.
  *
  * State in <DATA_DIR>: wallets/provider-api.sqlite, provider/jobs.json,
- * provider/balances.json (prepaid credits), provider/outbox.json (overlay queue).
+ * provider/balances.json (prepaid credits), provider/outbox.json (overlay queue),
+ * provider/replay/ (402 payments already taken, shared by every process on this host: T-17).
  */
 import { createServer } from 'node:http'
 import { join } from 'node:path'
@@ -16,6 +17,7 @@ import { COOP_SERVICE, COOP_TOPIC, OverlayClient, type OutboxItem } from '@agent
 import { createProviderApp } from './app'
 import { CreditLedger } from './credits'
 import { JsonFile } from './jsonFile'
+import { FileReplayStore } from './replayStore'
 import { loadProducts, refreshTokenIds } from './products'
 import { JobRunner } from './runner'
 
@@ -43,7 +45,8 @@ const overlay = new OverlayClient(
   COOP_TOPIC,
   COOP_SERVICE
 )
-const app = createProviderApp({ wallet, products, runner, ledger, overlay, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL, corsOrigin: process.env.PROVIDER_CORS_ORIGIN })
+const replayStore = new FileReplayStore(join(data, 'provider', 'replay'))
+const app = createProviderApp({ wallet, products, runner, ledger, overlay, replayStore, coopApiUrl: process.env.COOP_API_URL, arcadeUrl: process.env.ARCADE_URL, corsOrigin: process.env.PROVIDER_CORS_ORIGIN })
 
 // BRC-105 payments travel in a header as BEEF with every unconfirmed ancestor: an agent paying every
 // ~30 s between blocks outgrows Node's 16 KB default and got "431 Request Header Fields Too Large"

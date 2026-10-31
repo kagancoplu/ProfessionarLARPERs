@@ -1,12 +1,16 @@
 /**
- * npm run maker → the maker's HTTP face on MAKER_URL's port (default 8094): /healthz, /quote, /events.
+ * npm run maker → the maker's HTTP face on MAKER_URL's port (default 8094): /healthz, /quote, /events,
+ * and the refund watchdog over data/rail (watchdog.ts, F-4).
  * Needs WALLET_MAKER_KEY (BSV identity) and BASE_PRIVATE_KEY (only its address is used here; never printed).
  */
+import { join } from 'node:path'
+import { fetchChainPolicy } from '@agentcoop/core'
 import { privateKeyToAccount } from 'viem/accounts'
 import type { Address, Hex } from 'viem'
-import { chain } from '../../../scripts/lib/env'
+import { arcadeUrl, chain, DATA_DIR } from '../../../scripts/lib/env'
 import { openWallet } from '../../../scripts/wallets'
 import { createMakerApp } from './server'
+import { arcadeBroadcast, fileRecords, startWatchdog } from './watchdog'
 
 async function main (): Promise<void> {
   const url = new URL(process.env.MAKER_URL ?? 'http://localhost:8094')
@@ -25,6 +29,13 @@ async function main (): Promise<void> {
     network: { evm: 'base-sepolia', bsv: chain(), htlc: process.env.BASE_HTLC_ADDRESS as Address | undefined, token: process.env.BASE_USDC_ADDRESS as Address | undefined }
   })
   app.listen(port, () => { console.log(`[maker] listening on :${port} · BSV ${identityKey} · ${rate} sat/USDC`) })
+  const arcade = arcadeUrl()
+  startWatchdog({
+    records: fileRecords(join(DATA_DIR, 'rail')),
+    tip: async () => (await fetchChainPolicy(arcade)).height,
+    broadcast: arcadeBroadcast(arcade),
+    log: line => { console.log(`[maker] ${line}`) }
+  })
 }
 
 main().catch(e => { console.error(`[maker] ${(e as Error).message}`); process.exit(1) })

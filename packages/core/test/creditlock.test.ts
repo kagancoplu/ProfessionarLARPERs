@@ -62,6 +62,14 @@ describe('vault-locked credit script (5.1)', () => {
     expect(decodeBsv21Owned(notVault)).toBeNull()
     expect(() => buildVaultCreditScript({ op: 'transfer', id: ID, amt: '1' }, LockingScript.fromHex('51'))).toThrow(/not a Mandate Vault/)
   })
+
+  it('refuses a non-canonical content-type tag (a data push of 0x01 instead of OP_1), as the kit does', () => {
+    const s = vaultOut(ID, '5')
+    const chunks = s.chunks.map((c, i) => i === 3 ? { op: 1, data: [1] } : c)
+    const pushed = new LockingScript(chunks)
+    expect(pushed.toHex()).not.toBe(s.toHex())
+    expect(decodeBsv21Owned(pushed)).toBeNull()
+  })
 })
 
 describe('rules with ownerKinds (5.2)', () => {

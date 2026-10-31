@@ -1,0 +1,53 @@
+{
+  "name": "Script templates (vault, HTLC, vault-locked credits)",
+  "tests": [
+    "test/rail.htlc-preimage.test.ts",
+    "packages/core/test/creditlock.test.ts",
+    "test/vault.mockchain.test.ts",
+    "test/e2e.rail.mockchain.test.ts"
+  ],
+  "mutants": [
+    {
+      "id": "vault: owner branch takes the agent key",
+      "file": "packages/core/src/scripts/vault.ts",
+      "find": "    .writeBin(Utils.toArray(pubHex(ownerPub), 'hex'))\n",
+      "replace": "    .writeBin(Utils.toArray(pubHex(agentPub), 'hex'))\n"
+    },
+    {
+      "id": "vault: 2-of-2 becomes 1-of-2",
+      "file": "packages/core/src/scripts/vault.ts",
+      "find": "    .writeOpCode(OP.OP_2)\n    .writeBin(Utils.toArray(pubHex(agentPub), 'hex'))",
+      "replace": "    .writeOpCode(OP.OP_1)\n    .writeBin(Utils.toArray(pubHex(agentPub), 'hex'))"
+    },
+    {
+      "id": "htlc: F-11 size check removed",
+      "file": "packages/core/src/scripts/htlc.ts",
+      "find": "    .writeOpCode(OP.OP_SIZE).writeBin([32]).writeOpCode(OP.OP_EQUALVERIFY)\n",
+      "replace": ""
+    },
+    {
+      "id": "htlc: claim needs the agent only (guard key → agent key)",
+      "file": "packages/core/src/scripts/htlc.ts",
+      "find": ".writeBin(bytes(agentPub, 33, 'public key')).writeBin(bytes(guardPub, 33, 'public key'))",
+      "replace": ".writeBin(bytes(agentPub, 33, 'public key')).writeBin(bytes(agentPub, 33, 'public key'))"
+    },
+    {
+      "id": "htlc: secret extraction accepts any length",
+      "file": "packages/core/src/scripts/htlc.ts",
+      "find": " || c[3].data?.length !== 32) return null",
+      "replace": " || c[3].data === undefined) return null"
+    },
+    {
+      "id": "creditLock: any owner script after the envelope",
+      "file": "packages/core/src/scripts/creditLock.ts",
+      "find": "    if (!isVaultLockingScriptHex(vaultScriptHex)) return null\n",
+      "replace": ""
+    },
+    {
+      "id": "creditLock: non-canonical tag accepted",
+      "file": "packages/core/src/scripts/creditLock.ts",
+      "find": "    if (c[3].op !== OP.OP_1 || c[3].data !== undefined) return null // canonical tag only\n",
+      "replace": ""
+    }
+  ]
+}

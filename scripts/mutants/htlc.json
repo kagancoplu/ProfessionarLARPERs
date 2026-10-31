@@ -1,0 +1,65 @@
+{
+  "name": "Base HTLC (contracts/base-htlc/HTLC.sol)",
+  "before": "npm run compile -w @agentcoop/maker",
+  "tests": [
+    "apps/maker/test/htlc.evm.test.ts",
+    "apps/maker/test/htlc.boundaries.evm.test.ts",
+    "apps/maker/test/htlc.tokens.evm.test.ts"
+  ],
+  "mutants": [
+    {
+      "id": "claim at the timeout (< → <=)",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "block.timestamp < l.timeout",
+      "replace": "block.timestamp <= l.timeout"
+    },
+    {
+      "id": "refund one second late (>= → >)",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "block.timestamp >= l.timeout",
+      "replace": "block.timestamp > l.timeout"
+    },
+    {
+      "id": "no lock-exists check",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "        require(locks[id].state == State.None, \"lock exists\");\n",
+      "replace": ""
+    },
+    {
+      "id": "claim pays the caller",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "(l.receiver, l.amount)",
+      "replace": "(msg.sender, l.amount)"
+    },
+    {
+      "id": "no zero-amount check",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "        require(amount > 0, \"zero amount\");\n",
+      "replace": ""
+    },
+    {
+      "id": "F-1: received amount not measured",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "        require(IERC20(token).balanceOf(address(this)) - before == amount, \"received less than amount\");\n",
+      "replace": ""
+    },
+    {
+      "id": "F-2: a false return accepted",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "require(ok && (ret.length == 0 || abi.decode(ret, (bool))), err);",
+      "replace": "require(ok, err);"
+    },
+    {
+      "id": "wrong secret accepted",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "        require(sha256(abi.encodePacked(secret)) == l.hashlock, \"wrong secret\");\n",
+      "replace": ""
+    },
+    {
+      "id": "double claim (state not set)",
+      "file": "contracts/base-htlc/HTLC.sol",
+      "find": "        l.state = State.Claimed;\n",
+      "replace": ""
+    }
+  ]
+}

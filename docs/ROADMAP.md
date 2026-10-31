@@ -14,11 +14,11 @@ Nothing below changes the protocol's shape; each one closes a known gap.
 
 0. ~~Fix F-10~~ **done (31 Oct):** the vault is read before the debit (and restored if the return fails), and a redeem from a second vault is refused (`ERR_OTHER_VAULT`) while a balance from the first remains; `test/provider.return-vault.test.ts` guards it.
 1. **External audit of the priority-1 scope:** the script templates, signers, settlement planner and verifier, lineage verification, the guard and the vault operations ([AUDIT-READINESS.md §3](AUDIT-READINESS.md)). Fix what it finds, with a regression test per finding.
-2. **The remaining mainnet validations:** 3 (BSV Desktop's approval windows), 4 (nLockTime height semantics), 6 (v1 malleability), and the market sweep (T8).
-3. **Coop Rail hardening before it goes live** (findings F-1, F-2, F-4; F-11's `OP_SIZE 32` check is done): credit the balance the contract actually received, or allowlist tokens; a safe-transfer wrapper; a maker watchdog that broadcasts the BSV refund as soon as it is final, and a timeout margin sized for slow blocks. Deploy on Base Sepolia, then run validations 4 and 6.
+2. **The remaining mainnet validations:** 3 (BSV Desktop's approval windows), 6 (v1 malleability), and the market sweep (T8). Validation 4 (nLockTime height semantics) passed on 31 Oct.
+3. **Coop Rail before it goes live.** Done on 31 Oct: F-11's `OP_SIZE 32` check, F-1 (the contract refuses a token that delivers less than the amount), F-2 (a safe-transfer wrapper), and F-4's mitigations (a maker watchdog that broadcasts the BSV refund one block after it is final, a Base timeout margin for blocks 3 times slower, and an agent that will not claim close to the refund). Left: deploy on Base Sepolia, run validation 6 and a live swap (T11, T11b), and consider a claim branch that expires.
 4. **Provider accountability (T-5):** a provider bond forfeited if a pool's credits are not served, and on-chain delivery reputation.
 5. **Public infrastructure:** coordinator and overlay behind a proxy with the existing per-IP limits (T-19), the audit endpoint public, and a second independent coordinator.
-6. **Deeper testing:** mutation testing of `packages/core/src/pool/verify.ts` and the script templates (done for the Base HTLC), and property tests over random settlement plans.
+6. **Deeper testing:** mutation testing is done for `packages/core/src/pool/verify.ts`, the script templates and the Base HTLC (49 of 49 mutants killed, `npm run mutate` in CI). Left: property tests over random settlement plans.
 
 ## Product
 

@@ -38,4 +38,4 @@ A new product of an existing kind is a new JSON file. A new kind of work is a ne
 
 Returns are in whole credits. A remainder smaller than one credit (e.g. 20 minutes) stays prepaid.
 
-State in `DATA_DIR` (default `./data`, gitignored): `wallets/provider-api.sqlite`, `provider/jobs.json`, `provider/balances.json`, `provider/outbox.json`.
+State in `DATA_DIR` (default `./data`, gitignored): `wallets/provider-api.sqlite`, `provider/jobs.json`, `provider/balances.json`, `provider/outbox.json`, `provider/replay/` (one file per 402 payment already taken, shared by every provider process on the host so a payment is never accepted twice, T-17).

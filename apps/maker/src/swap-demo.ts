@@ -16,8 +16,9 @@
  *
  * Every step is printed with its link as it happens. The completed refund (step 3) is written
  * to data/rail/<swapId>.json BEFORE the funding is sent: if the run stops before the claim, the
- * maker broadcasts that file's `refundHex` after `refundLockTime` to get its sats back; the agent
- * calls `refund(id)` on Base after the Base timeout.
+ * maker's watchdog (`npm run watchdog -w @agentcoop/maker`, also inside `npm run maker`) broadcasts
+ * that file's `refundEF` once the tip is past `refundLockTime`; the agent calls `refund(id)` on Base
+ * after the Base timeout.
  */
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -123,8 +124,8 @@ async function main (): Promise<void> {
         case 'quote': file = join(outDir, `${s.swapId}.json`); record.swapId = s.swapId; record.hash = s.hash; record.sats = s.quote.sats; console.log(`· swap ${s.swapId} · hash ${s.hash.slice(0, 16)}…`); break
         case 'base_locked': record.baseLock = { id: s.id, tx: s.txHash, timeout: s.timeout }; console.log(`✓ 1 Base lock ${baseTx(s.txHash)} (refundable by the agent after ${s.timeout})`); break
         case 'funding_signed': record.fundingTxid = s.txid; console.log(`· 2 BSV funding signed, not sent: ${s.txid} (v1, ${s.satoshis} sat)`); break
-        case 'refund_ready': record.refundHex = s.rawHex; record.refundTxid = s.txid; record.refundLockTime = s.lockTime; console.log(`✓ 3 refund pre-signed (nLockTime ${s.lockTime}), saved to ${file}`); break
-        case 'funding_sent': console.log(`✓ 4 BSV funding ${wocTxUrl(s.txid)}`); break
+        case 'refund_ready': record.refundHex = s.rawHex; record.refundEF = s.efHex; record.refundTxid = s.txid; record.refundLockTime = s.lockTime; console.log(`✓ 3 refund pre-signed (nLockTime ${s.lockTime}), saved to ${file}`); break
+        case 'funding_sent': record.fundingSent = true; console.log(`✓ 4 BSV funding ${wocTxUrl(s.txid)}`); break
         case 'claimed': record.claimTxid = s.txid; console.log(`✓ 5 claim into the vault ${wocTxUrl(s.txid)} (${s.satoshis} sat; guard kind:'rail')`); break
         case 'base_claimed': record.baseClaimTx = s.txHash; console.log(`✓ 6 maker claimed the USDC ${baseTx(s.txHash)}`); break
       }

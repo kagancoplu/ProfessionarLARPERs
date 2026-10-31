@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canJoin, JoinGate, MAX_PLAYERS, MoveThrottle, peersFromPresence } from '../src/town/peers'
+import { acceptMove, canJoin, JoinGate, MAX_NAME, MAX_PLAYERS, MoveThrottle, peersFromPresence } from '../src/town/peers'
 
 describe('MoveThrottle', () => {
   it('emits at most once per 1500 ms while moving and once on stop', () => {
@@ -60,5 +60,33 @@ describe('JoinGate', () => {
     g.onSubscribed()
     expect(g.onTimeout(0)).toBe('join')
     expect(g.onSync(9)).toBeUndefined()
+  })
+})
+
+describe('F-8: the public channel is attacker-supplied', () => {
+  const town = { w: 768, h: 576 }
+  const present = new Set(['02bb:2222', 'guest:3333'])
+
+  it('a move counts only from a player in presence, to a point inside the town', () => {
+    expect(acceptMove({ key: '02bb:2222', name: 'ignored', to: [100.4, 200.6] }, present, 'me:1111', town)).toEqual({ key: '02bb:2222', to: [100, 201] })
+    expect(acceptMove({ key: 'ghost:9999', to: [10, 10] }, present, 'me:1111', town)).toBeUndefined() // not in presence
+    expect(acceptMove({ key: '02bb:2222', to: [10, 10] }, present, '02bb:2222', town)).toBeUndefined() // ourselves
+    for (const to of [[-1, 10], [10, 577], [Number.NaN, 1], [1e308, 1], ['1', 2], [1], [1, 2, 3], 'x', null]) {
+      expect(acceptMove({ key: '02bb:2222', to }, present, 'me:1111', town)).toBeUndefined()
+    }
+    for (const payload of [null, 'move', 42, []]) expect(acceptMove(payload, present, 'me:1111', town)).toBeUndefined()
+  })
+
+  it('presence names are trimmed, stripped of control characters and capped; bad positions are dropped', () => {
+    const peers = peersFromPresence({
+      'a:1': [{ name: `  ${'x'.repeat(100)}  `, at: [5, 5] }],
+      'b:2': [{ name: '\u0000\u001b[31m', at: [Number.POSITIVE_INFINITY, 0] } as never],
+      'c:3': [{ name: 42, at: [10, 9999] } as never]
+    }, 'me:1111', town)
+    expect(peers).toEqual([
+      { key: 'a:1', name: 'x'.repeat(MAX_NAME), at: [5, 5] },
+      { key: 'b:2', name: '[31m' },
+      { key: 'c:3', name: 'Visitor' }
+    ])
   })
 })

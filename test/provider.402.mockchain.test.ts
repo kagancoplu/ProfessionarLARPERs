@@ -4,9 +4,13 @@
  * kit's test/pay-per-request.e2e.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { AuthFetch, P2PKH, PublicKey, Random, Utils } from '@agentcoop/core/sdk'
+import { AuthFetch, P2PKH, PrivateKey, PublicKey, Random, Utils } from '@agentcoop/core/sdk'
 import type { Wallet } from '@bsv/wallet-toolbox'
+import { mkdtempSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createProviderApp } from '../apps/provider-api/src/app'
+import { FileReplayStore } from '../apps/provider-api/src/replayStore'
 import { JobRunner, resultHash, type Job } from '../apps/provider-api/src/runner'
 import type { Product } from '../apps/provider-api/src/products'
 import { createMockChain, type MockChain } from './helpers/mockchain'
@@ -18,7 +22,8 @@ const product: Product = {
 }
 
 let chain: MockChain
-let provider: Wallet, agent: Wallet, stranger: Wallet
+const replayDir = mkdtempSync(join(tmpdir(), 'agentcoop-replay-'))
+let provider: Wallet, providerTwin: Wallet, agent: Wallet, stranger: Wallet
 let runner: JobRunner
 let api: Listening
 
@@ -28,10 +33,12 @@ const post = (body: unknown): { method: string, headers: Record<string, string>,
 
 beforeAll(async () => {
   chain = await createMockChain()
-  ;[provider, agent, stranger] = await Promise.all([chain.makeWallet(), chain.makeWallet(), chain.makeWallet()])
+  // providerTwin: the same server key with its own wallet database, as a second process or host would have
+  const providerKey = PrivateKey.fromRandom()
+  ;[provider, providerTwin, agent, stranger] = await Promise.all([chain.makeWallet(providerKey), chain.makeWallet(providerKey), chain.makeWallet(), chain.makeWallet()])
   await chain.fund(agent)
   runner = new JobRunner({ products: [product] })
-  api = await listen(createProviderApp({ wallet: provider, products: [product], runner }))
+  api = await listen(createProviderApp({ wallet: provider, products: [product], runner, replayStore: new FileReplayStore(replayDir) }))
 })
 
 afterAll(async () => {
@@ -91,15 +98,15 @@ describe('provider-api: catalog and paid GPU jobs (BRC-105)', () => {
     expect(res.status).toBe(404)
   })
 
-  it('answers 402 with the price, and refuses a replayed payment (409)', async () => {
+  /** A 402 challenge from `url`, paid by hand exactly as AuthFetch does (BRC-29 output 0 to the server). */
+  const paidRequest = async (url: string): Promise<{ method: string, headers: Record<string, string>, body: string }> => {
     const probe = new AuthFetch(agent)
     ;(probe as any).handlePaymentAndRetry = async (_u: string, _c: unknown, r: Response) => r
-    const challenge = await probe.fetch(`${api.url}/v1/jobs`, post({ kind: 'inference', minutes: 4 }))
+    const challenge = await probe.fetch(`${url}/v1/jobs`, post({ kind: 'inference', minutes: 4 }))
     expect(challenge.status).toBe(402)
     expect(challenge.headers.get('x-bsv-payment-satoshis-required')).toBe('4') // ceil(4 × 50 / 60)
     const derivationPrefix = challenge.headers.get('x-bsv-payment-derivation-prefix')!
     const serverKey = challenge.headers.get('x-bsv-auth-identity-key')!
-    // Pay it by hand, exactly as AuthFetch does (BRC-29 output 0 to the server).
     const derivationSuffix = Utils.toBase64(Random(32))
     const { publicKey } = await agent.getPublicKey({ protocolID: [2, '3241645161d8'], keyID: `${derivationPrefix} ${derivationSuffix}`, counterparty: serverKey })
     const created = await agent.createAction({
@@ -108,11 +115,47 @@ describe('provider-api: catalog and paid GPU jobs (BRC-105)', () => {
       options: { randomizeOutputs: false }
     })
     const header = JSON.stringify({ derivationPrefix, derivationSuffix, transaction: Utils.toBase64(Array.from(created.tx!)) })
+    return { ...post({ kind: 'inference', minutes: 4 }), headers: { 'Content-Type': 'application/json', 'x-bsv-payment': header } }
+  }
+
+  it('answers 402 with the price, and refuses a replayed payment (409)', async () => {
+    const init = await paidRequest(api.url)
     const client = new AuthFetch(agent)
-    const init = { ...post({ kind: 'inference', minutes: 4 }), headers: { 'Content-Type': 'application/json', 'x-bsv-payment': header } }
     const first = await client.fetch(`${api.url}/v1/jobs`, init)
     expect(first.status).toBe(202)
     const replay = await client.fetch(`${api.url}/v1/jobs`, init)
     expect(replay.status).toBe(409)
+  })
+
+  it('T-17: a payment taken by one provider process is refused by a second one sharing the replay store', async () => {
+    const client = new AuthFetch(agent)
+    // without a shared store, a second process with its own wallet database takes the same payment again
+    const unshared = await listen(createProviderApp({ wallet: providerTwin, products: [product], runner }))
+    try {
+      const init = await paidRequest(api.url)
+      expect((await client.fetch(`${api.url}/v1/jobs`, init)).status).toBe(202)
+      expect((await new AuthFetch(agent).fetch(`${unshared.url}/v1/jobs`, init)).status).toBe(202) // the replay T-17 is about
+    } finally { await unshared.close() }
+    // with the shared store, the second process refuses it
+    const shared = await listen(createProviderApp({ wallet: providerTwin, products: [product], runner, replayStore: new FileReplayStore(replayDir) }))
+    try {
+      const init = await paidRequest(api.url)
+      expect((await client.fetch(`${api.url}/v1/jobs`, init)).status).toBe(202)
+      expect((await new AuthFetch(agent).fetch(`${shared.url}/v1/jobs`, init)).status).toBe(409)
+    } finally { await shared.close() }
+  })
+})
+
+describe('FileReplayStore', () => {
+  it('claims a txid once across instances; anything that is not a txid is never claimed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentcoop-replay-'))
+    const a = new FileReplayStore(dir)
+    const b = new FileReplayStore(dir)
+    const txid = 'ab'.repeat(32)
+    expect(a.claim(txid)).toBe(true)
+    expect(b.claim(txid)).toBe(false)
+    expect(a.claim(txid.toUpperCase())).toBe(false)
+    for (const bad of ['', '../../etc/passwd', 'ab'.repeat(31), `${'ab'.repeat(32)}/x`]) expect(a.claim(bad)).toBe(false)
+    expect(readdirSync(dir)).toEqual([txid])
   })
 })

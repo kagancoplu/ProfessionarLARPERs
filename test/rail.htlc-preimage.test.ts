@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { BigNumber, ECDSA, Hash, LockingScript, P2PKH, PrivateKey, Random, Transaction } from '@agentcoop/core/sdk'
-import { htlcClaimUnlock, htlcLockingScript, inputScriptValid, parseHtlcLockingScript, sha256Hex, toChecksigSignature, vaultSighash } from '@agentcoop/core'
+import { htlcClaimUnlock, htlcLockingScript, inputScriptValid, parseHtlcLockingScript, secretFromClaimUnlock, sha256Hex, toChecksigSignature, vaultSighash } from '@agentcoop/core'
 
 const [agent, guard, maker] = [PrivateKey.fromRandom(), PrivateKey.fromRandom(), PrivateKey.fromRandom()]
 
@@ -34,6 +34,16 @@ describe('Coop Rail HTLC claim: 32-byte secret only (F-11)', () => {
 
   it('refuses a wrong 32-byte secret', () => {
     expect(claimWith(Random(32), Random(32))).toBe(false)
+  })
+
+  it('the maker reads only a 32-byte secret back from a claim', () => {
+    const sig = Array(71).fill(1)
+    for (const len of [31, 33, 64]) {
+      const secret = Random(len)
+      expect(secretFromClaimUnlock(htlcClaimUnlock(sig, sig, secret), sha256Hex(secret))).toBeNull()
+    }
+    const secret = Random(32)
+    expect(secretFromClaimUnlock(htlcClaimUnlock(sig, sig, secret), sha256Hex(secret))).toEqual(secret)
   })
 
   it('the script still parses back to its keys', () => {

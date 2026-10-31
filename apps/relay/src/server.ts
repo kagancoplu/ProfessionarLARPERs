@@ -8,9 +8,17 @@ import { createSupabaseSink } from './supabaseSink'
 
 function main (): void {
   const cfg = loadConfig(process.env)
+  // the probe's full error stays here; the mirror only gets a public class of it (F-8). Logged once per change.
+  const lastProbe = new Map<string, string>()
+  const logProbe = (line: string): void => {
+    const service = line.split(':')[0]
+    if (lastProbe.get(service) === line) return
+    lastProbe.set(service, line)
+    console.log(`[relay] ${line}`)
+  }
   const relay = startRelay(cfg.urls, {
     sink: createSupabaseSink(cfg.supabaseUrl, cfg.supabaseSecretKey),
-    sources: createSources(cfg.urls),
+    sources: createSources(cfg.urls, fetch, logProbe),
     followSse,
     watchCoordinator
   })

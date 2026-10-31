@@ -32,7 +32,8 @@
     "overlay": "npm run overlay -w @agentcoop/overlay",
     "coordinator": "npm run coordinator -w @agentcoop/coordinator",
     "participant-cli": "tsx --import @agentcoop/core/register-sdk apps/participant-cli/src/cli.ts",
-    "demo:injection": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/injection.ts"
+    "demo:injection": "tsx --import @agentcoop/core/register-sdk apps/agents/src/demo/injection.ts",
+    "mutate": "node scripts/mutate.mjs"
   },
   "dependencies": {
     "@bsv/402-pay": "0.3.3",
@@ -44,7 +45,8 @@
     "@bsv/wallet-toolbox": "2.14.9",
     "better-sqlite3": "13.0.3",
     "express": "5.3.0",
-    "knex": "3.3.0"
+    "knex": "3.3.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
@@ -53,5 +55,8 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "4.1.12"
+  },
+  "overrides": {
+    "tmp": "0.2.7"
   }
 }
