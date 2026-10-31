@@ -126,6 +126,7 @@
 
 | Tarih | Tip (T1–T11) | txid | Track | Not |
 |---|---|---|---|---|
+| 2026-10-31 02:50 | T4 | [8849f78d78d874b61501c0b00ad85154d6e306ad77135808bcf75f42e03777a2](https://whatsonchain.com/tx/8849f78d78d874b61501c0b00ad85154d6e306ad77135808bcf75f42e03777a2) | C (ajan) | eval, S2'de dışarıda kalan pledge coin'ini geri çekti (yalnız kayıt ücreti gitti) ve yeniden kullandı |
 | 2026-10-31 03:18 | T9 (doğrulama 5) | [3b7b0a49c174c4705ebf31c2645e87f101803ca770136998030c7f308dec1b45](https://whatsonchain.com/tx/3b7b0a49c174c4705ebf31c2645e87f101803ca770136998030c7f308dec1b45) | D | Doğrulama 5: sahip 700 sat'ı tek başına çekti (`OP_IF` dalı) |
 | 2026-10-31 03:18 | T10 (doğrulama 5) | [a7747d465417ab96129071344f70f973fb4244eba264cab59d69d19eb39a2108](https://whatsonchain.com/tx/a7747d465417ab96129071344f70f973fb4244eba264cab59d69d19eb39a2108) | D | Doğrulama 5: ajan + guard 300 sat → provider-api (izinli); izinsiz sağlayıcıya ödeme önce 403 ile reddedildi, hiçbir şey yayınlanmadı |
 | 2026-10-31 03:18 | T9 (doğrulama 5) | [8afd642e87d2861064cdf54e10508954f9eff80831bfea5171c63804f023bb1c](https://whatsonchain.com/tx/8afd642e87d2861064cdf54e10508954f9eff80831bfea5171c63804f023bb1c) | D | Doğrulama 5: kasa `68a82fb6…` 1.000 sat fon + `OP_RETURN vault` |
