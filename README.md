@@ -6,6 +6,8 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
+New here and not a programmer? Start with [README-SIMPLE.md](README-SIMPLE.md).
+
 > Status (31 Oct): the core flows run **on mainnet**: settlements through the coordinator, a vault agent, a Lighthouse settlement, redeems, 402 payments and the Mandate Vault (see [Example transactions](#example-transactions)). Every flow also runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`, run by CI on every push). Security: [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md).
 
 ## What it does
