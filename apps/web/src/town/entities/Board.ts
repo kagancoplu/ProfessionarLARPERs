@@ -11,6 +11,9 @@ export class Board extends Phaser.GameObjects.Container {
   readonly sack: Phaser.GameObjects.Sprite
   readonly hourglass: Phaser.GameObjects.Sprite
   private label: Phaser.GameObjects.DOMElement
+  /** pixel progress bar over the sign: pledged / N */
+  private barBack: Phaser.GameObjects.Rectangle
+  private barFill: Phaser.GameObjects.Rectangle
   poolId?: string
 
   constructor (scene: Phaser.Scene, x: number, y: number) {
@@ -19,8 +22,10 @@ export class Board extends Phaser.GameObjects.Container {
     this.sack = scene.add.sprite(14, 0, 'town', 'chest_gold_0').setOrigin(0.5, 1)
     // a lit lantern on the post during the signing round
     this.hourglass = scene.add.sprite(-14, 0, 'town', 'lantern_0').setOrigin(0.5, 1).setVisible(false)
-    this.label = makeLabel(scene, 0, -52, 'No pool on the board', { size: 6 })
-    this.add([this.board, this.sack, this.hourglass, this.label])
+    this.label = makeLabel(scene, 0, -54, 'No pool on the board', { size: 6 })
+    this.barBack = scene.add.rectangle(-14, -50, 28, 4, 0x3f2832).setOrigin(0, 0.5).setVisible(false)
+    this.barFill = scene.add.rectangle(-13, -50, 0, 2, 0xfee761).setOrigin(0, 0.5).setVisible(false)
+    this.add([this.board, this.sack, this.hourglass, this.barBack, this.barFill, this.label])
     this.setSize(32, 48)
     this.setInteractive(new Phaser.Geom.Rectangle(-16, -48, 32, 48), Phaser.Geom.Rectangle.Contains)
     this.setDepth(y)
@@ -35,11 +40,14 @@ export class Board extends Phaser.GameObjects.Container {
     this.poolId = pool?.poolId
     this.scene.tweens.killTweensOf(this.board)
     this.board.setAlpha(1).setY(0)
-    if (pool === undefined) { this.label.setHTML('No pool on the board'); this.sack.setFrame('chest_gold_0'); this.hourglass.setVisible(false); return }
+    if (pool === undefined) { this.label.setHTML('No pool on the board'); this.sack.setFrame('chest_gold_0'); this.hourglass.setVisible(false); this.barBack.setVisible(false); this.barFill.setVisible(false); return }
     const target = Number(pool.terms.credits)
     const pledged = Number(pool.pledgedCredits)
     const ratio = target > 0 ? Math.min(1, pledged / target) : 0
     this.sack.setFrame(`chest_gold_${Math.round(ratio * 5)}`)
+    this.barBack.setVisible(true); this.barFill.setVisible(true)
+    this.scene.tweens.add({ targets: this.barFill, width: Math.round(26 * ratio), duration: 400 })
+    this.barFill.setFillStyle(pool.status === 'failed' ? 0xac353d : ratio >= 1 ? 0x5ac54f : 0xfee761)
     const h = height ?? pool.height
     const left = h !== undefined ? Number(pool.terms.deadlineHeight) - h : undefined
     const when = pool.status === 'settled' ? 'settled' : pool.status === 'failed' ? 'did not fill' : pool.status === 'locking' ? 'signing round' : left !== undefined ? `Festival in ${blocksToHuman(left)}` : 'open'

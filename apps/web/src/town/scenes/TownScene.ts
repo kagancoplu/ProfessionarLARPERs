@@ -121,13 +121,14 @@ export class TownScene extends Phaser.Scene {
     cam.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE)
     cam.setZoom(ZOOM_DEFAULT)
     cam.centerOn(this.squareCentre.x, this.squareCentre.y - 8)
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.dragStart = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY } })
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => { this.lastTouch = this.time.now; this.dragStart = { x: p.x, y: p.y, sx: cam.scrollX, sy: cam.scrollY } })
     this.input.on('pointerup', () => { this.dragStart = undefined })
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.dragStart === undefined || !p.isDown || this.avatar?.enabled === true) return
+      if (Math.abs(p.x - this.dragStart.x) + Math.abs(p.y - this.dragStart.y) > 4) { this.following = undefined; cam.stopFollow() }
       cam.setScroll(Math.round(this.dragStart.sx - (p.x - this.dragStart.x) / cam.zoom), Math.round(this.dragStart.sy - (p.y - this.dragStart.y) / cam.zoom))
     })
-    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => { this.lastTouch = this.time.now; this.setZoom(cam.zoom + (dy > 0 ? -1 : 1)) })
     const open = (kind: 'pool' | 'agent' | 'workshop', id: string) => () => { if (kind === 'workshop') this.deps.store.getState().openDrawer('me', 'workshop'); else this.deps.store.getState().openDrawer(kind, id) }
     this.board.on('pointerup', () => { if (this.board.poolId !== undefined) open('pool', this.board.poolId)() })
     for (const st of this.stalls) st.on('pointerup', () => { if (st.outpoint !== undefined) this.deps.store.getState().openDrawer('listing', st.outpoint) })
@@ -190,6 +191,24 @@ export class TownScene extends Phaser.Scene {
     for (const k of this.keepers) k.showName(show)
   }
   setSpeed (speed: number): void { this.registry.set('speed', speed); this.deps.fx.speed = speed }
+
+  /** when the viewer last dragged or zoomed (cinematic pans leave them alone for 12 s) */
+  lastTouch = -Infinity
+  following?: Villager
+
+  /** keep a clicked villager in view until the viewer drags */
+  follow (v: Villager): void {
+    if (this.avatar?.enabled === true) return
+    this.following = v
+    this.cameras.main.startFollow(v, true, 0.08, 0.08)
+  }
+
+  /** a short camera move for a big moment, unless the viewer is busy looking elsewhere */
+  cinematic (x: number, y: number): Promise<void> {
+    const cam = this.cameras.main
+    if (this.avatar?.enabled === true || this.following !== undefined || this.time.now - this.lastTouch < 12_000) return Promise.resolve()
+    return new Promise(resolve => { cam.pan(x, y, 900, 'Sine.InOut', false, (_c: unknown, progress: number) => { if (progress >= 1) resolve() }) })
+  }
 
   focusOn (identity: string): void { const v = this.villagers.get(identity); if (v !== undefined) this.cameras.main.pan(v.x, v.y, 400) }
 
@@ -277,7 +296,7 @@ export class TownScene extends Phaser.Scene {
     v.wanderSpots = this.wanderSpots()
     v.showName(this.cameras.main.zoom >= 3)
     v.slotIndex = this.villagers.size
-    v.on('pointerup', () => this.deps.store.getState().openDrawer('agent', identity))
+    v.on('pointerup', () => { this.deps.store.getState().openDrawer('agent', identity); this.follow(v) })
     this.villagers.set(identity, v)
     return v
   }

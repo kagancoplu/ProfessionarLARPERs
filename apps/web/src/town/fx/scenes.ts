@@ -47,6 +47,7 @@ export function settlementFx (town: TownScene, txid: string, participants: numbe
   return async (ctx: FxContext): Promise<void> => {
     await town.settle()
     town.board.hourglass.setVisible(false)
+    await town.cinematic(town.squareCentre.x, town.squareCentre.y + 10)
     await town.bell.ring()
     if (ctx.cancelled()) return
     const y = town.squareCentre.y + 44

@@ -5,6 +5,7 @@ import { store, useStore } from '../store'
 import { LoadingState, PixelButton } from '../ui'
 import { FxQueue } from './fx/queue'
 import { TownDrawer } from './TownDrawer'
+import { Narrator } from './Narrator'
 
 export default function TownCanvas () {
   const ref = useRef<HTMLDivElement>(null)
@@ -35,9 +36,12 @@ export default function TownCanvas () {
   }, [bus])
   return (
     <div className="relative" data-testid="town">
-      <div ref={ref} className="pixelated relative mx-auto overflow-hidden border-2 border-wood bg-ink shadow-hard" style={{ width: '100%', aspectRatio: '16 / 9' }} data-status={status} />
-      {status === 'loading' && <div className="absolute inset-0 flex items-center justify-center"><LoadingState title="Building the town…" body="Phaser, atlas and tiles" /></div>}
-      {status === 'error' && <div className="absolute inset-0 flex items-center justify-center bg-surface-2/80 p-6 font-display text-danger-dark">The town could not start: {error}</div>}
+      <div className="relative">
+        <div ref={ref} className="pixelated relative mx-auto overflow-hidden border-2 border-wood bg-ink shadow-hard" style={{ width: '100%', aspectRatio: '16 / 9' }} data-status={status} />
+        {status === 'loading' && <div className="absolute inset-0 flex items-center justify-center"><LoadingState title="Building the town…" body="Phaser, atlas and tiles" /></div>}
+        {status === 'ready' && <Narrator />}
+        {status === 'error' && <div className="absolute inset-0 flex items-center justify-center bg-surface-2/80 p-6 font-display text-danger-dark">The town could not start: {error}</div>}
+      </div>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <PixelButton size="sm" variant={avatar ? 'primary' : 'secondary'} onClick={() => store.getState().updateSettings({ avatar: !avatar })} data-testid="avatar-toggle">{avatar ? 'Walking · back to the map' : 'Walk the town'}</PixelButton>
         <p className="label text-ink-muted">{avatar ? 'WASD / arrows to walk · E to open what is in front of you · V to leave' : 'drag to pan · wheel to zoom (2×–4×) · click a villager, the board or the workshop · V to walk'}</p>
