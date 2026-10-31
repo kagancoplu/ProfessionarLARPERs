@@ -19,6 +19,7 @@ import { MAP_H, MAP_W, TILE } from '../map/terrain'
 import { attachBridge } from '../bridge'
 import { DEPTH, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN } from '../game'
 import { AvatarController } from '../avatar'
+import { Ambient } from '../ambient'
 
 export interface TownDeps { store: AppStoreApi, bus: EventBus, fx: FxQueue }
 
@@ -49,6 +50,7 @@ export class TownScene extends Phaser.Scene {
   private detach?: () => void
   private dragStart?: { x: number, y: number, sx: number, sy: number }
   avatar?: AvatarController
+  ambient?: Ambient
 
   constructor (readonly deps: TownDeps) { super('town') }
 
@@ -112,7 +114,8 @@ export class TownScene extends Phaser.Scene {
     this.board = new Board(this, BOARD.x, BOARD.y)
     this.bell = new Bell(this, FOUNTAIN.x, FOUNTAIN.y)
     this.cart = new Cart(this)
-    this.night = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x2b2d5e, 0.55).setOrigin(0, 0).setDepth(DEPTH.overlay).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(false)
+    this.night = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x2b2d5e, 0.55).setOrigin(0, 0).setDepth(DEPTH.overlay).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(true).setAlpha(0)
+    this.ambient = new Ambient(this, { reducedMotion: this.deps.fx.reducedMotion })
 
     const cam = this.cameras.main
     cam.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE)
@@ -132,7 +135,7 @@ export class TownScene extends Phaser.Scene {
     this.coop.on('pointerup', () => { const first = [...this.chests.keys()][0]; if (first !== undefined) this.deps.store.getState().openDrawer('vault', first) })
     this.workshop.on('pointerup', open('workshop', 'workshop'))
     this.detach = attachBridge(this, this.deps.store, this.deps.bus)
-    const teardown = (): void => { this.detach?.(); this.detach = undefined; this.deps.fx.clear() }
+    const teardown = (): void => { this.detach?.(); this.detach = undefined; this.deps.fx.clear(); this.ambient?.destroy() }
     this.events.once('shutdown', teardown)
     this.events.once('destroy', teardown)
   }
@@ -167,8 +170,25 @@ export class TownScene extends Phaser.Scene {
     this.avatar.enable(true)
   }
 
-  setZoom (z: number): void { this.cameras.main.setZoom(Phaser.Math.Clamp(Math.round(z), ZOOM_MIN, ZOOM_MAX)) }
-  setNight (on: boolean): void { this.night.setVisible(on); for (const l of this.lamps) l.setAlpha(on ? 0.7 : 0); for (const h of this.houses) h.setNight(on) }
+  setZoom (z: number): void { this.cameras.main.setZoom(Phaser.Math.Clamp(Math.round(z), ZOOM_MIN, ZOOM_MAX)); this.applyLabelDetail() }
+  /** dusk and dawn fade in 1.5 s instead of switching */
+  setNight (on: boolean): void {
+    if (this.isNight === on) return
+    this.isNight = on
+    this.tweens.add({ targets: this.night, alpha: on ? 1 : 0, duration: 1500 })
+    for (const l of this.lamps) this.tweens.add({ targets: l, alpha: on ? 0.7 : 0, duration: 1500 })
+    for (const h of this.houses) h.setNight(on)
+    this.ambient?.setNight(on)
+  }
+
+  private isNight?: boolean
+
+  /** names only when you are close enough to read them (zoom 3–4); buildings keep their signs */
+  private applyLabelDetail (): void {
+    const show = this.cameras.main.zoom >= 3
+    for (const v of this.villagers.values()) v.showName(show)
+    for (const k of this.keepers) k.showName(show)
+  }
   setSpeed (speed: number): void { this.registry.set('speed', speed); this.deps.fx.speed = speed }
 
   focusOn (identity: string): void { const v = this.villagers.get(identity); if (v !== undefined) this.cameras.main.pan(v.x, v.y, 400) }
@@ -255,6 +275,7 @@ export class TownScene extends Phaser.Scene {
     const char = prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!
     const v = new Villager(this, identity, prof, name, spot.x, spot.y, char)
     v.wanderSpots = this.wanderSpots()
+    v.showName(this.cameras.main.zoom >= 3)
     v.slotIndex = this.villagers.size
     v.on('pointerup', () => this.deps.store.getState().openDrawer('agent', identity))
     this.villagers.set(identity, v)

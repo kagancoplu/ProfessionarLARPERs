@@ -86,7 +86,9 @@ export const ANIMALS: AnimalSpawn[] = [
   { char: 'cow', x: 15, y: 9, area: { x: 13, y: 7.5, w: 5, h: 2.5 } },
   { char: 'duck', x: POND.x + 2.5, y: POND.y + 2.5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
   { char: 'duck', x: POND.x + 6, y: POND.y + 4, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
-  { char: 'duck', x: POND.x + 4, y: POND.y + 5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true }
+  { char: 'duck', x: POND.x + 4, y: POND.y + 5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
+  { char: 'swan', x: POND.x + 7, y: POND.y + 3, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true },
+  { char: 'swan', x: POND.x + 3, y: POND.y + 2.5, area: { x: POND.x + 2, y: POND.y + 2, w: POND.w - 4, h: POND.h - 4 }, swim: true }
 ]
 
 export const POINTS: Record<string, Point> = {

@@ -58,6 +58,13 @@ const ALL_SPRITES = [
   { name: 'carrot', file: 'Crops/Crops.png', rect: [80, 64, 16, 32] },
   { name: 'pumpkin', file: 'Crops/Crops.png', rect: [80, 160, 16, 32] },
   { name: 'cabbage', file: 'Crops/Crops.png', rect: [80, 224, 16, 32] },
+  // 8×8 butterflies, one colour per row, wings closed / open
+  ...[['blue', 0], ['orange', 2], ['red', 3], ['pink', 4]].map(([c, row]) => ({ name: `butterfly_${c}`, file: 'Animals/Butterfly/Butterfly.png', rect: [0, row * 8, 8, 8], frames: { count: 2, dx: 8 } })),
+  { name: 'bee', file: 'Animals/Bee/Bee_Flying_Animation.png', rect: [0, 0, 16, 16], frames: { count: 4, dx: 16 } },
+  { name: 'wind', file: 'Weather effects/Wind_Anim.png', rect: [0, 0, 16, 16], frames: { count: 14, dx: 16 } },
+  { name: 'cloud', file: 'Weather effects/Clouds.png', rect: [0, 0, 64, 64], frames: { count: 4, cols: 2, dx: 64, dy: 64 } },
+  { name: 'rain_drop', file: 'Weather effects/Rain_Drop.png' },
+  { name: 'rain_impact', file: 'Weather effects/Rain_Drop_Impact.png', rect: [0, 0, 16, 16], frames: { count: 7, dx: 16 } },
   { name: 'icon_res', file: 'Icons/Outline/Resources_Icons_Outline.png', rect: [0, 0, 16, 16], frames: { count: 36, cols: 6, dx: 16, dy: 16 } },
   { name: 'icon_other', file: 'Icons/Outline/Other_Icons_Outline.png', rect: [0, 0, 16, 16], frames: { count: 15, cols: 5, dx: 16, dy: 16 } },
   { name: 'icon_other2', file: 'Icons/Outline/Other_Icons_2_Outline.png', rect: [0, 0, 16, 16], frames: { count: 20, cols: 4, dx: 16, dy: 16 } },
@@ -71,7 +78,8 @@ const USED = new Set([
   'stall', 'well', 'fountain', 'bench_stone', 'bench_wood', 'barrel', 'barrel_flowers', 'sign', 'sign_post',
   'lantern', 'smoke', 'chest', 'chest_gold', 'bunting', 'campfire',
   'oak_big', 'oak_med', 'spruce_big', 'birch_big', 'fruit_big', 'stump',
-  'hay', 'scarecrow', 'trough', 'boat', 'wheat', 'tomato', 'carrot', 'pumpkin', 'icon_res', 'icon_other'
+  'hay', 'scarecrow', 'trough', 'boat', 'wheat', 'tomato', 'carrot', 'pumpkin', 'icon_res', 'icon_other',
+  'butterfly_blue', 'butterfly_orange', 'butterfly_red', 'butterfly_pink', 'bee', 'wind', 'cloud', 'rain_drop', 'rain_impact'
 ])
 export const SPRITES = ALL_SPRITES.filter(s => USED.has(s.name))
 export const UNUSED_SPRITES = ALL_SPRITES.filter(s => !USED.has(s.name)).map(s => s.name)
@@ -120,5 +128,6 @@ export const ANIMALS = [
   { name: 'chicken_b', file: 'Animals/Chicken/Chicken_03.png', anims: { idle: [0, 2], walk: [2, 8] } },
   { name: 'duck', file: 'Animals/Duck/Duck_01.png', anims: { idle: [0, 2], walk: [1, 6], swim_idle: [7, 2], swim: [8, 4] } },
   { name: 'sheep', file: 'Animals/Sheep/Sheep_01.png', anims: { idle: [0, 2], walk: [3, 8] } },
-  { name: 'cow', file: 'Animals/Cow/Cow_01.png', anims: { idle: [0, 2], walk: [3, 8] } }
+  { name: 'cow', file: 'Animals/Cow/Cow_01.png', anims: { idle: [0, 2], walk: [3, 8] } },
+  { name: 'swan', file: 'Animals/Swan/Swan_01.png', anims: { idle: [0, 2], walk: [1, 6], swim_idle: [7, 2], swim: [8, 3] } }
 ]

@@ -15,8 +15,8 @@ export class Animal extends Phaser.GameObjects.Sprite {
   constructor (scene: Phaser.Scene, spawn: AnimalSpawn) {
     super(scene, spawn.x * TILE, spawn.y * TILE, 'chars', `${spawn.char}_${spawn.swim === true ? 'swim_idle' : 'idle'}_0`)
     this.area = { x0: spawn.area.x * TILE, y0: spawn.area.y * TILE, x1: (spawn.area.x + spawn.area.w) * TILE, y1: (spawn.area.y + spawn.area.h) * TILE }
-    this.idleKey = this.anim(spawn.char, spawn.swim === true ? 'swim_idle' : 'idle', 2, 3)
-    this.walkKey = this.anim(spawn.char, spawn.swim === true ? 'swim' : 'walk', spawn.swim === true ? 4 : spawn.char === 'duck' ? 6 : 8, spawn.swim === true ? 5 : 8)
+    this.idleKey = this.anim(spawn.char, spawn.swim === true ? 'swim_idle' : 'idle', 3)
+    this.walkKey = this.anim(spawn.char, spawn.swim === true ? 'swim' : 'walk', spawn.swim === true ? 5 : 8)
     this.setOrigin(0.5, 0.8).setDepth(this.y)
     scene.add.existing(this)
     this.play(this.idleKey)
@@ -24,9 +24,12 @@ export class Animal extends Phaser.GameObjects.Sprite {
     this.once('destroy', () => { this.timer?.remove(); this.walking?.stop() })
   }
 
-  private anim (char: string, name: string, frames: number, fps: number): string {
+  private anim (char: string, name: string, fps: number): string {
     const key = `${char}_${name}`
-    if (!this.scene.anims.exists(key)) this.scene.anims.create({ key, frames: this.scene.anims.generateFrameNames('chars', { prefix: `${key}_`, start: 0, end: frames - 1 }), frameRate: fps, repeat: -1 })
+    // as many frames as the atlas has for this animation (ducks, swans and cows differ)
+    let frames = 0
+    while (this.scene.textures.get('chars').has(`${key}_${frames}`)) frames++
+    if (!this.scene.anims.exists(key)) this.scene.anims.create({ key, frames: this.scene.anims.generateFrameNames('chars', { prefix: `${key}_`, start: 0, end: Math.max(0, frames - 1) }), frameRate: fps, repeat: -1 })
     return key
   }
 
