@@ -1,4 +1,6 @@
-# Owner CLI — Mandate Vault from BSV Desktop (Track D)
+# @agentcoop/owner-cli: Mandate Vault from BSV Desktop
+
+Creates, funds and empties an agent's Mandate Vault and writes the guard policy, with every signature approved in the owner's BSV Desktop ([docs/concepts/mandate-vault.md](../../docs/concepts/mandate-vault.md)). The web app's owner console does the same in a browser.
 
 Run on the laptop where the owner's BSV Desktop is open and unlocked (mainnet). Each command shows Desktop approval windows.
 
@@ -14,4 +16,4 @@ npm run owner -w apps/owner-cli -- withdraw <vaultId> [--outpoint txid.vout]    
 
 `withdraw` takes **every** UTXO of the vault (it empties the vault; `--outpoint` adds a UTXO WhatsOnChain has not indexed yet, it does not pick one). It finds the vault's UTXOs on chain (WhatsOnChain by script hash) plus the Desktop basket, and builds their BEEF from Arcade, so it works even if the guard and the overlay are down. If WhatsOnChain has not indexed a fresh UTXO yet, pass it with `--outpoint`.
 
-Names resolve through `config/identities.json`. Library: `src/vault-ops.ts` (tested in `test/vault.mockchain.test.ts`). Run-time caveat: needs Track A's SDK bridge fix (`plan/STATUS.md` → Blokajlar, 2026-10-30 17:45). Plan: [`plan/phases/D-P1.md`](../../plan/phases/D-P1.md).
+Names resolve through `config/identities.json`. Library: `apps/owner-cli/src/vault-ops.ts` (tested in `test/vault.mockchain.test.ts`). These commands spend real satoshis on mainnet.

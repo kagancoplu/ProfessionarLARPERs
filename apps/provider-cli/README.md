@@ -1,4 +1,6 @@
-# provider-cli: provider operator on BSV Desktop
+# @agentcoop/provider-cli: the provider operator on BSV Desktop
+
+Mints a provider's credit token, opens and cancels pools, and collects pool revenue, with every signature approved in BSV Desktop. The web app's provider console does the same in a browser.
 
 ```bash
 npm run provider-cli -- whoami
@@ -16,9 +18,9 @@ BSV Desktop must be running and unlocked (mainnet). The CLI connects with `Walle
 | Command | On chain | Notes |
 |---|---|---|
 | `mint` | T1: BSV-21 deploy+mint | writes the token id into `apps/provider-api/products/<product>.json` |
-| `open-pool` | T2: reserve N credits in one UTXO and announce the pool, then sign the offer `SIGHASH_SINGLE\|ANYONECANPAY` and `POST /offers` | Track A's `buildReserveAndAnnounce` + `signOffer`. If the coordinator is down, the signed offer is kept locally |
+| `open-pool` | T2: reserve N credits in one UTXO and announce the pool, then sign the offer `SIGHASH_SINGLE\|ANYONECANPAY` and `POST /offers` | `buildReserveAndAnnounce` + `signOffer` from `@agentcoop/core`. If the coordinator is down, the signed offer is kept locally |
 | `post-offer` | none | sends a saved offer to the coordinator again |
-| `cancel-pool` | spends the reserved offer UTXO back to you; the signed offer becomes void | Track A's `cancelPool` |
+| `cancel-pool` | spends the reserved offer UTXO back to you; the signed offer becomes void | `cancelPool` |
 | `list-pools` | none | coordinator `GET /pools` plus local records |
 | `sync-revenue` | none (wallet bookkeeping) | finds pledge fees and settlement payments of your pools on the overlay and tracks them in the `agentcoop revenue` basket |
 | `sweep-revenue` | one tx | moves the `agentcoop revenue` basket into your wallet balance |

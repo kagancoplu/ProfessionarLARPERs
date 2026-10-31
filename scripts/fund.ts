@@ -94,6 +94,6 @@ run(async () => {
       await w.close()
     }
   }
-  console.log('\nRows for plan/STATUS.md → "Mainnet işlemleri":')
+  console.log('\nRows for docs/reference/transactions.md:')
   for (const r of rows) console.log(r)
 })

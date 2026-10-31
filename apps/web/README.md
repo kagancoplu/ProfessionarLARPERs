@@ -1,18 +1,18 @@
-# apps/web — AgentCoop frontend (Track E)
+# @agentcoop/web: consoles and the Town
 
 Role consoles (provider, agent owner, human participant, observer/jury) and the pixel-art **Town**, one store.
 Every signature happens in the user's **BSV Desktop** (`WalletClient('auto')`); the browser never sees a key.
-Design rules: [`DESIGN.md`](./DESIGN.md). Plan: `plan/track-E-frontend.md`, phases in `plan/phases/E-P*.md`.
+Design rules: [`DESIGN.md`](./DESIGN.md). Video and film mode: [`VIDEO.md`](./VIDEO.md). Art direction for Town assets: `.claude/skills/village-art-direction/SKILL.md`.
 
 ## Open the town
 
-- **Public URL:** _not published yet_ (Cloudflare Pages, see Deploy below). Until then: `npm run web:mock` → http://localhost:5173.
+- **Public URL:** <https://professionar-larpe-rs.vercel.app/?mode=mock> (Vercel). Use `?mode=mock`: the deployed build (checked 31 October 2026) sets no public service or Supabase URLs, so its live mode has nothing to connect to. Locally: `npm run web:mock` → http://localhost:5173.
 - **Mock mode** needs nothing: a scripted village (pools, pledges, one settlement, a GPU job, a prompt injection the guard refuses, a failed pool, a market sweep, a Coop Rail crossing) loops every ~35 s, and a mock BSV Desktop approves on screen. `?replay=mock-demo` plays a recording.
 - **Live mode** (`npm run web`): the overlay, coordinator, provider-api, guard, agents and maker through the dev proxy; connect the real BSV Desktop from the top bar. Nothing in the browser holds a key: pledges, signatures, redeems, vault funding and withdrawals are all `createAction` / `createSignature` approvals in Desktop.
 - **Presenter mode:** `?presenter=1` (larger, no toasts; in replay `1`–`5` jump between stages).
 - **Settings:** the ⚙ in the top bar (`/settings`): day/night, sound, walking, presenter mode, reduced motion, replay speed.
-- **Already on mainnet:** the Town and the Explorer list the project's real BSV transactions (the S1 run and the BSV Desktop mint, pool and offer) with WhatsOnChain links, in every mode.
-- **Sign now and leave:** in the join form, a person can pledge as a *lighthouse* (A-P5): one signature binds the coin to their own credits and the guard co-signs the settlement, so nobody waits for the 60-second round. Live mode needs the coordinator's `POST /pledges/lighthouse`.
+- **Already on mainnet:** the Town and the Explorer list the project's real BSV transactions (`apps/web/src/proof/mainnet.ts`, from [docs/reference/transactions.md](../../docs/reference/transactions.md)) with WhatsOnChain links, in every mode.
+- **Sign now and leave:** in the join form, a person can pledge as a *lighthouse*: one signature binds the coin to their own credits and the guard co-signs the settlement, so nobody waits for the 60-second round. Live mode needs the coordinator's `POST /pledges/lighthouse`.
 - **Avatar mode:** "Walk the town" under the canvas (or `V`, `?avatar=1`): your own villager starts in front of the fountain and walks with WASD / arrows, the camera follows, `E` opens whatever is in front of you (board, stall, house, vault chest, workshop, harbor). Works without a wallet as a guest. Outside avatar mode the view rests on the square (wheel zooms, nothing pans it away).
 
 ![The Town by day](../../docs/screenshots/web/01-town-day.png)
@@ -34,7 +34,7 @@ Agents are villagers; a pool is the notice board with a chest that fills; a pled
 - Desktop browsers only (≥ 1024 px); English. Multiplayer only with the Supabase transport (below), up to 8 players, names as each visitor announces them (cosmetic).
 - Mainnet acceptance not done yet. The live flows (pledge, review + sign, redeem + job, mint + open pool, vault create/fund/policy/withdraw, list + sweep) run end to end on the mock chain against the real overlay, coordinator, provider-api and guard with a wallet-toolbox wallet (`test/web.live-flows.mockchain.test.ts`); BSV Desktop itself and mainnet are the untested part. `AuthFetch` from the browser to the provider-api and the guard needs their CORS in production (the dev proxy covers local).
 - GPU jobs are simulated (`simulated GPU jobs`); pool discounts are `demo pricing`; Coop Rail is `experimental` (quotes only; no swap API yet).
-- In live mode the agents' bubbles come from Track C's feed (`AGENTS_URL`, `/events`); that path is wired and the event shapes match, but it has not been run from the browser against the real agents yet.
+- In live mode the agents' bubbles come from the agents' feed (`AGENTS_URL`, `/events`); that path is wired and the event shapes match, but it has not been run from the browser against the real agents yet.
 - No real mainnet replay yet: record one from `/_debug` during a live run.
 - No `/design-review` browser loop was run; the DESIGN.md checklist was applied by hand with screenshots.
 
@@ -62,16 +62,17 @@ npm -w apps/web run map        # src/town/map/*.ts → public/game/map.json (Til
 npm -w apps/web run ui         # public/ui icons strip + 9-slice frames
 ```
 
-## Deploy (Vercel, public demo)
+## Deploy
 
-The public pitch demo runs on Vercel + Supabase with no backend: see [`plan/DEMO-HYBRID.md`](../../plan/DEMO-HYBRID.md). Import the `web` (Vite) project with Root Directory `apps/web` and Node 22.x; `vercel.json` sets install (`cd ../.. && npm ci`), build (`npm run build:demo`), output, the SPA rewrite and the headers below. Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (anon key only), `VITE_NETWORK=main`.
+The app is a static build; any static host works. Services must send CORS for the app's origin in production (the dev proxy is not there), and their URLs are compiled in at build time ([docs/reference/configuration.md](../../docs/reference/configuration.md#web-app-build-time)).
 
-## Deploy (Cloudflare Pages)
+**Vercel** (the public URL): import the `web` (Vite) project with Root Directory `apps/web` and Node 22.x. `apps/web/vercel.json` sets install (`cd ../.. && npm ci`), the build, the output, the SPA rewrite and the security headers (CSP allows BSV Desktop's local ports `http://localhost:3301` and `http://localhost:3321`). Since 31 October it builds with `npm run build` (live mode by default; visitors add `?mode=mock`); `npm run build:demo` builds mock mode as the default. Env: the `VITE_*` service URLs for a live deployment, `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (anon key only) for the mirror, `VITE_NETWORK=main`.
 
-- Build command `npm run web:build`, output `apps/web/dist`, Node 22+. `public/_redirects` routes every path to `index.html`; `public/_headers` sets CSP and long caches for `/game`, `/ui`, `/assets` (fill the service origins into `connect-src`).
-- Build-time env (`VITE_*`, MASTER §3.9): `VITE_COOP_API_URL`, `VITE_OVERLAY_URL`, `VITE_PROVIDER_API_URL`, `VITE_GUARD_URL`, `VITE_AGENTS_URL`, `VITE_MAKER_URL`, `VITE_ARCADE_URL`, `VITE_NETWORK=main`, `VITE_DATA_MODE=live`. The services must send CORS for the Pages origin (the dev proxy is not there in production).
-- Replays: `public/replays/*.jsonl`; record one from `/_debug` ("record a replay" → downloads `mainnet-<date>.jsonl`), open with `?replay=mainnet-<date>`.
-- Sound is synthesised in the browser (no audio files). Keyboard: `T` town, `P` pools, `A` agents, `E` explorer, `K` market, `O` owner, `M` sound, `N` day/night, `?` tour.
+**Cloudflare Pages:** build command `npm run web:build`, output `apps/web/dist`, Node 22+. `public/_redirects` routes every path to `index.html`; `public/_headers` sets the CSP and long caches for `/game`, `/ui` and `/assets` (fill the service origins into `connect-src`). Set `VITE_DATA_MODE=live` and the service URLs.
+
+**Replays:** `public/replays/*.jsonl`. Record one from `/_debug` ("record a replay" downloads `mainnet-<date>.jsonl`) and open it with `?replay=mainnet-<date>`. The repository has only the scripted `mock-demo` recording; no mainnet replay has been recorded yet.
+
+Sound is synthesised in the browser (no audio files). Keyboard: `T` town, `P` pools, `A` agents, `E` explorer, `K` market, `O` owner, `M` sound, `N` day/night, `?` tour.
 
 `PORT=5180 npm run web:mock` picks another port. Modes can also be forced from the URL: `?mode=mock`, `?mode=live`, `?replay=<name>`.
 
@@ -79,7 +80,7 @@ The public pitch demo runs on Vercel + Supabase with no backend: see [`plan/DEMO
 
 | Route | What |
 |---|---|
-| `/` | Town square: live feed, open pools, corner counters (Phaser scene in Phase 1) |
+| `/` | Town square: live feed, open pools, corner counters |
 | `/pools`, `/me`, `/provider`, `/owner`, `/agents`, `/market`, `/explorer`, `/metrics` | the consoles: pools, participant, provider, owner (vault + guard), agents, market, ledger, metrics + harbor (Coop Rail, experimental) |
 | `/_kit` | the design system: tokens, type, every component and state, sprites, Phaser atlas |
 | `/_debug` | events, state, service health, mode controls, the core-in-browser smoke test |

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Mainnet preflight (plan/MAINNET-RUNBOOK.md §1): is this machine ready for
+ * Mainnet preflight (docs/OPS.md §7): is this machine ready for
  * the mainnet run? Spends nothing, never prints a key, opens no wallet
  * unless --wallets is given.
  *
@@ -166,5 +166,5 @@ for (const area of [...new Set(results.map(r => r.area))]) {
 }
 const blocking = results.filter(r => r.level === 'block').length
 const warnings = results.filter(r => r.level === 'warn').length
-console.log(`\n${blocking === 0 ? 'Ready for S1' : `${blocking} blocking`}${warnings > 0 ? `, ${warnings} warning(s)` : ''}. Runbook: plan/MAINNET-RUNBOOK.md`)
+console.log(`\n${blocking === 0 ? 'Ready for S1' : `${blocking} blocking`}${warnings > 0 ? `, ${warnings} warning(s)` : ''}. Runbook: docs/OPS.md §7`)
 process.exit(blocking === 0 ? 0 : 1)

@@ -2,7 +2,7 @@
 
 Source of truth for every visual decision in the frontend. Written 2026-10-30 by Track E with `/design-consultation`
 (autonomous run: the user was away, so the choices below were made by the designer-agent and are listed in
-"Decisions made without user confirmation" for review). `plan/track-E-frontend.md` §6.3 anti-slop rules are binding;
+"Decisions made without user confirmation" for review). the anti-slop rules of the frontend plan (§6.3 of `docs/archive/hackathon-2026/plan/track-E-frontend.md`) are binding;
 every `/design-review` finding that departs from this file is a bug.
 
 ## Product context

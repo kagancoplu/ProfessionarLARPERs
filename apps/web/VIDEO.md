@@ -28,7 +28,7 @@ The video is made from code, so every take is the same and the picture lines up 
 | 1:58–2:16 | **Why BSV** | `/film?film=why` (`src/film/WhyBsv.tsx`) | split screen: Ethereum escrow (5 deposits + 5 refunds) against one BSV transaction; the BSV stack |
 | 2:16–2:30 | **Manifesto** | `/film?film=manifesto` (`src/film/manifesto.ts`) | the square at dusk, then the end card for the last 4.6 s: logo, line, live demo URL and repo, **Try now** with a QR code to the live demo (`public/ui/qr-live-demo.svg`) |
 
-Every narrator line lives in `src/film/narration.ts` (segment, start second, subtitle length, spoken form); `test/film.test.ts` checks they fit. Honesty: the app tour shows the `MOCK` and `demo pricing` tags as the app does; the two transactions are real (T5 settlement `6d320c9a…`, T8 market sweep `675c3334…`), shown as our own card with data read from the WhatsOnChain API, not as a copy of the site. Screenshots of the real WhatsOnChain pages can replace the cards: save them as `public/_film/woc-settlement.png` and `woc-sweep.png` (the site's bot check blocks a headless browser).
+Every narrator line lives in `src/film/narration.ts` (segment, start second, subtitle length, spoken form); `apps/web/test/film.test.ts` checks they fit. Honesty: the app tour shows the `MOCK` and `demo pricing` tags as the app does; the two transactions are real (T5 settlement `6d320c9a…`, T8 market sweep `675c3334…`), shown as our own card with data read from the WhatsOnChain API, not as a copy of the site. Screenshots of the real WhatsOnChain pages can replace the cards: save them as `public/_film/woc-settlement.png` and `woc-sweep.png` (the site's bot check blocks a headless browser).
 
 ### Make it
 

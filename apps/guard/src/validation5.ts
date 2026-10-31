@@ -106,10 +106,10 @@ run(async () => {
     rows.push(`| ${stamp()} | T9 vault owner withdraw (test 5) | ${w.txid} | D | ${w.satoshis} sats, OP_IF branch |`)
     console.log(`5. owner withdrew ${w.satoshis} → ${wocTxUrl(w.txid)}`)
 
-    console.log('\n✓ validation test 5 passed. Add to plan/STATUS.md → "Mainnet işlemleri":')
+    console.log('\n✓ validation test 5 passed. Add to docs/reference/transactions.md:')
     for (const r of rows) console.log(r)
   } catch (e) {
-    if (rows.length > 0) { console.log('\nPartial run, record these in plan/STATUS.md:'); for (const r of rows) console.log(r) }
+    if (rows.length > 0) { console.log('\nPartial run, record these in docs/reference/transactions.md:'); for (const r of rows) console.log(r) }
     throw e
   } finally {
     server.close()

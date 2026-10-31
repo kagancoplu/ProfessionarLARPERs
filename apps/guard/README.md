@@ -1,4 +1,4 @@
-# Guard — Mandate Vault policy engine and co-signer (Track D)
+# Guard: Mandate Vault policy engine and co-signer
 
 An agent's budget sits in a vault output:
 
@@ -10,7 +10,7 @@ OP_IF <ownerPub> OP_CHECKSIG OP_ELSE OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMUL
 - **Agent + guard** spend together. The guard signs only after its policy checks pass.
 - **The guard cannot move funds alone, and neither can the agent**: the chain enforces the 2-of-2. A compromised guard can at most refuse to sign; the owner's exit path stays open. The guard holds no funds; its wallet only signs.
 
-Plans: [`plan/phases/D-P1.md`](../../plan/phases/D-P1.md) (script, G1–G13), [`plan/phases/D-P2.md`](../../plan/phases/D-P2.md) (settle, pledges, hot wallet). Script and signers: [`packages/core/src/scripts/vault.ts`](../../packages/core/src/scripts/vault.ts), [`packages/core/src/signers/VaultSigner.ts`](../../packages/core/src/signers/VaultSigner.ts). Owner CLI: [`apps/owner-cli`](../owner-cli).
+Concept and limits: [docs/concepts/mandate-vault.md](../../docs/concepts/mandate-vault.md). Script and signers: [`packages/core/src/scripts/vault.ts`](../../packages/core/src/scripts/vault.ts), [`packages/core/src/signers/VaultSigner.ts`](../../packages/core/src/signers/VaultSigner.ts). Owner CLI: [`apps/owner-cli`](../owner-cli).
 
 ## Run
 
@@ -22,9 +22,9 @@ npm run guard -w @agentcoop/guard            # GUARD_URL port (default 8091); wa
 npm run demo-injection -w @agentcoop/scripts # the injection demo, offline (mock chain), ~15 s
 ```
 
-**Node 24** (tested 24.22; the treasury laptop runs 24.13). The npm scripts start with `tsx --import @agentcoop/core/register-sdk` (MASTER §3.1). On Node 22.22 that hook fails on CommonJS packages (`ERR_INVALID_RETURN_PROPERTY_VALUE`); tests (vitest) run on either.
+**Node 24** recommended (tested on 24.13 and 24.22). The npm scripts start with `tsx --import @agentcoop/core/register-sdk`. On Node 22.22 that hook fails on CommonJS packages (`ERR_INVALID_RETURN_PROPERTY_VALUE`); tests (vitest) run on either.
 
-## API (MASTER §3.7)
+## API
 
 | Method | Path | Auth | Does |
 |---|---|---|---|
@@ -34,11 +34,11 @@ npm run demo-injection -w @agentcoop/scripts # the injection demo, offline (mock
 | `GET` | `/policies/:agentIdentity` | BRC-103, owner or agent | `{ owner, agent, policy, updatedAt }` (the agent gets the latest policy stored for it); 404 if none |
 | `GET` | `/decisions?agent=&limit=` | BRC-103, the agent or an owner of one of its vaults | `{ agent, decisions: [{ id, ts, agent, vaultId?, kind, poolId?, sats?, outcome: 'approved'\|'denied', reason?, txid? }] }`, newest first (≤ 500) |
 | `POST` | `/decisions/:id/txid` | none (checked on chain) | `{ txid }`: the transaction an approved co-signature went into. The guard fetches it and records it only if it spends the decision's vault outpoint (`decision-txids.jsonl`); 409 if a different txid is already recorded, 422 if the tx does not spend it. `httpCosigner` reports it after every broadcast; `/cosign` answers carry `decisionId` |
-| `GET` | `/events` | none | SSE, MASTER §3.10 `CoopEvent` (`src:'guard'`): `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`, `decision_txid`; last 500 kept, `Last-Event-ID` resumes, `: keepalive` every 15 s. Identity keys are public; no secrets |
+| `GET` | `/events` | none | SSE of `CoopEvent` envelopes (`src:'guard'`, shape in `apps/agents/src/events.ts`): `cosign_approved`, `cosign_denied`, `policy_updated`, `vault_registered`, `decision_txid`; last 500 kept, `Last-Event-ID` resumes, `: keepalive` every 15 s. Identity keys are public; no secrets |
 | `POST` | `/cosign` | none (the agent's signature is in the request) | see below → `{ signatureHex, guardPub }` or `403 / 400 { reason }` |
 | `GET` | `/healthz` | none | `{ ok, identityKey, network }` |
 
-CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the BRC-103 headers (`x-bsv-auth-*`) are exposed so a browser's `AuthFetch` (Track E's owner console) works.
+CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the BRC-103 headers (`x-bsv-auth-*`) are exposed so a browser's `AuthFetch` (the web owner console) works.
 
 `/cosign` body: `{ txBEEF?, plan?, inputIndex, agent, agentSignatureHex, context }`. Signatures are in checksig format (DER ‖ `0x41`), hex.
 
@@ -46,12 +46,12 @@ CORS: `Access-Control-Allow-Origin` = `GUARD_CORS_ORIGIN` (default `*`), and the
 |---|---|---|
 | `pay` | `txBEEF`: AtomicBEEF with every input's source | `payees?: [{ vout, provider, keyID }]` (provider payments) · `hotWallet?: [{ vout, derivationPrefix, derivationSuffix }]` (top-up of the agent's own hot wallet) · `poolBEEF?` (the pool tx, when the tx is a vault pledge; otherwise the guard fetches it) |
 | `settle` | `plan`: the coordinator's `SettlementPlan`; **the guard builds the tx itself** (`planTransaction`) | `poolId` (required), `expectedCredits?`, `tokenId?` (cross-checks; the guard reads the truth from the chain) |
-| `rail` | `txBEEF`: the claim of a Coop Rail HTLC (D-P3) | `swapId` (required). The guard signs with its rail key `[1,'agentcoop rail']`/swapId; the BSV must land in the agent's vault |
-| `redeem` | `txBEEF`: spends one vault-locked credit UTXO (A 5.1–5.3, `creditLock: 'vault'`) with agent + guard (D-P2b) | `creditPayees?: [{ vout, provider, index }]`: credits to an allowed provider's token address `receivePkh(provider, index)`; every other credit output must be locked to the same vault; all credits accounted for. Without payees it is a split inside the vault |
+| `rail` | `txBEEF`: the claim of a Coop Rail HTLC | `swapId` (required). The guard signs with its rail key `[1,'agentcoop rail']`/swapId; the BSV must land in the agent's vault |
+| `redeem` | `txBEEF`: spends one vault-locked credit UTXO (`creditLock: 'vault'`) with agent + guard | `creditPayees?: [{ vout, provider, index }]`: credits to an allowed provider's token address `receivePkh(provider, index)`; every other credit output must be locked to the same vault; all credits accounted for. Without payees it is a split inside the vault |
 | `list` | `txBEEF`: the listing skeleton, input `i` = vault credits, output `i` = the proceeds; agent and guard sign **SINGLE\|ANYONECANPAY\|FORKID (0xC3)** | — : the proceeds go to the vault script and are ≥ credits × `minAskSatsPerCredit` (off when the owner has not set it) |
-| `lighthouse` | `plan` + `pledge` (a `LighthousePledge`, Track A 5.5); no agent signature, no vault | The human named this guard in its pledge record and went offline. The guard builds the offer from the plan's own input 0, runs Track A's `cosignLighthouse` (DvP, fee cap, lineage, the human's SINGLE\|ACP signature for this plan) and answers `{ unlockingScriptHex }` (human + guard). Client: `lighthouseCosign(guardUrl, …)` (D-P2c) |
+| `lighthouse` | `plan` + `pledge` (a `LighthousePledge`); no agent signature, no vault | The human named this guard in its pledge record and went offline. The guard builds the offer from the plan's own input 0, runs `cosignLighthouse` (DvP, fee cap, lineage, the human's SINGLE\|ACP signature for this plan) and answers `{ unlockingScriptHex }` (human + guard). Client: `lighthouseCosign(guardUrl, …)` |
 
-Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `new VaultSigner(wallet, { vaultId, cosign, context, plan? })` (an `InputSigner` for A's `signSettlementInput`); `httpCosigner(GUARD_URL)`. A refusal throws `CosignRejected { status, reason }`.
+Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFromVault`, `cancelVaultPledge`, `internalizeVaultSettlement`, `topUpHotWallet`, `new VaultSigner(wallet, { vaultId, cosign, context, plan? })` (an `InputSigner` for `signSettlementInput`); `httpCosigner(GUARD_URL)`. A refusal throws `CosignRejected { status, reason }`.
 
 ## Policy fields
 
@@ -62,9 +62,9 @@ Agent side (`@agentcoop/core/signers/VaultSigner`): `spendFromVault`, `pledgeFro
 | `weeklyCapSats` | Max outflow of the vault over a rolling 7 days; a pledge coin counts from pledge time (reserved), the settlement replaces it with its real cost |
 | `maxFeeSats` | Max miner fee of one transaction; in a settlement, max fee share of this agent |
 | `hotWalletDailySats` | Max top-ups of the agent's hot wallet over a rolling 24 hours (they also count in the weekly cap) |
-| `minAskSatsPerCredit` | Optional (D-P2b). Lowest ask per credit when the agent lists vault-locked credits; absent = the agent cannot list them |
+| `minAskSatsPerCredit` | Optional. Lowest ask per credit when the agent lists vault-locked credits; absent = the agent cannot list them |
 
-## What each check closes (FINAL-IDEA §8)
+## What each check closes
 
 The project-wide threat model, with every threat mapped to its control and test, is [docs/THREAT-MODEL.md](../../docs/THREAT-MODEL.md); this table is the guard's part of it in detail.
 
@@ -78,19 +78,19 @@ The project-wide threat model, with every threat mapped to its control and test,
 | Payee proof + allowlist (G7, G8) | `provider not allowed`, `payee proof mismatch` | **Prompt injection** paying an attacker, without trusting the overlay or the coordinator for who the payee is |
 | Unlisted outputs ≤ the agent's own inputs (G9) | `vault funds to unlisted output` | Vault money to the agent's change or a third party |
 | Fee cap (G10) | `maxFeeSats exceeded` | Draining through the miner fee |
-| **Pledge** (2.1b): record names this agent, `signer:'vault'`, A.3.1 layout, coin on this vault (P1, P2) | `pledge record does not name this agent`, `pledge layout: …` | Pledging the owner's money for someone else's credits; the coin leaving the vault |
+| **Pledge**: record names this agent, `signer:'vault'`, the pledge layout, coin on this vault (P1, P2) | `pledge record does not name this agent`, `pledge layout: …` | Pledging the owner's money for someone else's credits; the coin leaving the vault |
 | **Pledge**: pool tx bound by txid; provider allowed, revenue key and offer key are the provider's (P3, P4) | `provider not allowed: …`, `pool payScript is not the provider's revenue key`, `offer UTXO is not the provider's` | **"Put 100% of the budget into pool X"** refused before any fee is paid; a fake pool naming an allowed provider |
 | **Pledge**: fee + coin within `maxPerPoolSats`, coin reserved in the weekly cap (P5) | `maxPerPoolSats exceeded (pledge …)`, `weeklyCapSats exceeded` | **"Put 100% of the budget into the (allowed) pool"**; splitting the budget across many pools |
 | **Pledge**: `verifyLineage` of the offer's credits, cached (P6) | `LINEAGE_FAILED: …` | Paying a fee for fake credits; makes the settlement round fast |
-| **Settle** (2.1): tx built from the plan; terms + nonce from the offer input's source tx; expected credits from the pledge record on chain (S1, S3, S4) | `pool mismatch`, `no pledge record for this input`, `expectedCredits mismatch` | Signing a transaction other than the plan; a coordinator moving the coin into another pool or share |
+| **Settle**: tx built from the plan; terms + nonce from the offer input's source tx; expected credits from the pledge record on chain (S1, S3, S4) | `pool mismatch`, `no pledge record for this input`, `expectedCredits mismatch` | Signing a transaction other than the plan; a coordinator moving the coin into another pool or share |
 | **Settle**: provider proofs (S5) | `provider not allowed: …`, … | A provider the owner revoked after the pledge |
-| **Settle**: A's `verifySettlementPlan` with `verifyLineage` (S6) | `BAD_PLAN: …`, `LINEAGE_FAILED: …` | **Coordinator theft** (credits to another address, fewer credits, smaller change, higher fee share); **fake credits shown as valid by the coordinator or the overlay** (lineage checked by the guard itself) |
+| **Settle**: `verifySettlementPlan` with `verifyLineage` (S6) | `BAD_PLAN: …`, `LINEAGE_FAILED: …` | **Coordinator theft** (credits to another address, fewer credits, smaller change, higher fee share); **fake credits shown as valid by the coordinator or the overlay** (lineage checked by the guard itself) |
 | **Settle**: per-pool and weekly caps on the real cost (S7) | `maxPerPoolSats exceeded`, `weeklyCapSats exceeded` | A policy tightened between pledge and settlement |
-| **Hot wallet** (2.2): output = the agent's own BRC-29 key from 'anyone' (H1, H2) | `hot wallet proof mismatch` | Paying a third party disguised as a top-up |
+| **Hot wallet**: output = the agent's own BRC-29 key from 'anyone' (H1, H2) | `hot wallet proof mismatch` | Paying a third party disguised as a top-up |
 | **Hot wallet**: rolling 24 h cap (H3) | `hotWalletDailySats exceeded` | A compromised agent draining the vault through its hot wallet |
-| **Redeem** (D-P2b): input = this agent's vault-locked credits, one per vault; credit outputs proven to an allowed provider or locked to the same vault; conserved (C1–C3) | `not vault-locked credits`, `credits to unlisted output`, `credits to another vault`, `provider not allowed: …`, `payee proof mismatch`, `credits not conserved` | **The agent sells or sends its credits around the guard** (T-10) |
-| **List** (D-P2b): SINGLE\|ACP; proceeds to the vault script at or above the owner's floor (L1–L3) | `listing proceeds must go to the vault`, `listing not enabled by the owner`, `ask below minAskSatsPerCredit` | **Dumping vault credits** to a third party for nothing (T-10) |
-| **Rail** (D-P3): the HTLC names this guard's and this agent's keys for the swap; final; agent signature; the HTLC's sats land in the agent's registered vault; fee cap (R1–R6) | `not a rail HTLC for this guard`, `agent mismatch`, `rail funds must land in the vault` | **"Coop Rail claim bypasses the vault policy"** (closed: claim = agent + guard 2-of-2 and the guard only signs into the vault) |
+| **Redeem**: input = this agent's vault-locked credits, one per vault; credit outputs proven to an allowed provider or locked to the same vault; conserved (C1–C3) | `not vault-locked credits`, `credits to unlisted output`, `credits to another vault`, `provider not allowed: …`, `payee proof mismatch`, `credits not conserved` | **The agent sells or sends its credits around the guard** (T-10) |
+| **List**: SINGLE\|ACP; proceeds to the vault script at or above the owner's floor (L1–L3) | `listing proceeds must go to the vault`, `listing not enabled by the owner`, `ask below minAskSatsPerCredit` | **Dumping vault credits** to a third party for nothing (T-10) |
+| **Rail**: the HTLC names this guard's and this agent's keys for the swap; final; agent signature; the HTLC's sats land in the agent's registered vault; fee cap (R1–R6) | `not a rail HTLC for this guard`, `agent mismatch`, `rail funds must land in the vault` | **"Coop Rail claim bypasses the vault policy"** (closed: claim = agent + guard 2-of-2 and the guard only signs into the vault) |
 | Rolling weekly cap, one ledger entry per vault input (G12) | `weeklyCapSats exceeded` | Bounded loss if the agent (or the agent and the guard) is compromised |
 | One request at a time, decision log (G13) | — | Racing two requests under the cap; auditability |
 
@@ -112,17 +112,24 @@ Every decision is a line in the log and in `data/guard/decisions.jsonl`:
 
 - **Nothing from the coordinator or the overlay.** The settlement tx comes from the plan, but every fact the guard checks is bound to the chain: input sources by txid (G1), the pool's terms and nonce by the offer input's source txid, the expected credits by the pledge tx's txid, the credits' genuineness by `verifyLineage` (ancestors fetched from Arcade/WhatsOnChain, txids recomputed, kit rules applied locally). `poolBEEF` and the overlay's pool lookup are transport only.
 - **The hot wallet** is outside the guard's control by design: whatever is topped up is the agent's to spend (bounded by `hotWalletDailySats`).
-- **Timing:** `verifyLineage` costs one Arcade fetch per ancestor (measured 250–950 ms); A's pools are 1–3 deep. It runs at pledge time and is cached, so the settlement round (60 s) sees it from cache.
+- **Timing:** `verifyLineage` costs one Arcade fetch per ancestor (measured 250–950 ms); pool lineages are 1–3 deep. It runs at pledge time and is cached, so the settlement round (60 s) sees it from cache.
 
-Still open: if the guard is down the agent cannot spend (the owner can still withdraw); the ledger counts at signing time, so a signed but never broadcast spend still uses the window; credits go to the agent's own token address, so an agent can sell them on the market and bypass the guard (K3, A Faz 5 `creditLock:'vault'`).
+Still open: if the guard is down the agent cannot spend (the owner can still withdraw); the ledger counts at signing time, so a signed but never broadcast spend still uses the window (F-5). Credits from a vault pledge without `creditLock: 'vault'` go to the agent's own token address, where the guard cannot follow them; vault agents should set it (T-10).
 
 ## Other scripts
 
 - `npm run adopt -w @agentcoop/guard -- <agent-name> <vaultId>`: takes the owner's fundings (`data/vaults/<vaultId>/fund-*.json`) into the agent's `agentcoop vault` basket (also after a spend failed and the UTXO was relinquished but is still unspent).
-- `npm run validation5 -w @agentcoop/guard`: mainnet validation test 5 (≤ 1,000 sats; Desktop as owner, `agent-1`, guard in-process, `provider-api`). See D-P1 §9.3.
+- `npm run validation5 -w @agentcoop/guard`: mainnet validation test 5 (≤ 1,000 sats; Desktop as owner, `agent-1`, guard in-process, `provider-api`); result in [docs/reference/transactions.md](../../docs/reference/transactions.md#mainnet-validation-tests). It spends real satoshis.
 
-## For other tracks
+## Integrating
 
-- **A** (A.3.1 `buildPledge(…,'vault')`, A.3.2): `pledgeFromVault(wallet, { vaultId, utxo, terms, credits, tokenIndex, cosign, poolBEEF? })` builds the A.3.1 layout the guard checks (out0 coin on the vault script, out1 fee, out2 record `signer:'vault'`); `buildPledge` can delegate to it. Settlement: `signSettlementInput(plan, i, new VaultSigner(wallet, { vaultId, cosign, plan, context: { kind:'settle', poolId, expectedCredits, tokenId } }))`, then `internalizeVaultSettlement`. `unlockingScriptLength` = `VAULT_COSIGN_UNLOCK_LENGTH = 150` (= A's `VAULT_UNLOCKING_SCRIPT_LENGTH`). Shared e2e: `test/e2e.vault-settlement.mockchain.test.ts`.
-- **B** (coordinator): nothing to change; vault inputs are verified with `Spend` like any other. A guard refusal arrives as `sign_reject` with reason `guard: <reason>`.
-- **C** (vault agent): `pledgeFromVault` + `httpCosigner(GUARD_URL)` for pools; `topUpHotWallet(wallet, { vaultId, utxo, satoshis, cosign })` before retail 402 calls (the sats land in the agent's `default` basket, so `AuthFetch`/402 work as usual). Use `CosignRejected.reason` as the `sign_reject` reason.
+- **Pledging and settling from a vault** (`@agentcoop/core`): `pledgeFromVault(wallet, { vaultId, utxo, terms, credits, tokenIndex, cosign, poolBEEF? })` builds the layout the guard checks (out0 coin on the vault script, out1 fee, out2 record `signer:'vault'`). In the round: `signSettlementInput(plan, i, new VaultSigner(wallet, { vaultId, cosign, plan, context: { kind:'settle', poolId, expectedCredits, tokenId } }))`, then `internalizeVaultSettlement`. The unlocking script reserves `VAULT_COSIGN_UNLOCK_LENGTH = 150` bytes. Shared end-to-end test: `test/e2e.vault-settlement.mockchain.test.ts`.
+- **Coordinator:** nothing special; vault inputs are verified like any other. A guard refusal arrives as `sign_reject` with reason `guard: <reason>`.
+- **Agents:** `pledgeFromVault` + `httpCosigner(GUARD_URL)` for pools; `topUpHotWallet(wallet, { vaultId, utxo, satoshis, cosign })` before retail 402 calls (the satoshis land in the agent's `default` basket, so `AuthFetch` works as usual). Use `CosignRejected.reason` as the `sign_reject` reason.
+
+## Tests
+
+```bash
+npx vitest run apps/guard                    # policy checks G, P, pledge and Lighthouse paths
+npx vitest run test/vault.mockchain.test.ts test/e2e.vault-settlement.mockchain.test.ts test/vault-credits.spend.mockchain.test.ts test/guard.lighthouse.mockchain.test.ts
+```

@@ -1,9 +1,8 @@
 /**
  * AgentCoop shared types and constants.
  *
- * Source of truth: plan/00-MASTER-PLAN.md §3.2 (constants) and §3.3 (types).
- * These are frozen interfaces: change MASTER §3 first, then this file, then
- * announce it in plan/STATUS.md → "Arayüz değişiklikleri".
+ * The on-chain formats these describe are documented in docs/reference/protocol.md.
+ * Every package depends on them: change a format there and here together.
  */
 import type { Transaction, UnlockingScript, WalletProtocol } from './sdk'
 
@@ -66,19 +65,19 @@ export const P2PKH_UNLOCKING_SCRIPT_LENGTH = 108
 
 export interface PoolTerms {
   v: '1'
-  poolId: string              // kredi UTXO outpoint'i "txid_vout" (= teklif girdisi)
-  provider: string            // sağlayıcı identity key (teklifi imzalayan cüzdan)
-  providerApi: string         // https://... provider-api kökü
+  poolId: string              // the credit UTXO's outpoint "txid_vout" (= the offer input)
+  provider: string            // provider identity key (the wallet that signs the offer)
+  providerApi: string         // https://... provider-api base URL
   tokenId: string             // BSV-21 kredi token id
   credits: string             // N, base units
-  priceSats: string           // P, tüm blok için
-  payScriptHex: string        // çıktı 0'ın locking script'i (sağlayıcı gelir anahtarı P2PKH)
-  feeSats: string             // pledge başına iadesiz kayıt bedeli (aynı payScript'e)
-  minCredits: string          // bir pledge'in en az alabileceği kredi
-  deadlineHeight: string      // blok yüksekliği
-  backstopMax?: string        // Y (K3; şimdilik bilgi)
+  priceSats: string           // P, for the whole block
+  payScriptHex: string        // output 0's locking script (P2PKH of the provider's revenue key)
+  feeSats: string             // non-refundable registration fee per pledge (to the same payScript)
+  minCredits: string          // the fewest credits one pledge may take
+  deadlineHeight: string      // block height
+  backstopMax?: string        // Y (backstop share; informational, not implemented)
   label: string               // "8×H100 · 1 week"
-  retailSatsPerCredit: string // bilgi: perakende fiyat
+  retailSatsPerCredit: string // informational: retail price
 }
 
 export interface PledgeRecord {       // OP_RETURN op=pledge
@@ -86,17 +85,17 @@ export interface PledgeRecord {       // OP_RETURN op=pledge
   poolId: string
   credits: string
   participant: string                 // identity key
-  tokenIndex: string                  // kredi çıktısının gideceği receive address index'i (kit addresses.ts)
-  signer: 'p2pkh' | 'vault'           // pledge coin'in tipi → koordinatör unlockingScriptLength'i buradan bilir
-  creditLock?: 'vault'                // A-P5 5.3, yalnızca signer:'vault' ile: kredi çıktısı P2PKH yerine pledge coin'in vault script'ine kilitli (scripts/creditLock.ts)
-  mode?: 'lighthouse'                 // A-P5 5.5, signer:'vault' ile: insan bir kez SINGLE|ACP imzalar, çevrimdışı; guard settlement'ta ALL ortak imzalar
-  guard?: string                      // lighthouse: insanın seçtiği guard'ın identity key'i
-  lhId?: string                       // lighthouse: anahtar keyID'si (32 hex); coin script'i = lighthouseLockingScript(participant, guard, lhId)
+  tokenIndex: string                  // receive address index for the credit output (kit addresses.ts)
+  signer: 'p2pkh' | 'vault'           // the pledge coin's type; the coordinator derives unlockingScriptLength from it
+  creditLock?: 'vault'                // only with signer:'vault': the credit output is locked to the pledge coin's vault script instead of a P2PKH (scripts/creditLock.ts)
+  mode?: 'lighthouse'                 // with signer:'vault': the person signs SINGLE|ACP once and goes offline; the guard co-signs ALL in the settlement
+  guard?: string                      // lighthouse: identity key of the guard the person chose
+  lhId?: string                       // lighthouse: key keyID (32 hex); coin script = lighthouseLockingScript(participant, guard, lhId)
 }
-// Pledge tx düzeni (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
-// Para üstü kuralı: settlement'ta katılımcının para üstü, pledge coin'in KENDİ locking script'ine döner.
+// Pledge tx layout (randomizeOutputs:false): out0 = pledge coin, out1 = feeSats → payScript, out2 = OP_RETURN pledge
+// Change rule: in the settlement, a participant's change returns to its pledge coin's OWN locking script.
 
-export interface Offer {              // sağlayıcının önceden imzalı girdisi (zincir dışı veri)
+export interface Offer {              // the provider's pre-signed input (off-chain data)
   poolId: string                      // = outpoint
   unlockingScriptHex: string          // <sig SINGLE|ACP|FORKID> <pubkey>
   lockingScriptHex: string
@@ -104,7 +103,7 @@ export interface Offer {              // sağlayıcının önceden imzalı girdi
   terms: PoolTerms
 }
 
-export interface Listing {            // market (op=list OP_RETURN + zincir dışı imza)
+export interface Listing {            // market (op=list OP_RETURN + off-chain signature)
   outpoint: string
   tokenId: string
   credits: string
@@ -112,7 +111,7 @@ export interface Listing {            // market (op=list OP_RETURN + zincir dı�
   seller: string
   unlockingScriptHex: string
   lockingScriptHex: string
-  payScriptHex: string                // satıcının ödeme script'i (aynı index'teki çıktı)
+  payScriptHex: string                // the seller's payment script (the output at the same index)
 }
 
 export interface SettlementParticipant {
@@ -121,19 +120,19 @@ export interface SettlementParticipant {
   credits: string
   signer: 'p2pkh' | 'vault'
   changeSats: string
-  creditLock?: 'vault'                // pledge kaydından; doğrulayıcılar zincirdeki kayıtla karşılaştırır
-  mode?: 'lighthouse'                 // para üstü yok (changeSats '0'); lighthouse katılımcıları etkileşimlilerden SONRA gelir
+  creditLock?: 'vault'                // from the pledge record; verifiers compare it with the on-chain record
+  mode?: 'lighthouse'                 // no change (changeSats '0'); lighthouse participants come AFTER the interactive ones
 }
 
-export interface SettlementPlan {     // koordinatör üretir, katılımcılar doğrular
+export interface SettlementPlan {     // built by the coordinator, verified by the participants
   poolId: string
   round: number
   participants: SettlementParticipant[]
   pledgeListHash: string
-  templateBEEF: number[]              // imzasız tx + tüm girdilerin kaynak tx'leri (AtomicBEEF)
+  templateBEEF: number[]              // unsigned tx + every input's source tx (AtomicBEEF)
 }
 
-export interface InputSigner {        // A tanımlar; A: P2pkhWalletSigner, D: VaultSigner
+export interface InputSigner {        // implementations: P2pkhWalletSigner, VaultSigner
   unlockingScriptLength: number
   sign: (tx: Transaction, inputIndex: number) => Promise<UnlockingScript>
 }

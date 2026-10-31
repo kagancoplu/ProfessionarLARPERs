@@ -142,7 +142,7 @@ async function main (): Promise<void> {
     record.done = new Date().toISOString()
     save()
     const t = new Date().toISOString().slice(0, 16)
-    console.log('\nSTATUS "Mainnet işlemleri":')
+    console.log('\nRows for docs/reference/transactions.md:')
     console.log(`| ${t} | T11 Coop Rail funding (BSV) | ${r.fundingTxid} | D | swap ${r.swapId}, ${r.sats} sat, v1 |`)
     console.log(`| ${t} | T11 Coop Rail claim into the vault (BSV) | ${r.claimTxid} | D | agent + guard; reveals the secret |`)
     console.log(`| ${t} | T11b Coop Rail lock (Base Sepolia) | ${r.baseLockTx} | D | ${formatUnits(amount, 6)} USDC |`)

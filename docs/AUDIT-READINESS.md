@@ -146,11 +146,20 @@ Run on 31 Oct 2026; commands included so anyone can repeat them.
   - `reentrancy-balance` (High) and `incorrect-equality` (Medium) on `lock`'s received-amount check: suppressed inline with the reason. The call cannot re-enter (`nonReentrant`); only the token itself can change its balance in between, which affects only locks of that token; the strict equality is the F-1 fix itself.
   - `timestamp` (Low, three times): by design, the Base timeout is hours long and the maker requires ≥ 3.5 h left.
   - `low-level-calls` (Informational): `_call` is the safe-transfer wrapper (F-2).
+- **How to repeat the secret scan** (prints counts, never values; on macOS use `/usr/bin/grep` if `grep` is aliased):
+
+  ```bash
+  git log --all -p --no-color > /tmp/h.patch
+  for p in 'sb_secret_[A-Za-z0-9_-]{10,}' '(KEY|SECRET)[A-Z_]*[=:] *["'"'"']?[0-9a-f]{64}' 'BEGIN [A-Z ]*PRIVATE KEY' 'eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}'; do
+    printf '%s: ' "$p"; grep -E '^\+' /tmp/h.patch | grep -cE "$p"; done
+  ```
+
+  Expected: one `sb_secret_` hit (the fake value in `apps/relay/test/config.test.ts`) and zero for the rest.
 - **Pinned versions.** The BSV stack is pinned exactly (`@bsv/sdk` 3.2.1, `@bsv/wallet-toolbox` 2.14.9, `@bsv/overlay` 2.6.4); tests load a single copy of the SDK.
 
 ## 8. Evidence on mainnet
 
-Real transactions, real wallets, BSV Desktop for the provider, the owner and a human participant. Full list: README › Example transactions, and `plan/STATUS.md` ("Mainnet işlemleri").
+Real transactions, real wallets, BSV Desktop for the provider, the owner and a human participant. Full list: [reference/transactions.md](reference/transactions.md).
 
 | What | Transaction |
 |---|---|
@@ -187,12 +196,12 @@ CI runs the same steps on every push (`.github/workflows/ci.yml`), plus three jo
 
 ## 10. Reviews so far
 
-- **Per-track checkpoints** at the end of each phase (`plan/STATUS.md`), each phase closed with its mock-chain tests green.
-None of these is an external audit.
-
+- **Development checkpoints** at the end of each hackathon phase, each closed with its mock-chain tests green (log archived in `docs/archive/hackathon-2026/plan/STATUS.md`).
 - **Live mirror layer (31 Oct):** an internal review by a separate reviewer session of the Supabase layer found one critical issue: the browser took a pool's fee script from its store, which the mirror fills, so a tampered mirror could redirect a pledge's fee. Fixed in `cffaaee` (the browser now reads the terms from the coordinator), with a regression test (I-16). Nine further issues were fixed in `404a164`, `78bfb0e` and `cc02f38`.
 - **This package (31 Oct):** our own review of the Base HTLC and the Coop Rail (F-1 to F-4), the dependency and secret scans (§7), and mutation testing of the HTLC tests (§4). A second internal reviewer session then checked every claim in this document against the code. It found the vault-credit return path (F-10) and the preimage length (F-11), and corrected several overstatements; all are reflected here.
 - **Hardening pass (31 Oct, later):** F-1, F-2 and F-8 fixed, F-4 mitigated (refund watchdog, timing margins, claim window), T-17 closed with a shared replay store, mutation testing extended to `verify.ts` and the script templates (§4), Slither run and triaged, runtime dependency advisories fixed (§7).
+
+None of these is an external audit.
 
 ## 11. What we would ask an auditor to focus on
 

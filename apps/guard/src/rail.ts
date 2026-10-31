@@ -2,7 +2,7 @@
  * Guard 'rail' path (plan/phases/D-P3.md §4.5, §7 R1–R6): co-sign the claim of a
  * Coop Rail HTLC (USDC on Base → BSV) only if the BSV lands in the agent's vault.
  * The claim branch is agent + guard 2-of-2, so Rail money cannot bypass the vault
- * policy (FINAL-IDEA §8 "Coop Rail claim'i vault politikasını atlıyor"). The script
+ * policy (threat T-14 in docs/THREAT-MODEL.md: "a Coop Rail claim bypasses the vault policy"). The script
  * itself checks the secret; the guard never needs it.
  */
 import type { Transaction } from '@agentcoop/core/sdk'

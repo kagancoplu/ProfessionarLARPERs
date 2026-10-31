@@ -1,4 +1,4 @@
-# participant-cli: join a pool yourself from BSV Desktop
+# @agentcoop/participant-cli: join a pool yourself from BSV Desktop
 
 ```bash
 npm run participant-cli -- pools                       # open pools, with demo pricing
@@ -11,7 +11,7 @@ BSV Desktop must be running and unlocked (mainnet). Every signature shows an app
 
 A human joins on the same terms as the agents and with the same code (`apps/agents/src/participant.ts`):
 
-1. `pledge` calls Track A's `buildPledge`. Your sats stay in your wallet as a pledge coin, and a small non-refundable registration fee goes to the provider.
+1. `pledge` calls `buildPledge` from `@agentcoop/core`. Your sats stay in your wallet as a pledge coin, and a small non-refundable registration fee goes to the provider.
 2. `sign` stays on the coordinator's WS. When the pool fills, it receives the settlement plan. Before Desktop signs your pledge input with SIGHASH_ALL, it checks the whole transaction: your credits go to your own address, your change is correct, and the provider's credits trace back to the token deploy (`verifyLineage`). Otherwise it sends `sign_reject` with the reason. After settlement your change and credits come back to your wallet.
 3. If the pool does not fill by its deadline, nothing is spent. `cancel` returns the coin and tells the overlay.
 

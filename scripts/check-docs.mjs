@@ -1,21 +1,35 @@
 #!/usr/bin/env node
 /**
- * Checks that the security docs cite things that exist, so evidence cannot rot silently:
+ * Checks that the docs cite things that exist, so evidence and links cannot rot silently:
  *  - every backticked repo path (`apps/guard/src/policy.ts`, `contracts/`, `x.ts:42`) exists (and has ≥ 42 lines);
  *  - every relative Markdown link resolves;
  *  - every test cited as `file.test.ts` › "name", "name" appears in that file.
  *
- *   node scripts/check-docs.mjs [doc.md …]     (default: the security docs below)
+ *   node scripts/check-docs.mjs [doc.md …]     (default: every active Markdown file, see activeDocs)
  *
  * Exit 0 when everything resolves, 1 with a list otherwise. Not part of `npm test`, so another
  * track renaming a test does not turn its suite red; CI runs it as its own step.
  */
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const DEFAULT_DOCS = ['docs/THREAT-MODEL.md', 'docs/AUDIT-READINESS.md', 'docs/ROADMAP.md', 'SECURITY.md']
+// The security docs, which must always be checked, and every other active Markdown file.
+const SECURITY_DOCS = ['docs/THREAT-MODEL.md', 'docs/AUDIT-READINESS.md', 'docs/ROADMAP.md', 'SECURITY.md']
+// Not checked: the frozen hackathon archive and third-party material (their paths follow their original layout),
+// tooling, dependencies and build output.
+const SKIP = new Set(['node_modules', '.git', 'graft', '.claude', '.superpowers', 'data', 'dist', 'coverage', 'docs/archive', 'docs/vendor', 'docs/starter', 'apps/web/film-out', 'apps/web/playwright-report', 'apps/web/test-results'])
+
+/** Every Markdown file under the repo root outside SKIP, as repo-relative paths. */
+function activeDocs (dir = '') {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true }).flatMap(e => {
+    const rel = dir === '' ? e.name : `${dir}/${e.name}`
+    if (SKIP.has(rel) || SKIP.has(e.name)) return []
+    if (e.isDirectory()) return activeDocs(rel)
+    return e.isFile() && e.name.endsWith('.md') ? [rel] : []
+  })
+}
 const ROOTS = new Set(['apps', 'packages', 'test', 'docs', 'contracts', 'scripts', 'plan', 'infra', 'supabase', 'starter', '.github'])
 
 const lines = (file) => readFileSync(file, 'utf8').split('\n').length
@@ -90,7 +104,7 @@ export function checkDoc (docPath) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2)
-  const docs = (args.length > 0 ? args : DEFAULT_DOCS.filter(d => existsSync(join(ROOT, d)))).map(d => resolve(d))
+  const docs = (args.length > 0 ? args : [...new Set([...SECURITY_DOCS.filter(d => existsSync(join(ROOT, d))), ...activeDocs()])].map(d => join(ROOT, d))).map(d => resolve(d))
   const problems = docs.flatMap(checkDoc)
   for (const p of problems) console.log(p)
   console.log(problems.length === 0 ? `check-docs: ${docs.length} doc(s); ${counts.paths} paths, ${counts.links} links and ${counts.tests} test names all resolve` : `check-docs: ${problems.length} problem(s)`)

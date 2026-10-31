@@ -4,8 +4,8 @@ Where the project stands after the hackathon, what has to happen before anyone p
 
 ## Where we are (31 October 2026)
 
-- **On mainnet:** DvP settlements through the coordinator (agents and a human with BSV Desktop), a vault agent whose credits stay locked to its vault, a Lighthouse settlement with the humans offline, credit redeems with lineage checks, agent payments over HTTP 402, and the Mandate Vault (owner exit, agent + guard spend, an injected payment refused).
-- **On the mock chain only:** the market sweep, Coop Rail (USDC on Base → BSV), the 100-participant settlement.
+- **On mainnet:** DvP settlements through the coordinator (agents and a human with BSV Desktop), a vault agent whose credits stay locked to its vault, a Lighthouse settlement with the humans offline, credit redeems with lineage checks, agent payments over HTTP 402, the Mandate Vault (owner exit, agent + guard spend, an injected payment refused), and a market sweep ([reference/transactions.md](reference/transactions.md)).
+- **On the mock chain only:** Coop Rail (USDC on Base → BSV), the 100-participant settlement, a second independent coordinator, the public-edge limits.
 - **Simulated:** the GPU and proxy work behind the provider API. Payments, credits and settlement are real.
 
 ## Gates before real budgets
@@ -22,10 +22,26 @@ Nothing below changes the protocol's shape; each one closes a known gap.
 
 ## Product
 
-- **A real provider.** SmartRoute, an LLM router selling reserved model capacity, plugs in as a product file and a runner (README › How to add a provider or product); pools, credits, redeem and agents stay the same.
+- **A real provider.** SmartRoute, an LLM router selling reserved model capacity, plugs in as a product file and a runner ([apps/provider-api › Add a product](../apps/provider-api/README.md#add-a-product)); pools, credits, redeem and agents stay the same. With it, run the LLM agent brain (`AGENT_BRAIN=llm` or `openai`) on a live pool; so far live runs used the rules brain.
 - ~~Order history~~ **done (31 Oct):** `GET /v1/jobs` lists the caller's jobs with their payments, and `/me` shows them as "My orders".
 - ~~Guard decision log with txids~~ **done (31 Oct):** each approved co-signature is linked to the transaction that spent the vault coin, checked on chain, and the owner console shows it.
 - **Coop Rail's reverse direction** (BSV → USDC), so agents in unfilled pools can exit to Base (T-16).
+
+## Open work
+
+Smaller items carried over from the hackathon backlog ([archived](archive/hackathon-2026/plan/BACKLOG.md)), plus what the documentation migration found.
+
+| Item | Notes |
+|---|---|
+| Turn on GitHub private vulnerability reporting | Needs a repository admin; then simplify the fallback path in [SECURITY.md](../SECURITY.md) |
+| A rehearsal with the real services and two browsers | `npm run infra`, provider, guard, agents, `npm run web` on two machines; record a mainnet replay from `/_debug` into `apps/web/public/replays/` |
+| The web app's wallet flows with BSV Desktop on mainnet | Tested on the mock chain only (`test/web.live-flows.mockchain.test.ts`) |
+| A public deployment of the services | `infra/` has the setup; the public web build has no service URLs configured |
+| Coop Rail live run (T11, T11b) | Base Sepolia deploy and a ≤ 1 USDC swap ([RAIL-POC.md](RAIL-POC.md)) |
+| Port clash | The maker and the optional second coordinator both default to 8094 in the examples |
+| Pointers into the archive | `apps/guard/src/validation5.ts` tells the operator to record txids in the old status log, now `docs/archive/hackathon-2026/plan/STATUS.md`; code comments cite `FINAL-IDEA` and phase-plan sections, now under `docs/archive/hackathon-2026/` ([archive index](archive/hackathon-2026/README.md#where-things-went)) |
+| Pin the CI runner | `ubuntu-latest` moves to a new Ubuntu release; pin `runs-on` if CI breaks |
+| Ideas not started | An MCP server so any LLM agent can join pools, OrdLock v2 listings (needs `@bsv/sdk` 4), forward credits, an organizer agent that opens pools, Coop Rail's reverse direction (T-16) |
 
 ## How we would use audit credits
 
