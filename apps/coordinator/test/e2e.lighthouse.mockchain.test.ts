@@ -167,5 +167,8 @@ describe('coordinator × lighthouse pledges (A-P5 5.5–5.7)', () => {
     const kit = kitFor(human1)
     await kit.sync()
     expect((await kit.balances()).find(b => b.tokenId === tokenId)?.overlay).toBe(10n)
+    // The audit re-runs the selection rule; the coin carries exactly its fee, so it may need rate 0 (mainnet 31.10).
+    const audit = await (await fetch(`${coop.url}/pools/${solo.poolId}/audit`)).json()
+    expect(audit).toMatchObject({ verdict: 'consistent', checks: { selectionMatches: true, creditsDelivered: true } })
   })
 })

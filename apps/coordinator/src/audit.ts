@@ -107,13 +107,26 @@ export async function auditPool (deps: AuditDeps, poolId: string): Promise<Audit
     notes.push('no offer (stored or published on chain): the selection rule cannot be re-run by this coordinator')
   } else {
     const poolTx = await deps.overlay.poolTx(poolId)
+    const plan = (satsPerKb: number): ReturnType<typeof planSettlement> =>
+      planSettlement(offer, candidates, { height: Number(terms.deadlineHeight), satsPerKb, offerSourceTx: poolTx! }, { exclude: [...declared.keys()] })
+    let planned: ReturnType<typeof planSettlement> | undefined
     try {
-      const plan = planSettlement(offer, candidates, { height: Number(terms.deadlineHeight), satsPerKb: paidRate(tx), offerSourceTx: poolTx! }, { exclude: [...declared.keys()] })
-      expected = plan.participants.map(p => p.outpoint)
-      selectionMatches = expected.length === includedOutpoints.length && expected.every(o => includedOutpoints.includes(o))
+      planned = plan(paidRate(tx))
     } catch (e) {
-      selectionMatches = false
-      notes.push(`the rule finds no plan with the declared blacklist: ${String((e as Error).message)}`)
+      // The rate is re-derived from the signed size, and the re-plan estimates unlock lengths, so a pool
+      // whose fee is exactly what the coins carry (lighthouse) can miss by a few sats. Who is included
+      // does not depend on the rate: check the selection at rate 0.
+      try {
+        planned = plan(0)
+        notes.push(`re-planned at 0 sat/kB for the selection check (at the paid rate: ${String((e as Error).message)})`)
+      } catch (e0) {
+        notes.push(`the rule finds no plan with the declared blacklist: ${String((e0 as Error).message)}`)
+      }
+    }
+    if (planned === undefined) selectionMatches = false
+    else {
+      expected = planned.participants.map(p => p.outpoint)
+      selectionMatches = expected.length === includedOutpoints.length && expected.every(o => includedOutpoints.includes(o))
     }
   }
 
