@@ -9,6 +9,18 @@ describe('resolveEnv', () => {
     expect(e.urls.arcade).toBe('https://arcade-v2-us-1.bsvblockchain.tech')
     expect(e.network).toBe('main')
   })
+  it('a deployed live build without service URLs runs the mock walkthrough (no dead page on Vercel)', () => {
+    const host = 'professionar-larpe-rs.vercel.app'
+    const e = resolveEnv({}, '', host)
+    expect(e.mode).toBe('mock')
+    expect(e.unconfigured).toBe(true)
+    // configured, explicitly live, the Supabase mirror alone, or served locally: stays live
+    expect(resolveEnv({ VITE_COOP_API_URL: 'https://coop.example' }, '', host).mode).toBe('live')
+    expect(resolveEnv({}, '?mode=live', host).mode).toBe('live')
+    expect(resolveEnv({ VITE_SUPABASE_URL: 'https://x.supabase.co', VITE_SUPABASE_ANON_KEY: 'anon' }, '', host).mode).toBe('live')
+    expect(resolveEnv({}, '', 'localhost:4173').mode).toBe('live')
+    expect(resolveEnv({}, '?replay=mock-demo', host).mode).toBe('replay')
+  })
   it('uses the dev proxy paths under vite dev', () => {
     const e = resolveEnv({ DEV: true, VITE_COOP_API_URL: 'http://example:1' })
     expect(e.urls.coop).toBe('/api/coop')

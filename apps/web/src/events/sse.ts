@@ -15,7 +15,9 @@ export interface SseOptions {
 export function openSse (url: string, opts: SseOptions): SseHandle {
   const Impl = opts.EventSourceImpl ?? (typeof EventSource !== 'undefined' ? EventSource : undefined)
   if (Impl === undefined) { opts.onStatus?.(false, 'EventSource unavailable'); return { close: () => {} } }
-  const es = new Impl(url)
+  let es: EventSource
+  // CSP or mixed content can make the constructor throw (Safari): a closed stream, not a failed boot
+  try { es = new Impl(url) } catch (err) { opts.onStatus?.(false, `blocked: ${String((err as Error).message ?? err)}`); return { close: () => {} } }
   es.onopen = () => { opts.onStatus?.(true) }
   es.onerror = () => { opts.onStatus?.(false, es.readyState === es.CLOSED ? 'closed' : 'reconnecting') }
   es.onmessage = (ev: MessageEvent<string>) => { opts.onMessage(ev.data, ev.lastEventId) }

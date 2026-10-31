@@ -54,7 +54,8 @@ export function startCoordinatorFeed (opts: CoordinatorFeedOptions): Coordinator
 
   const connect = (): void => {
     if (closed || Impl === undefined) { if (Impl === undefined) opts.onStatus?.(false, 'WebSocket unavailable'); return }
-    ws = new Impl(opts.url)
+    // a socket the page may not open (CSP, ws:// from https) throws right here in Safari: report it, never break the boot
+    try { ws = new Impl(opts.url) } catch (err) { ws = undefined; opts.onStatus?.(false, `blocked: ${String((err as Error).message ?? err)}`); return }
     ws.onopen = () => {
       connected = true
       backoff = 1_000
