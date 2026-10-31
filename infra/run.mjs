@@ -9,6 +9,7 @@
  *   OVERLAY_PORT  8080               COOP_PORT 8090
  *   COOP2_PORT    (unset)            a second, independent coordinator on the same overlay (B.P6b, Faz 6.2): own database coordinator2/coordinator.db
  *   NETWORK, ARCADE_URL, TOKEN_WHITELIST, OVERLAY_PRIVATE_KEY, ROUND_TIMEOUT_MS, MAX_ROUNDS, SPENT_CHECK  passed through
+ *   SUPABASE_URL + SUPABASE_SECRET_KEY  (both set) also start apps/relay, the web's optional Supabase live layer
  */
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -69,6 +70,14 @@ const services = [
         cwd: join(root, 'apps/coordinator'),
         env: { PORT: process.env.COOP2_PORT, OVERLAY_URL: `http://localhost:${overlayPort}`, COORDINATOR_DB: join(dataDir, 'coordinator2', 'coordinator.db') }
       }]
+    : []),
+  // optional: the Supabase live layer for the web (apps/relay, plan/phases/SUPABASE-MVP.md)
+  ...(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY
+    ? [{
+        name: 'relay',
+        cwd: join(root, 'apps/relay'),
+        env: { COOP_API_URL: `http://localhost:${coopPort}`, OVERLAY_URL: `http://localhost:${overlayPort}` }
+      }]
     : [])
 ]
 
@@ -115,6 +124,6 @@ function stop () {
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
 
-console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}${process.env.COOP2_PORT ? `, coordinator2 :${process.env.COOP2_PORT}` : ''}`)
+console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}${process.env.COOP2_PORT ? `, coordinator2 :${process.env.COOP2_PORT}` : ''}${services.some(s => s.name === 'relay') ? ', relay → Supabase' : ''}`)
 start(services[0])
 setTimeout(() => { for (const svc of services.slice(1)) start(svc) }, 1_500) // the coordinators read the overlay
