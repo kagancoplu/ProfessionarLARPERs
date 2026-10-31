@@ -1,5 +1,5 @@
 /** "Already on mainnet": the project's real transactions, shown in every mode (mock included) with WhatsOnChain links. */
-import { MAINNET_TXS } from '../../data/mainnet'
+import { MAINNET_TXS } from '../../proof/mainnet'
 import { Signboard, Tag } from '../../ui'
 
 const woc = (txid: string): string => `https://whatsonchain.com/tx/${txid}`
