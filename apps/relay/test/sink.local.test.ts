@@ -23,11 +23,17 @@ describe.skipIf(url === undefined)('supabase sink (local stack)', () => {
         .subscribe(status => { if (status === 'SUBSCRIBED') resolve(); else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error(status)) })
     })
     await subscribed
-    const ts = new Date().toISOString()
-    await sink().publishTick({ v: 1, ts, heartbeat: true })
-    for (let i = 0; i < 100 && got.length === 0; i++) await new Promise(r => setTimeout(r, 50))
+    // SUBSCRIBED can come before Realtime's replication is listening (a cold stack in CI missed the first
+    // insert): publish a tick every 500 ms until one arrives, for at most 20 s
+    const sent = new Set<string>()
+    for (let i = 0; i < 40 && got.length === 0; i++) {
+      const ts = new Date().toISOString()
+      sent.add(ts)
+      await sink().publishTick({ v: 1, ts, heartbeat: true })
+      for (let j = 0; j < 10 && got.length === 0; j++) await new Promise(r => setTimeout(r, 50))
+    }
     await client.removeAllChannels()
-    expect(got.find(t => t.ts === ts)?.heartbeat).toBe(true)
+    expect(got.find(t => sent.has(t.ts))?.heartbeat).toBe(true)
   })
 
   it('anon cannot insert a tick (RLS)', async () => {
