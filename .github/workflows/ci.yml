@@ -1,0 +1,38 @@
+# Typecheck, the whole offline test suite (wallet-toolbox mock chain, in-process EVM),
+# and the security docs' evidence check, on every push and pull request.
+# Uses no repository secrets; the token is read-only.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # npm 10.9 cannot install this workspace (README › Quick start)
+      - name: Install
+        run: npx -y npm@11 ci
+      - name: Typecheck
+        run: npm run typecheck && npm -w apps/web run typecheck
+      - name: Tests (mock chain, no wallet or satoshis)
+        run: npm test
+      - name: Security docs cite only existing code and tests
+        run: npm run check:docs
+      - name: Dependency audit (runtime dependencies, report only)
+        run: npm audit --omit=dev || true
