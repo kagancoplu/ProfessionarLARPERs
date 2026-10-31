@@ -22,6 +22,12 @@ export interface ServerWalletOptions {
   arcadeUrl?: string
   /** Run the monitor's background tasks (proof tracking, rebroadcast). Default true. */
   monitor?: boolean
+  /**
+   * How many unconfirmed ancestors a transaction's BEEF may carry (wallet-toolbox default 12).
+   * An agent paying every ~30 s chains more than 12 unmined transactions between two blocks, and
+   * every payment then failed with "Maximum BEEF depth exceeded" (mainnet, 30–31.10). Default 100.
+   */
+  maxBeefDepth?: number
 }
 
 export interface ServerWallet {
@@ -44,6 +50,7 @@ export async function openServerWallet (opts: ServerWalletOptions): Promise<Serv
   const storage = new StorageKnex({ ...StorageKnex.createStorageBaseOptions(chain), knex })
   await storage.migrate(opts.name, identityKey)
   await storage.makeAvailable()
+  storage.maxRecursionDepth = opts.maxBeefDepth ?? 100
   const manager = new WalletStorageManager(identityKey, storage)
   await manager.makeAvailable()
   manager.setServices(services)
