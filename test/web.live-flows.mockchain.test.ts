@@ -112,6 +112,8 @@ describe('web live flows on the mock chain (Track E)', () => {
     let job = await human.flows.job(jobId)
     for (let i = 0; i < 40 && job.status !== 'done'; i++) { await new Promise(res => setTimeout(res, 250)); job = await human.flows.job(jobId) }
     expect(job.status).toBe('done')
+    const orders = await human.flows.jobs() // my orders survive a reload: the provider lists them (BL-30)
+    expect(orders[0]).toMatchObject({ id: jobId, status: 'done' })
   })
 
   it('lists credits at the market and another person sweeps them (lineage checked)', async () => {

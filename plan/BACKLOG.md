@@ -38,7 +38,7 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 
 | ID | İş | Sahip | Durum | Bitti sayılır | Referans |
 |---|---|---|---|---|---|
-| BL-30 | **"Siparişlerim":** provider'a kimliğin işlerini ve ödemelerini listeleyen `GET /v1/jobs`, web'e bunu gösteren bir ekran. Şu an `/me`'deki iş yenilemede kayboluyor. Kullanıcı olumlu, başlanmadı (~1–2 sa) | Track C + E | ☐ | Yenilemeden sonra işler listeleniyor; test | HANDOFF §5.2 |
+| BL-30 | **"Siparişlerim":** provider'a kimliğin işlerini ve ödemelerini listeleyen `GET /v1/jobs`, web'e bunu gösteren bir ekran. Şu an `/me`'deki iş yenilemede kayboluyor. Kullanıcı olumlu, başlanmadı (~1–2 sa) | Track C + E | ✅ 31.10 `f96bed5` | Yenilemeden sonra işler listeleniyor; test | HANDOFF §5.2 |
 | BL-31 | **Doğrudan (direct) modda `pledge_added` çift sayımı:** reducer, koordinatörün saydığı krediyi bir daha ekliyor (Supabase yolunda düzeltildi) | Track E | ☐ | Direct modda kredi toplamı koordinatörle aynı; test | HANDOFF §2.3 |
 | BL-32 | **STATUS Track E notu eskimiş:** `POST /pledges/lighthouse` "açık" görünüyor ama var (`apps/coordinator/src/api.ts:90`), T5-L mainnet'te yapıldı | Track E | ☐ | Track E satırı düzeltilmiş | HANDOFF §5.4 |
 | BL-33 | **Supabase prova gözlemi:** yenilenen sayfanın akışında `pool_opened`/`pledge_added` yok (durum doğru, akış eksik); bu olaylar istemcide türetiliyor ve mirror geçmişine yazılmıyor | Supabase katmanı | ☐ | Yenilemeden sonra akışta görünüyorlar | HANDOFF §4.3 |

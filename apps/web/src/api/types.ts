@@ -93,7 +93,7 @@ export interface Catalog {
   poolsSource: string
 }
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
-export interface ProviderJob { id: string, owner: string, product: string, kind: string, minutes: number, status: JobStatus, log: string[], resultHash?: string, payment: unknown }
+export interface ProviderJob { id: string, owner: string, product: string, kind: string, minutes: number, status: JobStatus, log: string[], resultHash?: string, payment: unknown, createdAt?: string }
 
 // ── guard (§3.7) ──
 export interface GuardPolicy { allowProviders: string[], maxPerPoolSats: number, weeklyCapSats: number, maxFeeSats: number, hotWalletDailySats: number }

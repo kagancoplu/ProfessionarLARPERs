@@ -64,6 +64,7 @@ describe('mock flows (participant)', () => {
     expect((await flows.credits())[0]?.overlay).toBe(148n)
     const job = await flows.runJob('eval', 45)
     expect((await flows.job(job.jobId)).status).toBe('queued')
+    expect((await flows.jobs()).map(j => j.id)).toEqual([job.jobId]) // my orders (BL-30)
     expect((await flows.prepaid())[0]?.prepaidMinutes).toBe(75)
     const back = await flows.returnCredits(1)
     expect(back.prepaidMinutes).toBe(15)

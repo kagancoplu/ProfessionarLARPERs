@@ -1,5 +1,5 @@
 /** /me — the human participant: join a pool, my pledges, my credits, redeem, run a job, return (track-E §4.2). */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useFlows, useRuntime } from '../../app-context'
 import type { ProviderJob } from '../../api/types'
@@ -86,7 +86,8 @@ function Credits () {
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const [job, setJob] = useState<ProviderJob>()
-  const run = async (label: string, fn: () => Promise<void>): Promise<void> => { if (busy !== undefined) return; setBusy(label); setError(undefined); try { await fn() } catch (err) { setError(String((err as Error).message)) } finally { setBusy(undefined); void credits.refetch(); void prepaid.refetch() } }
+  const orders = useQuery({ queryKey: ['my-orders', me, job?.id, job?.status], queryFn: () => flows.jobs(), enabled: me !== undefined, retry: 0 })
+  const run = async (label: string, fn: () => Promise<void>): Promise<void> => { if (busy !== undefined) return; setBusy(label); setError(undefined); try { await fn() } catch (err) { setError(String((err as Error).message)) } finally { setBusy(undefined); void credits.refetch(); void prepaid.refetch(); void orders.refetch() } }
   useEffect(() => {
     if (job === undefined || job.status === 'done' || job.status === 'failed') return
     const id = setInterval(() => { void flows.job(job.id).then(setJob).catch(() => {}) }, 800)
@@ -127,7 +128,39 @@ function Credits () {
           )}
         </div>
       </div>
+      <MyOrders jobs={orders.data} error={orders.isError ? String((orders.error as Error).message) : undefined} onOpen={setJob} />
       {error !== undefined && <p className="text-[14px] leading-5 text-danger-dark">{error}</p>}
+    </div>
+  )
+}
+
+/** My orders (BL-30): every job I paid for at the provider, so it survives a reload. Click one to see its log. */
+function MyOrders ({ jobs, error, onOpen }: { jobs?: ProviderJob[], error?: string, onOpen: (job: ProviderJob) => void }) {
+  const paidWith = (p: unknown): ReactNode => {
+    const pay = p as { method?: string, txid?: string, satoshis?: number, minutes?: number, units?: number }
+    if (pay.method === 'sats') return <>{formatInt(pay.satoshis ?? 0)} sat {pay.txid !== undefined && <TxLink txid={pay.txid} chars={4} />}</>
+    if (pay.method === 'credits') return <>{formatInt(pay.minutes ?? pay.units ?? 0)} prepaid min</>
+    return '-'
+  }
+  return (
+    <div className="flex flex-col gap-2" data-testid="my-orders">
+      <p className="label">My orders</p>
+      {error !== undefined && <p className="text-[14px] text-danger-dark">Could not read my orders: {error}</p>}
+      {jobs !== undefined && jobs.length === 0 && <EmptyState title="No orders yet" body="Jobs you run here are listed with how each was paid." />}
+      {jobs !== undefined && jobs.length > 0 && (
+        <table className="w-full border-collapse text-[14px] leading-5">
+          <thead><tr className="label bg-surface-3 text-left text-[12px]"><th className="px-2 py-1">When</th><th className="px-2 py-1">Job</th><th className="px-2 py-1 text-right">Minutes</th><th className="px-2 py-1">Paid with</th><th className="px-2 py-1">State</th></tr></thead>
+          <tbody>{jobs.map(j => (
+            <tr key={j.id} className="cursor-pointer border-b border-surface-3 hover:bg-surface-2" onClick={() => { onOpen(j) }} data-testid="order-row">
+              <td className="px-2 py-1">{j.createdAt !== undefined ? new Date(j.createdAt).toLocaleString() : '-'}</td>
+              <td className="px-2 py-1">{j.kind} <span className="mono text-ink-muted">{j.id.slice(0, 8)}</span></td>
+              <td className="px-2 py-1 text-right counter text-[18px]">{formatInt(j.minutes)}</td>
+              <td className="px-2 py-1">{paidWith(j.payment)}</td>
+              <td className="px-2 py-1"><Tag tone={j.status === 'done' ? 'ok' : j.status === 'failed' ? 'danger' : 'info'}>{j.status}</Tag></td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
     </div>
   )
 }

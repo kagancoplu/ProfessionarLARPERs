@@ -34,4 +34,7 @@ test('participant: connect, join a pool, sign the round, get credits, redeem, ru
   await page.getByTestId('job-minutes').fill('30')
   await page.getByTestId('run-job').click()
   await expect(page.getByTestId('job-card')).toContainText('done', { timeout: 15_000 })
+  // my orders (BL-30): the job is listed with how it was paid
+  await expect(page.getByTestId('order-row')).toHaveCount(1)
+  await expect(page.getByTestId('order-row').first()).toContainText('prepaid min')
 })

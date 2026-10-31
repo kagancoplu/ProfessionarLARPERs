@@ -23,7 +23,7 @@ Nothing below changes the protocol's shape; each one closes a known gap.
 ## Product
 
 - **A real provider.** SmartRoute, an LLM router selling reserved model capacity, plugs in as a product file and a runner (README › How to add a provider or product); pools, credits, redeem and agents stay the same.
-- **Order history.** A provider endpoint that lists an identity's jobs and receipts, and a "my orders" view in the web app (today a job is visible only by its id).
+- ~~Order history~~ **done (31 Oct):** `GET /v1/jobs` lists the caller's jobs with their payments, and `/me` shows them as "My orders".
 - **Guard decision log with txids,** so an owner can match every co-signature to the chain.
 - **Coop Rail's reverse direction** (BSV → USDC), so agents in unfilled pools can exit to Base (T-16).
 

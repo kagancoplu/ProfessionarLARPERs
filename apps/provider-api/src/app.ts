@@ -189,6 +189,15 @@ export function createProviderApp (opts: ProviderAppOptions): Express {
     res.status(202).json({ jobId: job.id, status: job.status, payment: job.payment })
   })
 
+  // My orders (BL-30): the caller's own jobs and how each was paid, newest first. Free; nobody else's jobs.
+  app.get('/v1/jobs', (req: PaymentRequest, res: Response) => {
+    const raw = req.query.limit
+    const limit = raw === undefined ? 50 : Number(raw)
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) { res.status(400).json({ status: 'error', code: 'ERR_BAD_REQUEST', description: 'limit must be 1..200' }); return }
+    const mine = runner.list(identityOf(req)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    res.json({ jobs: mine.slice(0, limit).map(publicJob), total: mine.length })
+  })
+
   app.get('/v1/jobs/:id', (req: PaymentRequest, res: Response) => {
     const job = runner.get(String(req.params.id))
     // Jobs are private to the identity that paid for them.

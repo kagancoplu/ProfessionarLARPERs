@@ -235,6 +235,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
       return { jobId: r.jobId }
     },
     job: id => authJson<ProviderJob>(`/v1/jobs/${id}`),
+    jobs: async () => (await authJson<{ jobs: ProviderJob[] }>('/v1/jobs')).jobs,
     async returnCredits (credits) {
       const s = createStepper(bus, 'return')
       return await s.step(`Ask the provider to return ${credits} unused credit(s)`, 'BRC-103', () => authJson<{ txid: string, credits: number, prepaidMinutes: number }>('/v1/credits/return', { credits }), r => ({ txid: r.txid }))

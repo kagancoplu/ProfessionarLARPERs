@@ -98,6 +98,20 @@ describe('provider-api: catalog and paid GPU jobs (BRC-105)', () => {
     expect(res.status).toBe(404)
   })
 
+  it('BL-30: lists my own jobs with their payments, newest first, and none of anyone else', async () => {
+    const mine = await (await new AuthFetch(agent).fetch(`${api.url}/v1/jobs`)).json()
+    expect(mine.total).toBeGreaterThanOrEqual(1)
+    expect(mine.jobs.map((j: Job) => j.id)).toContain(jobId)
+    expect(mine.jobs.every((j: Job) => j.owner === agent.identityKey)).toBe(true)
+    const paid = mine.jobs.find((j: Job) => j.id === jobId)
+    expect(paid.payment).toMatchObject({ method: 'sats' })
+    const times = mine.jobs.map((j: Job) => j.createdAt)
+    expect(times).toEqual([...times].sort().reverse())
+    expect(await (await new AuthFetch(stranger).fetch(`${api.url}/v1/jobs`)).json()).toEqual({ jobs: [], total: 0 })
+    expect((await new AuthFetch(agent).fetch(`${api.url}/v1/jobs?limit=0`)).status).toBe(400)
+    expect((await (await new AuthFetch(agent).fetch(`${api.url}/v1/jobs?limit=1`)).json()).jobs).toHaveLength(1)
+  })
+
   /** A 402 challenge from `url`, paid by hand exactly as AuthFetch does (BRC-29 output 0 to the server). */
   const paidRequest = async (url: string): Promise<{ method: string, headers: Record<string, string>, body: string }> => {
     const probe = new AuthFetch(agent)

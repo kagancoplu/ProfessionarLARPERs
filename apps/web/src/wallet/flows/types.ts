@@ -75,6 +75,8 @@ export interface FlowsApi {
   redeem: (credits: number) => Promise<{ txid: string, prepaidMinutes: number }>
   runJob: (kind: string, minutes: number) => Promise<{ jobId: string }>
   job: (jobId: string) => Promise<ProviderJob>
+  /** My orders: my jobs at the provider, newest first, each with its payment (provider `GET /v1/jobs`, BL-30). */
+  jobs: () => Promise<ProviderJob[]>
   returnCredits: (credits: number) => Promise<{ txid: string, credits: number, prepaidMinutes: number }>
   // provider
   mint: (args: { sym: string, amt: bigint, dec: number }) => Promise<{ txid: string, tokenId: string }>

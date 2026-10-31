@@ -176,7 +176,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
         world.me.prepaidMinutes -= minutes
         s.note(`Paid with prepaid minutes (${minutes} min debited, ${world.me.prepaidMinutes} left)`, 'BRC-105')
       }
-      const job: ProviderJob = { id, owner: me(), product: MOCK_PRODUCT.id, kind, minutes, status: 'queued', log: ['[mock] queued'], payment: covered ? { method: 'credits', minutes } : { method: 'sats' } }
+      const job: ProviderJob = { id, owner: me(), product: MOCK_PRODUCT.id, kind, minutes, status: 'queued', log: ['[mock] queued'], payment: covered ? { method: 'credits', minutes } : { method: 'sats' }, createdAt: new Date().toISOString() }
       world.me.jobs.set(id, job)
       bus.publish(makeEvent('provider', 'job_queued', { jobId: id, owner: me(), kind, minutes }, { agent: me() }))
       setTimeout(() => { job.status = 'running'; job.log.push('[mock] 8×H100 allocated', `[mock] ${kind} batch 1/3`); bus.publish(makeEvent('provider', 'job_running', { jobId: id, owner: me(), kind, minutes, progress: 0.3 }, { agent: me() })) }, 1200)
@@ -184,6 +184,7 @@ export function createMockFlows (deps: MockFlowDeps): FlowsApi {
       return { jobId: id }
     },
     async job (jobId) { const j = world.me.jobs.get(jobId); if (j === undefined) throw new FlowError('job', 'no such job'); return { ...j, log: [...j.log] } },
+    async jobs () { return [...world.me.jobs.values()].filter(j => j.owner === me()).reverse().map(j => ({ ...j, log: [...j.log] })) },
 
     async returnCredits (credits) {
       const s = createStepper(bus, 'return')

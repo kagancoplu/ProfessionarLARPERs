@@ -11,6 +11,7 @@ npm run provider          # http://localhost:8092 (PROVIDER_API_URL), needs WALL
 | `GET` | `/healthz` | free, no auth | liveness |
 | `GET` | `/v1/catalog` | free | products, retail price, credit token, `credits.redeemTo` (this server's identity), open pools from `COOP_API_URL` |
 | `POST` | `/v1/jobs` GPU `{ kind, minutes, product? }` · proxy `{ product: 'data-proxy', kind, mb }` | `ceil(units × retailSatsPerCredit / unitsPerCredit)` sats, or **free** if the prepaid balance covers the units | queue a simulated job (`finetune` / `eval` / `inference`, or `crawl` / `scrape`) |
+| `GET` | `/v1/jobs?limit=` | free | the caller's own jobs, newest first (`{ jobs, total }`, `limit` 1–200, default 50), each with its payment (credits or the 402 txid) |
 | `GET` | `/v1/jobs/:id` | free | status, GPU log, result hash (only for the identity that paid) |
 | `POST` | `/v1/credits/redeem` `{ beef, outputIndex }` | free | claim a BSV-21 credit transfer to this server as prepaid balance |
 | `POST` | `/v1/credits/return` `{ credits, product? }` | free | send unused whole credits back as tokens |
