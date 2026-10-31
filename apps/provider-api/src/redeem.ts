@@ -152,6 +152,12 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
   // 5. genuine credits
   const lineageDepth = await checkLineage(deps, parsed, txid, vout, { tokenId, amount: decoded.amount, ownerPkh: decoded.ownerPkh })
 
+  // One vault per prepaid balance: a second vault's credits would overwrite where returns go (F-10).
+  const current = deps.ledger.vaultOf(caller, tokenId)
+  if (fromVault !== undefined && current !== undefined && current !== fromVault && deps.ledger.balance(caller, tokenId) > 0) {
+    throw new CreditError(409, 'ERR_OTHER_VAULT', 'this prepaid balance came from another vault; use it up or return it first')
+  }
+
   // 3 + 6, atomically: claim the outpoint and room under the pending cap
   const mpc = unitsPerCredit(product)
   const reserved = deps.ledger.reserveRedeem(outpoint, caller, tokenId, credits * mpc, MAX_PENDING_REDEEM_CREDITS * mpc)
@@ -205,12 +211,13 @@ export async function returnCredits (deps: CreditDeps, caller: string, body: unk
   const credits = b.credits
   if (typeof credits !== 'number' || !Number.isSafeInteger(credits) || credits < 1) throw new CreditError(400, 'ERR_BAD_REQUEST', 'credits must be a positive integer')
   const minutes = credits * unitsPerCredit(product)
+  // Read the vault BEFORE the debit: a debit that empties the balance drops the mapping (F-10).
+  const vault = deps.ledger.vaultOf(caller, product.tokenId)
   if (!deps.ledger.tryDebit(caller, product.tokenId, minutes)) {
     const have = deps.ledger.balance(caller, product.tokenId)
     throw new CreditError(400, 'ERR_INSUFFICIENT_CREDITS', `prepaid balance is ${have} units = ${Math.floor(have / unitsPerCredit(product))} whole credits`)
   }
   try {
-    const vault = deps.ledger.vaultOf(caller, product.tokenId)
     const { txid } = vault !== undefined
       ? await deps.kit.sendToVault(product.tokenId, BigInt(credits), vault) // vault-redeemed: back under the guard
       : await deps.kit.send(product.tokenId, BigInt(credits), caller)
@@ -218,6 +225,7 @@ export async function returnCredits (deps: CreditDeps, caller: string, body: unk
     return { txid, product: product.id, credits, prepaidUnits, ...(runnerIdOf(product) === 'gpu' ? { prepaidMinutes: prepaidUnits } : {}) }
   } catch (e) {
     deps.ledger.refund(caller, product.tokenId, minutes)
+    if (vault !== undefined) deps.ledger.noteVault(caller, product.tokenId, vault) // the refund restores the balance; restore its vault too
     throw new CreditError(502, 'ERR_RETURN_FAILED', `could not send the credits back: ${(e as Error).message}`)
   }
 }

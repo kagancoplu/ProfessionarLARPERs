@@ -2,8 +2,7 @@
  * Where `/v1/credits/return` sends vault-redeemed credits (THREAT-MODEL T-10, AUDIT-READINESS F-10).
  * Unit level: the real CreditLedger and returnCredits, a recording TokenKit, no chain.
  *
- * The second test reproduces an open finding and is marked `it.fails`: it passes while the bug is
- * there. When returnCredits is fixed it starts failing; then drop `.fails` so it guards the fix.
+ * The second test reproduced F-10 (a full return went to the agent's key); fixed 31.10, it now guards the fix.
  */
 import { describe, expect, it } from 'vitest'
 import type { TokenKit } from '@agentcoop/core'
@@ -38,10 +37,18 @@ describe('/v1/credits/return of vault-redeemed credits', () => {
     expect(sent).toEqual([{ to: 'vault', credits: 2n }])
   })
 
-  it.fails('KNOWN ISSUE F-10 (open): returning the whole balance should also go back onto the vault script', async () => {
+  it('F-10 (fixed): returning the whole balance also goes back onto the vault script', async () => {
     const { deps, sent } = provider(3)
     await returnCredits(deps, AGENT, { credits: 3 })
-    // today: the debit empties the balance, the ledger drops the vault mapping, and the credits go to the agent's own key
+    // the vault is read before the debit that empties the balance (and drops the mapping)
     expect(sent).toEqual([{ to: 'vault', credits: 3n }])
+  })
+
+  it('a failed return restores the balance and its vault', async () => {
+    const { deps } = provider(3)
+    ;(deps.kit as any).sendToVault = async () => { throw new Error('broadcast failed') }
+    await expect(returnCredits(deps, AGENT, { credits: 3 })).rejects.toThrow(/could not send the credits back/)
+    expect(deps.ledger.balance(AGENT, TOKEN)).toBe(180)
+    expect(deps.ledger.vaultOf(AGENT, TOKEN)).toBe(VAULT_SCRIPT)
   })
 })

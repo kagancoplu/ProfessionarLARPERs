@@ -132,7 +132,7 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
 - **Closed while the credits sit on the vault:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, and listings pay the vault at or above the owner's floor.
-- **Open, found in our own review (F-10):** a provider's credit return of an agent's whole prepaid balance sends vault-redeemed credits to the agent's own key instead of the vault, so they leave the guard one step later. Reproduced by a test; the fix is in the provider API ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) §6).
+- **Fixed, found in our own review (F-10, 31 Oct):** a provider's credit return of an agent's whole prepaid balance used to send vault-redeemed credits to the agent's own key; now the vault is read before the debit (and restored if the return fails), and a redeem from a second vault is refused (`ERR_OTHER_VAULT`) while a balance from the first remains ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) §6).
 - **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
