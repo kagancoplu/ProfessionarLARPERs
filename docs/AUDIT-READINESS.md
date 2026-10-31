@@ -164,7 +164,9 @@ Real transactions, real wallets, BSV Desktop for the provider, the owner and a h
 
 Validations on mainnet (31 Oct): 4, a height-locked refund is refused at its lock height and accepted from the next block ([2f72e8b4…](https://whatsonchain.com/tx/2f72e8b489bcf3ebae7ce7b4ce0d5bc97202eade0272e59e18135d3dd851c146)); 6, a version 1 transaction with a high-S signature is refused while version 2 accepts it ([01374a77…](https://whatsonchain.com/tx/01374a77bf2f5e7fe38d4bf7b9cd56c0b5e2c79639092a52cbe8553d4c717cd4)), so Coop Rail's version 1 funding cannot be malleated under its pre-signed refund (`scripts/validation6.ts`).
 
-Not yet on mainnet: the market sweep (T8), Coop Rail (T11, T11b), validation 3.
+Validation 3: BSV Desktop showed a new app 2 approval windows, and none for a second signature on the same protocol ([ecd7c6e2…](https://whatsonchain.com/tx/ecd7c6e24880029f94dd2a1cad724618c350b878224d09acb943bff47492d472)).
+
+Not yet on mainnet: the market sweep (T8), Coop Rail (T11, T11b).
 
 ## 9. Build and test
 

@@ -71,11 +71,10 @@ The Mandate Vault guard ([apps/guard/README.md](../apps/guard/README.md)) refuse
 
 ## 3. What still needs mainnet
 
-Done on mainnet (31 Oct): validation 2 (BSV Desktop signs `SIGHASH_SINGLE|ANYONECANPAY`, Arcade accepts), validation 5 (the vault script passes policy; owner branch and agent + guard branch both spent), validation 7 (overlay-free lineage), a settlement with a vault participant (T5v) and the coordinator's audit `consistent`.
+Done on mainnet (31 Oct): validation 2 (BSV Desktop signs `SIGHASH_SINGLE|ANYONECANPAY`, Arcade accepts), validation 3 (2 approval windows for a new app, none for the next signature), validations 4 and 6 (nLockTime, v1 malleability), validation 5 (the vault script passes policy; owner branch and agent + guard branch both spent), validation 7 (overlay-free lineage), a settlement with a vault participant (T5v) and the coordinator's audit `consistent`.
 
 Still to run:
 
-- Validation 3: how many approval windows BSV Desktop shows on the first signature (the second one shows none).
 - The market sweep (T8) and Coop Rail (T11, T11b: the Base contract is not deployed).
 - The same audit on a public coordinator, and the flood limits (T-19) behind a public proxy.
 
