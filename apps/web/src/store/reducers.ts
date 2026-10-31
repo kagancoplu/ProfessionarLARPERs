@@ -78,6 +78,9 @@ const pushNotification = (d: StoreData, n: Omit<Notification, 'read'>): StoreDat
   return { ...d, notifications: [{ ...n, read: false }, ...d.notifications].slice(0, 100) }
 }
 
+/** Credits of the pledges still standing (unspent) in a pool's list. */
+const standing = (pledges: PledgeView[]): bigint => pledges.reduce((a, x) => (x.spent ? a : a + BigInt(x.credits)), 0n)
+
 function mergePledge (pledges: PledgeView[] | undefined, pledge: PledgeView): PledgeView[] {
   const list = pledges ?? []
   const i = list.findIndex(p => p.outpoint === pledge.outpoint)
@@ -115,10 +118,13 @@ function applyState (data: StoreData, e: AnyCoopEvent): StoreData {
       d = touchPool(d, pledge.poolId, p => {
         if (p === undefined) return undefined
         const known = p.pledges?.some(x => x.outpoint === pledge.outpoint) ?? false
+        const pledges = mergePledge(p.pledges, pledge)
+        // The coordinator's pool_update may already count this pledge (it often arrives first, BL-31): never add it twice.
+        const total = BigInt(p.pledgedCredits) > standing(pledges) ? BigInt(p.pledgedCredits) : standing(pledges)
         return {
           ...p,
-          pledges: mergePledge(p.pledges, pledge),
-          pledgedCredits: e.data.pledgedCredits ?? (known ? p.pledgedCredits : String(BigInt(p.pledgedCredits) + BigInt(pledge.credits))),
+          pledges,
+          pledgedCredits: e.data.pledgedCredits ?? (known ? p.pledgedCredits : String(total)),
           pledgeCount: known ? p.pledgeCount : p.pledgeCount + 1,
           updatedAt: e.ts
         }
@@ -127,12 +133,15 @@ function applyState (data: StoreData, e: AnyCoopEvent): StoreData {
     }
     case 'pledge_cancelled': {
       const { pledge } = e.data
-      return touchPool(d, pledge.poolId, p => (p === undefined ? undefined : {
-        ...p,
-        pledges: (p.pledges ?? []).map(x => (x.outpoint === pledge.outpoint ? { ...x, spent: true, spendingTxid: e.data.txid, valid: false } : x)),
-        pledgedCredits: String(BigInt(p.pledgedCredits) - BigInt(pledge.credits) < 0n ? 0n : BigInt(p.pledgedCredits) - BigInt(pledge.credits)),
-        updatedAt: e.ts
-      }))
+      return touchPool(d, pledge.poolId, p => {
+        if (p === undefined) return undefined
+        const pledges = (p.pledges ?? []).map(x => (x.outpoint === pledge.outpoint ? { ...x, spent: true, spendingTxid: e.data.txid, valid: false } : x))
+        // Subtract once: if a pool_update already took it off, the total is no higher than the pledges still standing (BL-31).
+        const less = BigInt(p.pledgedCredits) - BigInt(pledge.credits)
+        const floor = standing(pledges)
+        const total = BigInt(p.pledgedCredits) <= floor ? BigInt(p.pledgedCredits) : (less > floor ? less : floor)
+        return { ...p, pledges, pledgedCredits: String(total < 0n ? 0n : total), updatedAt: e.ts }
+      })
     }
     case 'settled':
       d = touchPool(d, e.data.poolId, p => (p === undefined ? undefined : { ...p, status: 'settled', settledTxid: e.data.txid, updatedAt: e.ts }))

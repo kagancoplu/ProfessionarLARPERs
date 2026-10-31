@@ -33,6 +33,32 @@ describe('reducers', () => {
     expect(d.agents.byIdentity[MOCK_IDS.agents.eval]).toBeDefined()
   })
 
+  it('BL-31: a pledge the coordinator already counted is not added twice, in either order; a cancel is subtracted once', () => {
+    const pool = makeMockPool(1, 100)
+    const p1 = makeMockPledge(pool, MOCK_IDS.agents.eval, '400', 100)
+    const p2 = makeMockPledge(pool, MOCK_IDS.agents.finetune, '300', 101)
+    const update = (credits: string) => makeEvent('coordinator', 'pool_update', { poolId: pool.poolId, pledgedCredits: credits, status: 'open' }, { ts: T, poolId: pool.poolId })
+    const added = (p: typeof p1) => makeEvent('overlay', 'pledge_added', { pledge: p }, { ts: T, poolId: pool.poolId })
+    const credits = (x: typeof d): string => x.pools.byId[pool.poolId]!.pledgedCredits
+    let a = applyEventToData(d, makeEvent('overlay', 'pool_opened', { pool }, { ts: T }))
+    // coordinator first, then the overlay
+    a = applyEventToData(a, update('400'))
+    a = applyEventToData(a, added(p1))
+    expect(credits(a)).toBe('400')
+    // overlay first, then the coordinator
+    a = applyEventToData(a, added(p2))
+    expect(credits(a)).toBe('700')
+    a = applyEventToData(a, update('700'))
+    expect(credits(a)).toBe('700')
+    // a withdrawal the coordinator already reported is not subtracted again
+    a = applyEventToData(a, update('300'))
+    a = applyEventToData(a, makeEvent('overlay', 'pledge_cancelled', { pledge: p1, txid: 'cc'.repeat(32) }, { ts: T, poolId: pool.poolId }))
+    expect(credits(a)).toBe('300')
+    // …and one it has not reported yet is subtracted once
+    a = applyEventToData(a, makeEvent('overlay', 'pledge_cancelled', { pledge: p2, txid: 'dd'.repeat(32) }, { ts: T, poolId: pool.poolId }))
+    expect(credits(a)).toBe('0')
+  })
+
   it('settled + pool_settled: status, T5 once, metrics, village savings, sign notification cleared', () => {
     const pool = makeMockPool(1, 100) // 1000 credits, 25 000 sat, retail 50
     d = applyEventToData(d, makeEvent('overlay', 'pool_opened', { pool }, { ts: T }))

@@ -88,7 +88,7 @@ Test durumu (31.10): kök `npm test` 86 dosya geçti / 4 atlandı (CI ve yerel a
 - `WALLET_COORDINATOR_KEY` `.env.example`'da var ve koordinatöre 5.000 sat gönderilmiş, ama **koordinatör servisi hiçbir anahtar yüklemiyor** (`apps/coordinator/src`'de cüzdan yok). Planda (`plan/00-MASTER-PLAN.md` §6.1) "yalnızca kimlik + yayın" diye geçiyor. Belgelerdeki "koordinatörün anahtarı yok" iddiası doğru; yuva kullanılmıyor.
 - Provider, redeem kontrol 4 (krediyi kim gönderdi) ve kasa kayıtları için overlay'e güveniyor (`redeem.ts:145-147`, `:196-198`). Katılımcılar ve guard güvenmiyor. AUDIT §2 ve §5'e işlendi.
 - Mirror, provider'ın gelir taramasının (`syncRevenue`/`sweepRevenue`, `apps/web/src/wallet/flows/live.ts:281-312`) havuz listesini besliyor. Yanlış veri taramayı başarısız kılar, parayı başka yere göndermez.
-- `pledge_added` reducer'ı, koordinatörün zaten saydığı krediyi bir kez daha ekliyor. Supabase yolunda havuz bilgisini pledge'lerden sonra yeniden yazarak düzeltildi; **doğrudan (direct) modda aynı geçici çift sayım duruyor** (Track E).
+- ~~`pledge_added` reducer'ı, koordinatörün zaten saydığı krediyi bir kez daha ekliyor~~ **düzeltildi (31.10, BL-31):** reducer artık koordinatörün sayısıyla listedeki duran pledge'lerin büyüğünü alıyor, iptalde bir kez çıkarıyor; iki sıra da testli (`apps/web/test/reducers.test.ts`).
 
 ### 2.4 Kontrolleri nasıl tekrar edersin
 
