@@ -166,7 +166,9 @@ Validations on mainnet (31 Oct): 4, a height-locked refund is refused at its loc
 
 Validation 3: BSV Desktop showed a new app 2 approval windows, and none for a second signature on the same protocol ([ecd7c6e2…](https://whatsonchain.com/tx/ecd7c6e24880029f94dd2a1cad724618c350b878224d09acb943bff47492d472)).
 
-Not yet on mainnet: the market sweep (T8), Coop Rail (T11, T11b).
+Market sweep (T8): a seller lists SINGLE|ACP, a buyer takes it in one transaction after tracing the credits to the deploy ([675c333414…](https://whatsonchain.com/tx/675c33341427325ac458c40e1a0e35ba25995b4ca3653297ca1fe1348ee7231c)).
+
+Not yet on mainnet: Coop Rail (T11, T11b).
 
 ## 9. Build and test
 

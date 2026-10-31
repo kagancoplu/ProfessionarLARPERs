@@ -45,6 +45,9 @@ export async function openWallet (name: string, opts: OpenWalletOptions = {}): P
   const storage = new StorageKnex({ ...StorageKnex.createStorageBaseOptions(c), knex: Setup.createSQLiteKnex(join(dir, `${name}.sqlite`)) })
   await storage.migrate(`agentcoop ${name}`, identityKey)
   await storage.makeAvailable()
+  // wallet-toolbox stops at 12 unconfirmed ancestors; a server wallet that pays often goes past that between
+  // blocks ("Maximum BEEF depth exceeded"). Same limit as packages/core/src/node/serverWallet.ts.
+  storage.maxRecursionDepth = 100
   const manager = new WalletStorageManager(identityKey, storage)
   await manager.makeAvailable()
   manager.setServices(services)

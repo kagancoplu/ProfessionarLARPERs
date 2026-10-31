@@ -23,6 +23,7 @@ export const MAINNET_TXS: readonly MainnetTx[] = [
   { kind: 'T7', what: 'BRC-29 payment to the provider', via: 'server wallet', txid: 'bee39537a16f75bb1ced8ea8dd8ad71e95610ef7f8c91d187267b3c271d94bb8' },
   { kind: 'T5v', what: 'A vault agent’s credits land on its vault script, not a P2PKH', via: 'server wallet', txid: '08a6455612925df713c4738b450d3018ee689ad9fcb064dbfb3555603ba47db5' },
   { kind: 'T5-L', what: 'Exact lighthouse coins, no change; humans offline during the round', via: 'BSV Desktop', txid: '83d339b8963c0f12cc038fc65e751be077386bee3ea045f5cc526e2cb9cd585c' },
+  { kind: 'T8', what: 'Several sellers paid, buyer gets credits (lineage verified)', via: 'server wallet', txid: '675c33341427325ac458c40e1a0e35ba25995b4ca3653297ca1fe1348ee7231c' },
   { kind: 'T9', what: 'Vault funding: the vault script output', via: 'BSV Desktop', txid: '5b5e452c3b0c5c0e1fe0f093dcc36a5f357f71a9f96ff2d12c3a21db5e4eefd8' },
   { kind: 'T10', what: 'Spend through the multisig branch', via: 'server wallet', txid: '2e7912d41d9bef542539469f0c0742af4e6bacc9c2d0c566f66ef6a36ee82475' },
   { kind: 'T10', what: 'Spend through the multisig branch', via: 'server wallet', txid: '4390605025d780616cd11389b5b4941d948bace923aa3821d8b7ab5a6b9af51b' }

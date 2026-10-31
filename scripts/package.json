@@ -12,7 +12,9 @@
     "balances": "tsx --import @agentcoop/core/register-sdk balances.ts",
     "demo-injection": "tsx --import @agentcoop/core/register-sdk demo-injection.ts",
     "validation4": "tsx --import @agentcoop/core/register-sdk validation4.ts",
-    "validation6": "tsx --import @agentcoop/core/register-sdk validation6.ts"
+    "validation6": "tsx --import @agentcoop/core/register-sdk validation6.ts",
+    "market-sweep": "tsx --import @agentcoop/core/register-sdk market-sweep.ts",
+    "prove": "tsx --import @agentcoop/core/register-sdk prove.ts"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0"

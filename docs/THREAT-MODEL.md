@@ -75,7 +75,7 @@ Done on mainnet (31 Oct): validation 2 (BSV Desktop signs `SIGHASH_SINGLE|ANYONE
 
 Still to run:
 
-- The market sweep (T8) and Coop Rail (T11, T11b: the Base contract is not deployed).
+- Coop Rail (T11, T11b: the Base contract is not deployed).
 - The same audit on a public coordinator, and the flood limits (T-19) behind a public proxy.
 
 Each run's txid goes to `plan/STATUS.md` "Mainnet işlemleri", and the Mainnet column above is ticked from there.
