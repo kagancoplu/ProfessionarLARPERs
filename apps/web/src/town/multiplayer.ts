@@ -6,7 +6,7 @@
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { getSupabase } from '../api/supabase'
 import type { AppStoreApi } from '../store'
-import { canJoin, MoveThrottle, peersFromPresence, TOWN_CHANNEL, type Move, type PeerMeta } from './peers'
+import { JoinGate, MoveThrottle, peersFromPresence, TOWN_CHANNEL, type Move, type PeerMeta } from './peers'
 import type { TownScene } from './scenes/TownScene'
 import type { Villager } from './entities/Villager'
 
@@ -63,21 +63,25 @@ export function attachMultiplayer (town: TownScene, store: AppStoreApi): () => v
     throttle = new MoveThrottle()
     const ch = sb.channel(TOWN_CHANNEL, { config: { presence: { key: selfKey }, broadcast: { self: false } } })
     channel = ch
-    ch.on('presence', { event: 'sync' }, sync)
+    const gate = new JoinGate()
+    const others = (): number => peersFromPresence(ch.presenceState<PeerMeta>(), selfKey).length
+    const decide = (d: 'join' | 'watch' | undefined): void => {
+      if (d === 'watch') store.getState().pushToast({ kind: 'info', text: 'The town is full: watching the others' })
+      if (d !== 'join' || channel !== ch) return
+      const v = town.avatar?.villager
+      void ch.track({ name: myName(), ...(v !== undefined ? { at: [Math.round(v.x), Math.round(v.y)] } : {}) })
+      joined = true
+    }
+    ch.on('presence', { event: 'sync' }, () => { sync(); decide(gate.onSync(others())) })
     ch.on('broadcast', { event: 'move' }, ({ payload }) => {
       const m = payload as { key?: string, name?: string, to?: [number, number] }
       if (typeof m.key !== 'string' || !Array.isArray(m.to) || m.key === selfKey) return
       void peer(m.key, m.name ?? 'Visitor').walkTo(m.to[0], m.to[1])
     })
     ch.subscribe(status => {
-      if (status !== 'SUBSCRIBED' || joined) return
-      if (!canJoin(peersFromPresence(ch.presenceState<PeerMeta>(), selfKey).length)) {
-        store.getState().pushToast({ kind: 'info', text: 'The town is full: watching the others' })
-        return
-      }
-      const v = town.avatar?.villager
-      void ch.track({ name: myName(), ...(v !== undefined ? { at: [Math.round(v.x), Math.round(v.y)] } : {}) })
-      joined = true
+      if (status !== 'SUBSCRIBED') return
+      gate.onSubscribed()
+      setTimeout(() => { decide(gate.onTimeout(others())) }, 1_500) // in case no presence sync arrives
     })
   }
   const leave = (): void => {

@@ -35,6 +35,9 @@ export function attachBridge (town: TownScene, store: AppStoreApi, bus: EventBus
     town.setAvatarMode(s.settings.avatar)
   }
   sync()
+  // during create() the scene is not running yet (alive is false): sync again once it is, or a quiet store
+  // (the Supabase transport, nothing changing) would leave the town empty and the avatar off
+  town.events.once('create', sync)
   const unsubStore = store.subscribe(sync)
   const unsubBus = bus.subscribe(e => {
     if (!town.alive) return

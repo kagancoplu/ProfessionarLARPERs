@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canJoin, MAX_PLAYERS, MoveThrottle, peersFromPresence } from '../src/town/peers'
+import { canJoin, JoinGate, MAX_PLAYERS, MoveThrottle, peersFromPresence } from '../src/town/peers'
 
 describe('MoveThrottle', () => {
   it('emits at most once per 1500 ms while moving and once on stop', () => {
@@ -40,5 +40,25 @@ describe('canJoin', () => {
     expect(MAX_PLAYERS).toBe(8)
     expect(canJoin(7)).toBe(true)
     expect(canJoin(8)).toBe(false)
+  })
+})
+
+describe('JoinGate', () => {
+  it('decides once, on the first presence sync after subscribing (the state is empty at SUBSCRIBED)', () => {
+    const g = new JoinGate()
+    expect(g.onSync(8)).toBeUndefined()
+    g.onSubscribed()
+    expect(g.onSync(8)).toBe('watch')
+    expect(g.onSync(0)).toBeUndefined()
+    const h = new JoinGate()
+    h.onSubscribed()
+    expect(h.onSync(2)).toBe('join')
+  })
+
+  it('decides on a timeout when no sync arrives', () => {
+    const g = new JoinGate()
+    g.onSubscribed()
+    expect(g.onTimeout(0)).toBe('join')
+    expect(g.onSync(9)).toBeUndefined()
   })
 })

@@ -50,3 +50,24 @@ export function peersFromPresence (state: Record<string, PeerMeta[]>, selfKey: s
 
 /** Room for one more player while fewer than MAX_PLAYERS others are in town; otherwise watch. */
 export function canJoin (peerCount: number): boolean { return peerCount < MAX_PLAYERS }
+
+/**
+ * When to decide join-or-watch: right after SUBSCRIBED the presence state is still empty (the server's
+ * presence_state comes after the join reply), so the first sync after subscribing decides, or a timeout.
+ */
+export class JoinGate {
+  private subscribed = false
+  private decided = false
+
+  onSubscribed (): void { this.subscribed = true }
+
+  onSync (peerCount: number): 'join' | 'watch' | undefined { return this.subscribed ? this.decide(peerCount) : undefined }
+
+  onTimeout (peerCount: number): 'join' | 'watch' | undefined { return this.subscribed ? this.decide(peerCount) : undefined }
+
+  private decide (peerCount: number): 'join' | 'watch' | undefined {
+    if (this.decided) return undefined
+    this.decided = true
+    return canJoin(peerCount) ? 'join' : 'watch'
+  }
+}
