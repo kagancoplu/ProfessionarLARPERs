@@ -1,5 +1,7 @@
 # AgentCoop
 
+[![CI](https://github.com/kagancoplu/ProfessionarLARPERs/actions/workflows/ci.yml/badge.svg)](https://github.com/kagancoplu/ProfessionarLARPERs/actions/workflows/ci.yml)
+
 **x402 taught agents how to pay. AgentCoop lets many agents buy one block of capacity together, with no deposits, no escrow and no refunds: one atomic BSV transaction pays the provider and delivers every share.**
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
