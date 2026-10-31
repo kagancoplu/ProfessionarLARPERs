@@ -1,6 +1,6 @@
 # HANDOFF — 31.10 oturumu: Supabase canlı katmanı + denetim (audit) hazırlığı
 
-> **Yeni oturum için:** önce bu dosyayı, sonra `plan/STATUS.md`'yi oku (CLAUDE.md kuralı). Bu dosya, 31.10 gecesi tek bir Claude oturumunda yapılanların ve **hiçbir başka belgede olmayan** bilgilerin dökümüdür. Güvenlik tarafına bakacak kişi doğrudan **§2**'ye gitsin.
+> **Yeni oturum için:** önce bu dosyayı, sonra `plan/STATUS.md`'yi oku (CLAUDE.md kuralı). Açık işlerin takip listesi: **[`plan/BACKLOG.md`](BACKLOG.md)** (BL-01…). Bu dosya, 31.10 gecesi tek bir Claude oturumunda yapılanların ve **hiçbir başka belgede olmayan** bilgilerin dökümüdür. Güvenlik tarafına bakacak kişi doğrudan **§2**'ye gitsin.
 >
 > Yazılış: 31.10.2026 ~08:00, F-10 düzeltmesi ve doğrulama 4 sonrası güncellendi. Son commit'ler `main`'de.
 
