@@ -13,7 +13,9 @@
  */
 import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { createServer } from 'node:net'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import { chromium } from '@playwright/test'
 
 const film = process.env.FILM ?? 'pool'
@@ -26,16 +28,19 @@ await mkdir(outDir, { recursive: true })
 let server
 let base = process.env.BASE
 if (base === undefined) {
-  const port = 5179
+  // a free port of our own: a dev server left on a fixed port would be reused, hot reload and all
+  const port = await new Promise(res => { const s = createServer().listen(0, () => { const p = s.address().port; s.close(() => res(p)) }) })
   base = `http://localhost:${port}`
-  server = spawn('npx', ['vite', '--mode', 'mock', '--port', String(port), '--strictPort'], { stdio: 'ignore', env: { ...process.env, FILM_RENDER: '1' } })
+  const vite = resolve(dirname(createRequire(import.meta.url).resolve('vite/package.json')), 'bin/vite.js')
+  server = spawn(process.execPath, [vite, '--mode', 'mock', '--port', String(port), '--strictPort'], { stdio: 'ignore', env: { ...process.env, FILM_RENDER: '1' } })
   for (let i = 0; ; i++) {
     try { if ((await fetch(base)).ok) break } catch { /* not up yet */ }
-    if (i > 60) throw new Error('the dev server did not start on :5179')
+    if (i > 60) throw new Error(`the dev server did not start on :${port}`)
     await new Promise(r => setTimeout(r, 500))
   }
 }
 
+process.on('exit', () => server?.kill())
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, args: process.env.GPU === '1' ? [] : ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] })
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
 page.on('pageerror', e => console.error('[page]', e.message))
