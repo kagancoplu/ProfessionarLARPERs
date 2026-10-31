@@ -207,7 +207,11 @@ export class TownScene extends Phaser.Scene {
   cinematic (x: number, y: number): Promise<void> {
     const cam = this.cameras.main
     if (this.avatar?.enabled === true || this.following !== undefined || this.time.now - this.lastTouch < 12_000) return Promise.resolve()
-    return new Promise(resolve => { cam.pan(x, y, 900, 'Sine.InOut', false, (_c: unknown, progress: number) => { if (progress >= 1) resolve() }) })
+    // camera effects take EaseMap names ('Sine.easeInOut'), not the tween shorthand; the timer keeps the scene going if a pan is cut short
+    return new Promise(resolve => {
+      const done = this.time.delayedCall(1_200, resolve)
+      cam.pan(x, y, 900, 'Sine.easeInOut', false, (_c: unknown, progress: number) => { if (progress >= 1) { done.remove(false); resolve() } })
+    })
   }
 
   focusOn (identity: string): void { const v = this.villagers.get(identity); if (v !== undefined) this.cameras.main.pan(v.x, v.y, 400) }
