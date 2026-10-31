@@ -45,10 +45,11 @@ describe.skipIf(url === undefined)('supabase sink (local stack)', () => {
 
   it('insertEvents ignores an event already stored', async () => {
     const s = sink()
-    const e = { id: 'guard:1', ts: '2026-10-31T12:00:00.000Z', src: 'guard', type: 'cosign_denied', data: { reason: 'cap' }, agent: '02a1' }
+    const e = { id: 'sink-test:1', ts: '2026-10-31T12:00:00.000Z', src: 'guard', type: 'cosign_denied', data: { agent: '02a1', kind: 'pay', reason: 'cap' }, agent: '02a1' }
     await s.insertEvents([e])
     await s.insertEvents([e])
-    const { data } = await anon().from('coop_events').select('uid, type, agent').eq('id', 'guard:1')
-    expect(data).toEqual([{ uid: 'guard|guard:1|2026-10-31T12:00:00.000Z', type: 'cosign_denied', agent: '02a1' }])
+    const { data } = await anon().from('coop_events').select('uid, type, agent').eq('id', 'sink-test:1')
+    expect(data).toEqual([{ uid: 'guard|sink-test:1|2026-10-31T12:00:00.000Z', type: 'cosign_denied', agent: '02a1' }])
+    await createClient(url ?? '', process.env.SUPABASE_LOCAL_SECRET_KEY ?? '', { auth: { persistSession: false } }).from('coop_events').delete().eq('id', 'sink-test:1')
   })
 })
