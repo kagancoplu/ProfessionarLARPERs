@@ -43,19 +43,27 @@ export class Board extends Phaser.GameObjects.Container {
     if (pool === undefined) { this.label.setHTML('No pool on the board'); this.sack.setFrame('chest_gold_0'); this.hourglass.setVisible(false); this.barBack.setVisible(false); this.barFill.setVisible(false); return }
     const target = Number(pool.terms.credits)
     const pledged = Number(pool.pledgedCredits)
+    const h = height ?? pool.height
+    const left = h !== undefined ? Number(pool.terms.deadlineHeight) - h : undefined
+    const when = pool.status === 'settled' ? 'settled' : pool.status === 'failed' ? 'did not fill' : pool.status === 'locking' ? 'signing round' : left !== undefined ? `Festival in ${blocksToHuman(left)}` : 'open'
+    this.showProgress(`${pool.terms.label}<br>${formatInt(pledged)}/${formatInt(target)} credits · ${when}`, pledged, target, pool.status === 'failed' ? 'failed' : pool.status === 'locking' ? 'locking' : 'open')
+    if (pool.status === 'failed') this.fade()
+  }
+
+  /** Label, chest fill and bar for `pledged / target` (setPool, and film mode without a store). */
+  showProgress (html: string, pledged: number, target: number, state: 'open' | 'locking' | 'failed' = 'open'): void {
     const ratio = target > 0 ? Math.min(1, pledged / target) : 0
     this.sack.setFrame(`chest_gold_${Math.round(ratio * 5)}`)
     this.barBack.setVisible(true); this.barFill.setVisible(true)
     this.scene.tweens.add({ targets: this.barFill, width: Math.round(26 * ratio), duration: 400 })
-    this.barFill.setFillStyle(pool.status === 'failed' ? 0xac353d : ratio >= 1 ? 0x5ac54f : 0xfee761)
-    const h = height ?? pool.height
-    const left = h !== undefined ? Number(pool.terms.deadlineHeight) - h : undefined
-    const when = pool.status === 'settled' ? 'settled' : pool.status === 'failed' ? 'did not fill' : pool.status === 'locking' ? 'signing round' : left !== undefined ? `Festival in ${blocksToHuman(left)}` : 'open'
-    this.label.setHTML(`${pool.terms.label}<br>${formatInt(pledged)}/${formatInt(target)} credits · ${when}`)
-    this.hourglass.setVisible(pool.status === 'locking')
-    if (pool.status === 'locking') this.hourglass.play('anim_lantern', true)
-    if (pool.status === 'failed') this.fade()
+    this.barFill.setFillStyle(state === 'failed' ? 0xac353d : ratio >= 1 ? 0x5ac54f : 0xfee761)
+    this.label.setHTML(html)
+    this.hourglass.setVisible(state === 'locking')
+    if (state === 'locking') this.hourglass.play('anim_lantern', true)
   }
+
+  /** label font size in world px (film mode) */
+  setLabelSize (px: number): void { (this.label.node as HTMLElement).style.fontSize = `${px}px`; this.label.updateSize() }
 
   flyCredits (text: string): void {
     const t = makeLabel(this.scene, 10, -6, text, { tone: 'gold', size: 7 })

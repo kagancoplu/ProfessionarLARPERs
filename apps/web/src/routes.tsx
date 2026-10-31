@@ -15,9 +15,12 @@ import { LoadingState } from './ui'
 
 const KitPage = lazy(() => import('./dev/KitPage'))
 const DebugPage = lazy(() => import('./dev/DebugPage'))
+const FilmPage = lazy(() => import('./film/FilmPage'))
 const lazyPage = (Page: React.LazyExoticComponent<() => React.JSX.Element>) => <Suspense fallback={<LoadingState title="Loading…" />}><Page /></Suspense>
 
 export const router = createBrowserRouter([
+  // film mode (VIDEO.md): the Town alone on a 16:9 stage, outside the shell
+  { path: '/film', element: lazyPage(FilmPage) },
   {
     path: '/',
     element: <AppShell />,

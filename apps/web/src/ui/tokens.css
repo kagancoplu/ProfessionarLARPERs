@@ -151,5 +151,10 @@
   /* presenter mode (?presenter=1): everything a step larger for a projector */
   :root[data-presenter="1"] main { zoom: 1.15; }
   .town-label-wood { border-image-source: url(/ui/label-wood.png) !important; color: #f9e6cf; }
+  /* film mode (src/film): speech and thought bubbles with a pixel tail (tools/bubbles.mjs) */
+  .town-bubble { border-image-source: url(/ui/bubble.png) !important; position: relative; color: #3f2832; }
+  .town-bubble::after { content: ''; position: absolute; left: 50%; margin-left: -2px; top: calc(100% + 1px); width: 5px; height: 4px; background: url(/ui/bubble-tail.png) no-repeat; image-rendering: pixelated; }
+  .town-thought { border-image-source: url(/ui/bubble-thought.png) !important; }
+  .town-thought::after { margin-left: -8px; top: calc(100% + 4px); width: 8px; height: 8px; background-image: url(/ui/bubble-thought-tail.png); }
   @keyframes steps-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 }

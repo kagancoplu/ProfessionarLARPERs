@@ -35,6 +35,8 @@ export default defineConfig({
     // PORT env wins (the desktop app's preview and Playwright pick free ports); BSV Desktop identifies the app by this origin.
     port: Number(process.env.PORT ?? 5173),
     strictPort: true,
+    // the film renderer (tools/film-render.mjs) steps the page frame by frame: a hot reload would end the take
+    ...(process.env.FILM_RENDER === '1' ? { hmr: false } : {}),
     fs: { allow: ['../..'] },
     proxy: Object.fromEntries(Object.entries(SERVICE_PROXY).map(([path, target]) => [path, {
       target,

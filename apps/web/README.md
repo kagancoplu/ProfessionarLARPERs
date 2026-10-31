@@ -83,6 +83,7 @@ The public pitch demo runs on Vercel + Supabase with no backend: see [`plan/DEMO
 | `/pools`, `/me`, `/provider`, `/owner`, `/agents`, `/market`, `/explorer`, `/metrics` | the consoles: pools, participant, provider, owner (vault + guard), agents, market, ledger, metrics + harbor (Coop Rail, experimental) |
 | `/_kit` | the design system: tokens, type, every component and state, sprites, Phaser atlas |
 | `/_debug` | events, state, service health, mode controls, the core-in-browser smoke test |
+| `/film` | film mode: a scripted Town scene on a 16:9 stage for the demo video (`?film=pool&subs=1&tc=1`; render with `npm run film:render`, see VIDEO.md) |
 
 ## Layout
 

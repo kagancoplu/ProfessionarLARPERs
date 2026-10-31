@@ -22,7 +22,8 @@ import { DEPTH, ZOOM_DEFAULT, ZOOM_MAX, ZOOM_MIN } from '../game'
 import { AvatarController } from '../avatar'
 import { Ambient } from '../ambient'
 
-export interface TownDeps { store: AppStoreApi, bus: EventBus, fx: FxQueue }
+/** `film`: no bridge, no multiplayer, no random shower; a film script (src/film) drives the entities */
+export interface TownDeps { store: AppStoreApi, bus: EventBus, fx: FxQueue, film?: boolean }
 
 const TERRAIN_KEYS = ['grass', 'dirt', 'sand', 'cobble', 'water', 'decor', 'flowers', 'fence', 'path_decor', 'water_decor', 'farmland']
 const WATER_FRAMES = 8
@@ -116,7 +117,7 @@ export class TownScene extends Phaser.Scene {
     this.bell = new Bell(this, FOUNTAIN.x, FOUNTAIN.y)
     this.cart = new Cart(this)
     this.night = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x2b2d5e, 0.55).setOrigin(0, 0).setDepth(DEPTH.overlay).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(true).setAlpha(0)
-    this.ambient = new Ambient(this, { reducedMotion: this.deps.fx.reducedMotion })
+    this.ambient = new Ambient(this, { reducedMotion: this.deps.fx.reducedMotion, showers: this.deps.film !== true })
 
     const cam = this.cameras.main
     cam.setBounds(0, 0, MAP_W * TILE, MAP_H * TILE)
@@ -136,8 +137,8 @@ export class TownScene extends Phaser.Scene {
     this.harbor.on('pointerup', () => this.deps.store.getState().openDrawer('rail', 'harbor'))
     this.coop.on('pointerup', () => { const first = [...this.chests.keys()][0]; if (first !== undefined) this.deps.store.getState().openDrawer('vault', first) })
     this.workshop.on('pointerup', open('workshop', 'workshop'))
-    this.detach = attachBridge(this, this.deps.store, this.deps.bus)
-    const detachPlayers = attachMultiplayer(this, this.deps.store)
+    this.detach = this.deps.film === true ? undefined : attachBridge(this, this.deps.store, this.deps.bus)
+    const detachPlayers = this.deps.film === true ? () => {} : attachMultiplayer(this, this.deps.store)
     const teardown = (): void => { this.detach?.(); this.detach = undefined; detachPlayers(); this.deps.fx.clear(); this.ambient?.destroy() }
     this.events.once('shutdown', teardown)
     this.events.once('destroy', teardown)
@@ -297,16 +298,17 @@ export class TownScene extends Phaser.Scene {
     this.villagers.delete(identity)
   }
 
-  /** Add a villager for an agent: a free house or the square's edge (crowd mode). */
-  addVillager (identity: string, profile: string, name: string): Villager {
+  /** Add a villager for an agent: a free house or the square's edge (crowd mode). `opts.char` picks the sprite
+   *  and `opts.house: false` keeps the villager out of the houses (film mode casts its own villagers). */
+  addVillager (identity: string, profile: string, name: string, opts: { char?: string, house?: boolean } = {}): Villager {
     const existing = this.villagers.get(identity)
     if (existing !== undefined) return existing
     const prof: Profile = profile === 'finetune' || profile === 'eval' || profile === 'inference' ? profile : 'visitor'
-    const house = prof === 'visitor' ? undefined : this.houses.find(h => h.owner === undefined)
+    const house = prof === 'visitor' || opts.house === false ? undefined : this.houses.find(h => h.owner === undefined)
     const visitorSpawn = POINTS['visitor-spawn']
     const spot = house !== undefined ? house.doorstep : prof === 'visitor' && visitorSpawn !== undefined ? { x: visitorSpawn.x, y: visitorSpawn.y } : { x: this.squareCentre.x - 60 + this.villagers.size * 14, y: this.squareCentre.y + 70 }
     house?.setOwner(identity, name)
-    const char = prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!
+    const char = opts.char ?? (prof === 'visitor' ? (identity === 'guest' ? 'villager_07' : 'villager_00') : CHARS[this.villagers.size % CHARS.length]!)
     const v = new Villager(this, identity, prof, name, spot.x, spot.y, char)
     v.wanderSpots = this.wanderSpots()
     v.showName(this.cameras.main.zoom >= 3)

@@ -43,7 +43,7 @@ Bu repoda beş track (A protokol, B overlay + koordinatör, C sağlayıcı + aja
   - `README-SIMPLE.md`: BSV'yi bilen ama geliştirici olmayan okur için sade anlatım; canlı demo linki ve seçili mainnet işlemleri.
   - Paketler: `packages/core/README.md`, `packages/overlay/README.md`.
   - Uygulamalar: `apps/agents/README.md`, `apps/coordinator/README.md`, `apps/guard/README.md`, `apps/owner-cli/README.md`, `apps/participant-cli/README.md`, `apps/provider-api/README.md`, `apps/provider-cli/README.md`, `apps/relay/README.md`, `apps/web/README.md`.
-  - Web: `apps/web/DESIGN.md` (tasarım sistemi), `apps/web/VIDEO.md` (video çekim senaryosu), `apps/web/assets/LICENSES.md`, `apps/web/assets/packs/README.md` (git'te olmayan sanat paketleri).
+  - Web: `apps/web/DESIGN.md` (tasarım sistemi), `apps/web/VIDEO.md` (video çekim senaryosu; `/film` film modu ve "The Pool" senaryosu), `apps/web/assets/LICENSES.md`, `apps/web/assets/packs/README.md` (git'te olmayan sanat paketleri).
 - **Proje skill'leri**: `.claude/skills/village-art-direction/SKILL.md` (Kasaba sanatı), `.claude/skills/pixelbolt-pixel-art/SKILL.md`.
 
 ## Demo senaryoları (business)

@@ -30,6 +30,8 @@ apps/web/dist/
 apps/web/.vite/
 apps/web/playwright-report/
 apps/web/test-results/
+# film mode renders (tools/film-render.mjs)
+apps/web/film-out/
 
 .DS_Store
 backups/

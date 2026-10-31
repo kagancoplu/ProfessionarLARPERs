@@ -19,7 +19,8 @@
     "record:mock": "tsx tools/record-mock.mjs",
     "packs": "node tools/packs/index.mjs",
     "map": "tsx tools/town-map.mjs",
-    "ui": "node tools/ui.mjs"
+    "ui": "node tools/ui.mjs",
+    "film:render": "node tools/film-render.mjs"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0",

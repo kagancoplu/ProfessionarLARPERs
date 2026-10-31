@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { makeLabel } from './dom'
+import { makeLabel, type LabelShape } from './dom'
 import { findPath } from '../map/path'
 import { ICONS } from '../../ui/icons.generated'
 
@@ -70,8 +70,8 @@ export class Villager extends Phaser.GameObjects.Container {
   }
 
   /** Walk to (x, y) around houses and water (A* on the collision map, roads preferred); a new walkTo cancels
-   *  the previous one (interruptible). Resolves on arrival or cancel. */
-  walkTo (x: number, y: number, opts: { exact?: boolean } = {}): Promise<void> {
+   *  the previous one (interruptible). Resolves on arrival or cancel. `pace` multiplies the walking speed (film mode). */
+  walkTo (x: number, y: number, opts: { exact?: boolean, pace?: number } = {}): Promise<void> {
     if (this.player) return Promise.resolve()
     this.cancelWalk()
     const legs = findPath({ x: this.x, y: this.y }, { x, y })
@@ -87,7 +87,7 @@ export class Villager extends Phaser.GameObjects.Container {
         this.face(leg.x - this.x, leg.y - this.y)
         this.sprite.play(`${this.char}_walk_${this.facing}`, true)
         this.walkTween = this.scene.tweens.add({
-          targets: this, x: leg.x, y: leg.y, duration: Math.max(60, (dist / SPEED) * 1000) / ((this.scene.registry.get('speed') as number) ?? 1),
+          targets: this, x: leg.x, y: leg.y, duration: Math.max(60, (dist / (SPEED * (opts.pace ?? 1))) * 1000) / ((this.scene.registry.get('speed') as number) ?? 1),
           onUpdate: () => { this.setDepth(this.y) },
           onComplete: () => { next(i + 1) }
         })
@@ -130,11 +130,16 @@ export class Villager extends Phaser.GameObjects.Container {
 
   /** hide the name tag (a keeper steps back while an agent sells at its stall) */
   showName (on: boolean): void { this.nameLabel.setVisible(on) }
+  /** where a bubble sits so it clears the name tag (world px above the feet) */
+  get headTop (): number { return this.nameLabel.visible ? -34 - this.nameLabel.height - 3 : -32 }
+  /** name tag font size in world px (film mode keeps it readable at every zoom) */
+  setNameSize (px: number): void { (this.nameLabel.node as HTMLElement).style.fontSize = `${px}px`; this.nameLabel.updateSize() }
 
-  say (text: string, tone: 'parchment' | 'danger' | 'gold' | 'grass' = 'parchment', ms = 4000): void {
+  /** `style` (film mode): bubble shape, size and height in world px; the default is the square label at -40 */
+  say (text: string, tone: 'parchment' | 'danger' | 'gold' | 'grass' = 'parchment', ms = 4000, style: { shape?: LabelShape, size?: number, maxWidth?: number, y?: number } = {}): void {
     this.bubble?.destroy()
     this.bubbleTimer?.remove()
-    this.bubble = makeLabel(this.scene, 0, -40, text, { tone, size: 6, font: 'body', maxWidth: 110 })
+    this.bubble = makeLabel(this.scene, 0, style.y ?? -40, text, { tone, size: style.size ?? 6, font: 'body', maxWidth: style.maxWidth ?? 110, shape: style.shape })
     this.add(this.bubble)
     this.bubbleTimer = this.scene.time.delayedCall(ms / ((this.scene.registry.get('speed') as number) ?? 1), () => { this.bubble?.destroy(); this.bubble = undefined })
   }

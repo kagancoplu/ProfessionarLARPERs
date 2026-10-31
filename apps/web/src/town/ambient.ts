@@ -19,14 +19,15 @@ export class Ambient {
   private timers: Phaser.Time.TimerEvent[] = []
   night = false
 
-  constructor (private readonly scene: Phaser.Scene, opts: { reducedMotion: boolean }) {
+  constructor (private readonly scene: Phaser.Scene, opts: { reducedMotion: boolean, showers?: boolean }) {
     if (opts.reducedMotion) return
     this.butterflies()
     this.bees()
     this.clouds()
     this.wind()
     this.makeFireflies()
-    this.timers.push(scene.time.addEvent({ delay: 45_000, loop: true, callback: () => { if (Math.random() < 0.35) this.startShower() } }))
+    // film mode turns the random shower off: every take must look the same
+    if (opts.showers !== false) this.timers.push(scene.time.addEvent({ delay: 45_000, loop: true, callback: () => { if (Math.random() < 0.35) this.startShower() } }))
   }
 
   /** a few butterflies drifting between spots near the square and the houses' gardens */
