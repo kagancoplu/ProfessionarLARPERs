@@ -11,6 +11,7 @@ import { PoolsPage } from './consoles/pools/PoolsPage'
 import { ParticipantPage } from './consoles/participant/ParticipantPage'
 import { ProviderPage } from './consoles/provider/ProviderPage'
 import { AppShell } from './shell/AppShell'
+import { RouteError } from './shell/RouteError'
 import { LoadingState } from './ui'
 
 const KitPage = lazy(() => import('./dev/KitPage'))
@@ -24,20 +25,25 @@ export const router = createBrowserRouter([
   {
     path: '/',
     element: <AppShell />,
-    children: [
-      { index: true, element: <TownPage /> },
-      { path: 'pools', element: <PoolsPage /> },
-      { path: 'me', element: <ParticipantPage /> },
-      { path: 'market', element: <MarketPage /> },
-      { path: 'agents', element: <AgentsPage /> },
-      { path: 'provider', element: <ProviderPage /> },
-      { path: 'owner', element: <OwnerPage /> },
-      { path: 'explorer', element: <ExplorerPage /> },
-      { path: 'metrics', element: <MetricsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: '_kit', element: lazyPage(KitPage) },
-      { path: '_debug', element: lazyPage(DebugPage) },
-      { path: '*', element: <div className="p-6"><LoadingState title="There is no such street in this town." body="Use the signposts in the top bar." /></div> }
-    ]
+    errorElement: <RouteError />,
+    children: [{
+      // a page that throws shows RouteError inside the shell (top bar stays), not React Router's bare error page
+      errorElement: <RouteError />,
+      children: [
+        { index: true, element: <TownPage /> },
+        { path: 'pools', element: <PoolsPage /> },
+        { path: 'me', element: <ParticipantPage /> },
+        { path: 'market', element: <MarketPage /> },
+        { path: 'agents', element: <AgentsPage /> },
+        { path: 'provider', element: <ProviderPage /> },
+        { path: 'owner', element: <OwnerPage /> },
+        { path: 'explorer', element: <ExplorerPage /> },
+        { path: 'metrics', element: <MetricsPage /> },
+        { path: 'settings', element: <SettingsPage /> },
+        { path: '_kit', element: lazyPage(KitPage) },
+        { path: '_debug', element: lazyPage(DebugPage) },
+        { path: '*', element: <div className="p-6"><LoadingState title="There is no such street in this town." body="Use the signposts in the top bar." /></div> }
+      ]
+    }]
   }
 ])

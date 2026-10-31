@@ -63,7 +63,10 @@ export class Villager extends Phaser.GameObjects.Container {
     this.scheduleWander()
   }
 
-  private idle (): void { this.sprite.play(`${this.char}_idle_${this.facing}`, true) }
+  /** true once destroyed: a tween, timer or promise that outlives the villager must not touch it (BL: frozen Town) */
+  get gone (): boolean { return this.scene === undefined }
+
+  private idle (): void { if (!this.gone) this.sprite.play(`${this.char}_idle_${this.facing}`, true) }
 
   face (dx: number, dy: number): void {
     if (Math.abs(dx) >= Math.abs(dy)) { this.facing = 'side'; this.sprite.setFlipX(dx < 0) } else this.facing = dy < 0 ? 'up' : 'down'
@@ -72,7 +75,7 @@ export class Villager extends Phaser.GameObjects.Container {
   /** Walk to (x, y) around houses and water (A* on the collision map, roads preferred); a new walkTo cancels
    *  the previous one (interruptible). Resolves on arrival or cancel. `pace` multiplies the walking speed (film mode). */
   walkTo (x: number, y: number, opts: { exact?: boolean, pace?: number } = {}): Promise<void> {
-    if (this.player) return Promise.resolve()
+    if (this.player || this.gone) return Promise.resolve()
     this.cancelWalk()
     const legs = findPath({ x: this.x, y: this.y }, { x, y })
     // `exact`: step the last bit onto a blocked spot on purpose (behind a stall's counter)
@@ -82,6 +85,7 @@ export class Villager extends Phaser.GameObjects.Container {
       this.walkResolve = resolve
       const next = (i: number): void => {
         const leg = legs[i]
+        if (this.gone) { resolve(); return }
         if (leg === undefined) { this.stopWalk(); resolve(); return }
         const dist = Phaser.Math.Distance.Between(this.x, this.y, leg.x, leg.y)
         this.face(leg.x - this.x, leg.y - this.y)
@@ -95,6 +99,9 @@ export class Villager extends Phaser.GameObjects.Container {
       next(0)
     })
   }
+
+  /** stop where it stands (avatar mode takes this villager over) */
+  halt (): void { if (!this.gone) this.cancelWalk() }
 
   private cancelWalk (): void { this.walkTween?.stop(); this.walkTween = undefined; this.walkResolve?.(); this.walkResolve = undefined; this.idle() }
   private stopWalk (): void { this.walkTween = undefined; this.walkResolve = undefined; this.idle() }
@@ -122,6 +129,7 @@ export class Villager extends Phaser.GameObjects.Container {
 
   /** keyboard movement: play walk/idle for the direction the player pushes */
   stepAnim (dx: number, dy: number): void {
+    if (this.gone) return
     if (dx === 0 && dy === 0) { if (this.sprite.anims.currentAnim?.key.includes('walk') === true) this.idle(); return }
     this.face(dx, dy)
     const key = `${this.char}_walk_${this.facing}`
@@ -137,6 +145,7 @@ export class Villager extends Phaser.GameObjects.Container {
 
   /** `style` (film mode): bubble shape, size and height in world px; the default is the square label at -40 */
   say (text: string, tone: 'parchment' | 'danger' | 'gold' | 'grass' = 'parchment', ms = 4000, style: { shape?: LabelShape, size?: number, maxWidth?: number, y?: number } = {}): void {
+    if (this.gone) return
     this.bubble?.destroy()
     this.bubbleTimer?.remove()
     this.bubble = makeLabel(this.scene, 0, style.y ?? -40, text, { tone, size: style.size ?? 6, font: 'body', maxWidth: style.maxWidth ?? 110, shape: style.shape })
@@ -147,6 +156,7 @@ export class Villager extends Phaser.GameObjects.Container {
   /** Purse: visible and glowing while a pledge is reserved (the sats never left the wallet). */
   setPurse (state: 'hidden' | 'idle' | 'reserved'): void {
     this.purseReserved = state === 'reserved'
+    if (this.gone) return
     this.purse.setVisible(state !== 'hidden')
     this.scene.tweens.killTweensOf(this.purse)
     this.purse.setAlpha(1).setScale(1)
@@ -156,5 +166,21 @@ export class Villager extends Phaser.GameObjects.Container {
   /** The "I verified and signed" tick during a signing round. */
   check (): void { this.say('✓ verified, signed', 'grass', 1800) }
 
-  destroy (fromScene?: boolean): void { this.wanderTimer?.remove(); this.bubbleTimer?.remove(); super.destroy(fromScene) }
+  /**
+   * Stop everything that would call back into this villager after it is gone: the walk tween (its onComplete
+   * plays an animation on the destroyed sprite, and an exception inside Phaser's frame stops the game loop for
+   * good), tweens on it, its timers. A walk still awaited resolves, so the story waiting on it carries on.
+   */
+  destroy (fromScene?: boolean): void {
+    if (this.gone) return
+    this.walkTween?.stop()
+    this.walkTween = undefined
+    this.scene.tweens.killTweensOf([this, this.sprite, this.purse])
+    this.wanderTimer?.remove()
+    this.bubbleTimer?.remove()
+    const pending = this.walkResolve
+    this.walkResolve = undefined
+    super.destroy(fromScene)
+    pending?.()
+  }
 }

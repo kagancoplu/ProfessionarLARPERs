@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BLOCKED, canStand } from '../src/town/map/blocked'
 import { BOARD, HOUSES, WORKSHOP } from '../src/town/layout'
-import { FOUNTAIN } from '../src/town/map/places'
+import { FOUNTAIN, POINTS } from '../src/town/map/places'
 import { MAP_H, MAP_W, PLAZA_COBBLE, POND, ROAD_Y, TILE } from '../src/town/map/terrain'
 
 describe('avatar collision map', () => {
@@ -14,6 +14,18 @@ describe('avatar collision map', () => {
     expect(canStand(BLOCKED, 8 * TILE, (ROAD_Y + 1) * TILE)).toBe(true)
     expect(canStand(BLOCKED, (PLAZA_COBBLE.x + 2) * TILE, (PLAZA_COBBLE.y + 2) * TILE)).toBe(true)
     expect(canStand(BLOCKED, BOARD.x, BOARD.y + 12)).toBe(true)
+  })
+  it('starts a walk (and a visitor) in front of the fountain, on free ground', () => {
+    for (const name of ['walk-start', 'visitor-spawn']) {
+      const p = POINTS[name]!
+      expect(canStand(BLOCKED, p.x, p.y)).toBe(true)
+      expect(Math.abs(p.x - FOUNTAIN.x)).toBeLessThanOrEqual(TILE)
+      expect(p.y - FOUNTAIN.y).toBeGreaterThan(0)
+      expect(p.y - FOUNTAIN.y).toBeLessThanOrEqual(TILE)
+    }
+    // visitors appear a step apart around it (TownScene.addVillager): all on free ground
+    const spawn = POINTS['visitor-spawn']!
+    for (let k = -2; k <= 2; k++) expect(canStand(BLOCKED, spawn.x + k * 14, spawn.y)).toBe(true)
   })
   it('refuses the outside of the map', () => {
     expect(canStand(BLOCKED, -1, 10)).toBe(false)

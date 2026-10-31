@@ -2,14 +2,15 @@
 import { shortHex } from '../api/woc'
 import { PoolDetail } from '../consoles/pools/PoolDetail'
 import { RailCard } from '../consoles/RailCard'
-import { store, useStore } from '../store'
+import { store, useShallowStore, useStore } from '../store'
 import { selectDrawer } from '../store/selectors'
-import { Counter, Drawer, IdentityChip, PixelButton, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
+import { Counter, Drawer, ErrorBoundary, ErrorState, IdentityChip, PixelButton, SimulatedJobsTag, Tag, TxLink, formatInt } from '../ui'
 import { useNavigate } from 'react-router'
 
 function AgentCard ({ identity }: { identity: string }) {
   const a = useStore(s => s.agents.byIdentity[identity])
-  const jobs = useStore(s => Object.values(s.jobs.byId).filter(j => j.owner === identity))
+  // a filtered array is new on every call: shallow-compared, or React re-renders forever and the page crashes
+  const jobs = useShallowStore(s => Object.values(s.jobs.byId).filter(j => j.owner === identity))
   const vault = useStore(s => Object.values(s.vaults.byId).find(v => v.agent === identity))
   if (a === undefined) return <p>Unknown villager.</p>
   return (
@@ -80,18 +81,32 @@ function ListingCard ({ outpoint }: { outpoint: string }) {
   )
 }
 
+function WorkshopCard () {
+  const navigate = useNavigate()
+  return (
+    <div className="flex flex-col gap-3">
+      <p>The provider's workshop. Credits are H100 GPU-hours; jobs are <SimulatedJobsTag />, payments and settlements are real.</p>
+      <p className="text-[14px] leading-5 text-ink-muted">Mint credits, open a pool with one signed offer and collect the revenue in the provider console.</p>
+      <PixelButton size="sm" onClick={() => { store.getState().closeDrawer(); void navigate('/provider') }}>Open the provider console</PixelButton>
+    </div>
+  )
+}
+
 export function TownDrawer () {
   const drawer = useStore(selectDrawer)
   const title = drawer === undefined ? '' : drawer.kind === 'pool' ? 'Pool' : drawer.kind === 'agent' ? 'Villager' : drawer.kind === 'tx' ? 'Transaction' : drawer.kind === 'me' ? 'Workshop' : drawer.kind === 'vault' ? 'Vault' : drawer.kind === 'listing' ? 'Stall' : drawer.kind === 'rail' ? 'Harbor office' : 'Details'
   return (
     <Drawer open={drawer !== undefined} title={title} onClose={() => store.getState().closeDrawer()}>
-      {drawer?.kind === 'pool' && <PoolDetail poolId={drawer.id} />}
-      {drawer?.kind === 'agent' && <AgentCard identity={drawer.id} />}
-      {drawer?.kind === 'tx' && <TxScroll id={drawer.id} />}
-      {drawer?.kind === 'vault' && <VaultCard vaultId={drawer.id} />}
-      {drawer?.kind === 'listing' && <ListingCard outpoint={drawer.id} />}
-      {drawer?.kind === 'rail' && <RailCard />}
-      {drawer?.kind === 'me' && <div className="flex flex-col gap-2"><p>The provider's workshop. Credits are H100 GPU-hours; jobs are <SimulatedJobsTag />, payments and settlements are real.</p><p className="text-ink-muted text-[14px]">The provider console (mint, open a pool, revenue) arrives in Phase 2.</p></div>}
+      {/* a card that throws stays inside the drawer: the Town keeps running behind it */}
+      <ErrorBoundary resetKey={drawer === undefined ? '' : `${drawer.kind}:${drawer.id}`} fallback={err => <ErrorState title="This card could not be shown." body={err.message} />}>
+        {drawer?.kind === 'pool' && <PoolDetail poolId={drawer.id} />}
+        {drawer?.kind === 'agent' && <AgentCard identity={drawer.id} />}
+        {drawer?.kind === 'tx' && <TxScroll id={drawer.id} />}
+        {drawer?.kind === 'vault' && <VaultCard vaultId={drawer.id} />}
+        {drawer?.kind === 'listing' && <ListingCard outpoint={drawer.id} />}
+        {drawer?.kind === 'rail' && <RailCard />}
+        {drawer?.kind === 'me' && <WorkshopCard />}
+      </ErrorBoundary>
     </Drawer>
   )
 }
