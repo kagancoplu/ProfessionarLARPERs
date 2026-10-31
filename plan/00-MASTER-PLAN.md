@@ -212,6 +212,7 @@ verifyLineage(outpoint, { fetchTx?, arcadeUrl?, wocUrl?, maxDepth?, cache?, owne
 //   listVaultCredits(wallet, vaultId, tokenId?) → VaultCredit[]
 //   transferVaultCredits(wallet, { vaultId, credit, amt, toPkh, kind: 'redeem', cosign, context? }) → { txid, beef, rest? }   // redeem: context.creditPayees; 'list' guard'da reddedilir
 //   signVaultCreditListing(wallet, { vaultId, credit, askSats, cosign }) → Listing   // 31.10: vault kredisi UTXO'su SINGLE|ACP (ajan + guard 'list'), payScriptHex = vault script'i; verifyListing/buildSweep vault'a kilitli listeyi kabul eder
+//   TokenKit.sendToVault(tokenId, amount, vaultScriptHex) → { txid }   // 31.10: provider-api, kasadan redeem edilmiş kredinin iadesi kasa script'ine
 //     out0 amt → toPkh (P2PKH), out1 kalan → aynı vault script'i; girdi 0 ajan + guard (VaultSigner, CosignKind += 'redeem'|'list')
 // A-P5 Lighthouse (pool/lighthouse.ts, scripts/lighthouse.ts):
 //   buildLighthousePledge(wallet, terms, credits, { tokenIndex, guard, feeSats? }) → LighthousePledge

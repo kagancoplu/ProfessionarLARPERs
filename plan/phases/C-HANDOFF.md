@@ -8,7 +8,7 @@ Ortam: Node ≥ 22, kurulum `npx npm@11 install` (npm 10 bu workspace'te kırıl
 
 Önkoşul: servisler ayakta (`node infra/run.mjs`, `npm run guard -w @agentcoop/guard`). T1 (mint) ve T2 (havuz `53a240f5…3ca6_0`) ve T7 (402 ×4) zaten zincirde.
 
-### 1.1 Ajanların neden pledge etmediğini kapatın (önce bu)
+### ✅ 1.1 Ajanların neden pledge etmediğini kapatın (önce bu) — **çözüldü 31.10 01:45** (provider-api mint'ten önce başlamıştı; S2 settle oldu, STATUS)
 1. `git pull`. provider-api açılıştan önce çalışıyorsa **bir kez** yeniden başlatın: `DATA_DIR=$PWD/data npm run provider`. Bundan sonra yeni bir `mint`'in tokenId'si 5 sn içinde kendiliğinden alınır (`refreshTokenIds`).
 2. `curl -s localhost:8092/v1/catalog | jq '.products[] | {id, tokenId}'` → `gpu-h100`'ün `tokenId`'si `0ae50b8b…437d_0` olmalı, `null` değil.
 3. `npm run agents`, sonra `tail -f data/agents/*/activity.log`. Karar veremeyen her havuz kontrolü bir kez **"Pool check: …"** satırı yazar:
@@ -25,6 +25,8 @@ Ortam: Node ≥ 22, kurulum `npx npm@11 install` (npm 10 bu workspace'te kırıl
    İnsan da katılacaksa havuzu onun kredisi kadar büyütün (ör. 12 kredi → `--credits 52 --price 1300`). Havuz yalnız tam dolunca settle olur; ajanların 7 günlük ihtiyacı 17 + 11 + 12 = 40.
 
 ### 1.2 Yapılacak mainnet işlemleri
+
+> **31.10 02:40 durumu:** a ✅ (T3 ×3 ajan), b ✅ (insan T3 `67e3b14b…`, Desktop imzası 60 sn'lik tura yetişti), c ✅ (T5 `5314ab8b…`, `consistent`, `custodiedSats: 0`), e ✅ (T6: finetune 7+4+6, inference 1×3, STATUS). Kalan: d (gelir), f (T8), g–h (kasalı ajan, D'nin kasası + owner Desktop). finetune'un sats'ı bitti (perakende 325 sat/iş): fonlanması gerek.
 
 | # | Tip | Kim / nerede | Komut | Kabul |
 |---|---|---|---|---|
@@ -43,22 +45,22 @@ Her txid için STATUS satırı: `| <tarih> | <T> | [txid](https://whatsonchain.c
 
 Hiçbiri mainnet'i engellemiyor; bayrak kapalıyken eski akış aynı çalışıyor. Önerilen sıra 2.1 → 2.2 → 2.3 → 2.4. Her biri mockchain testiyle gelsin (`test/` altında, `startMockStack` yardımcısı `apps/agents/src/demo/harness.ts`).
 
-### 2.1 Vault'tan redeem edilen kredinin iadesi vault'a dönsün (güvenlik; D → C, 30.10 22:45)
+### ✅ 2.1 Vault'tan redeem edilen kredinin iadesi vault'a dönsün (güvenlik; D → C, 30.10 22:45)  — **yapıldı (31.10, `df558b3`, testli)**
 - **Sorun:** `apps/provider-api/src/redeem.ts` `returnCredits` krediyi her zaman çağıranın P2PKH'ına yolluyor (`kit.send(…, caller)`). Vault'tan redeem edilmiş kredi böylece ajanın anahtarına geçer ve guard'ın politikası atlatılır (redeem başına ≤ 20 kredi).
 - **Yapılacak:** redeem sırasında kredinin vault'tan geldiğini (girdi `buildVaultCreditScript` biçimli, `vaultKeysOfScript`) ledger'a kaydedin (`credits.ts`, bakiye kaynağına göre ayrı). İade o bakiyeden yapılıyorsa çıktı `buildVaultCreditScript(insc, vaultScript)` olsun, P2PKH değil.
 - **Kabul:** vault'tan redeem → return → kredi aynı vault script'inde. P2PKH'tan redeem edilen kredi eskisi gibi P2PKH'a döner.
 
-### 2.2 Vault'lu ajanın kredisi vault'a kilitli gelsin (A → C, 30.10 21:30 ve 20:45)
+### ✅ 2.2 Vault'lu ajanın kredisi vault'a kilitli gelsin (A → C, 30.10 21:30 ve 20:45)  — **yapıldı (31.10, `df558b3`, testli)**
 - **Şu an:** `apps/agents/src/participant.ts:172` `pledgeFromVault` kredi çıktısını ajanın P2PKH'ına planlatıyor. Bu, FINAL-IDEA §8'deki son non-custodial açık.
 - **Yapılacak:** `pledgeFromVault(…, { …, creditLock: 'vault' })` (ya da `buildPledge(…, 'vault', …, { vault: { …, creditLock: 'vault' } })`). Settlement'ta `internalizeVaultSettlement` yerine `internalizeVaultCredits` (`packages/core/src/vault/creditSpend.ts`). Ajanın kredi sayımı `ownedCredits()` için `listVaultCredits` (basket `VAULT_CREDITS_BASKET`).
 - **Redeem:** vault kredisini sağlayıcıya `transferVaultCredits` (guard `/cosign kind:'redeem'`, `creditPayees`) ile gönderin; provider-api'nin redeem'i bu tx'i kabul etmeli (gönderen kontrolü = vault'un ajan anahtarı). Bu, 2.1 ile birlikte test edilir.
 - **Kabul:** `test/agents.vault.mockchain.test.ts`'e: settle sonrası kredi `ownerVaultHash` ile overlay'de (`{ op:'vaultCredits', vaultHash }`), ajanın P2PKH'ında 0. Örnek: `test/e2e.vault-credits.mockchain.test.ts`, `test/vault-credits.spend.mockchain.test.ts`.
 
-### 2.3 Vault'lu ajanın artan kredisini satışa çıkarma (A → C, 31.10 00:50)
+### ✅ 2.3 Vault'lu ajanın artan kredisini satışa çıkarma (A → C, 31.10 00:50)  — **yapıldı (31.10, `a3a8d5d`, testli)**
 - **Yapılacak:** `apps/agents/src/market.ts` `considerListing`, ajan vault modundaysa `signListing` yerine `signVaultCreditListing` (guard `kind:'list'`, SINGLE\|ACP; ödeme vault script'ine). Sonra her zamanki `POST {COOP_API_URL}/listings`. Guard politikasında `minAskSatsPerCredit` yoksa liste kapalıdır; bu durumda ajan `activity.log`'a nedenini yazsın ve listelemesin.
 - **Kabul:** vault'lu ajan listeler, başka ajan `buildSweep` ile alır, sat vault'a gelir.
 
-### 2.4 participant-cli: "imzala ve çık" (lighthouse; A → C 30.10 22:30, B → C 31.10 00:40)
+### ✅ 2.4 participant-cli: "imzala ve çık" (lighthouse; A → C 30.10 22:30, B → C 31.10 00:40)  — **yapıldı (31.10, `bfcba2b`, testli)**
 - **Yapılacak:** `apps/participant-cli/src/cli.ts`'e `pledge <poolId> <credits> --lighthouse --guard <guardIdentity>` ekleyin: `buildLighthousePledge` (`packages/core/src/pool/lighthouse.ts`) → `POST {COOP_API_URL}/pledges/lighthouse`. Gövde `LighthousePledge`; tx overlay'de değilse `beef` ekleyin. Overlay'e submit'i koordinatör yapar. Guard kimliği `GET {GUARD_URL}/healthz`'ten. Geri çekme: `cancel` lighthouse kaydını tanıyıp `cancelLighthousePledge` → overlay submit.
 - **Kabul:** insan pledge edip çıkar; turda imzayı guard verir; havuz settle olur. Örnek: `apps/coordinator/test/e2e.lighthouse.mockchain.test.ts`. README'de "imzala ve çık" bölümü.
 
