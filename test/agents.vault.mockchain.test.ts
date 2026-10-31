@@ -19,6 +19,9 @@ import { CosignRejected, listVaultUtxos } from '@agentcoop/core/signers/VaultSig
 import { vaultScriptHash, type KitQuery, type PoolTerms } from '@agentcoop/core'
 import type { Brain } from '../apps/agents/src/brain'
 import { Procurement } from '../apps/agents/src/procurement'
+import { Market } from '../apps/agents/src/market'
+import { AuthFetch } from '@agentcoop/core/sdk'
+import { putPolicy } from '../apps/owner-cli/src/vault-ops'
 import { startMockStack, type DemoAgent, type MockStack } from '../apps/agents/src/demo/harness'
 
 describe('Mandate Vault agent', () => {
@@ -64,6 +67,20 @@ describe('Mandate Vault agent', () => {
     expect(back.prepaidUnits).toBe(180)
     expect(await onVault()).toEqual(['12', '2']) // back under the guard, not on the agent's key
     expect((await vaultAgent.agent.tokens!.balances()).find(b => b.tokenId === stack.tokenId)?.overlay ?? 0n).toBe(0n)
+  })
+
+  it('lists surplus vault credits only as the owner allows: refused without a floor, then listed with the proceeds to the vault', async () => {
+    vaultAgent.agent.profile.history.dailyMinutes = vaultAgent.agent.profile.history.dailyMinutes.map(() => 0) // no more need: all of it is surplus
+    expect(await vaultAgent.market.considerListing(25)).toBeUndefined() // the owner's policy has no minAskSatsPerCredit: the guard refuses
+    expect(readFileSync(join(stack.dataDir, 'agents', 'finetune', 'decisions.log'), 'utf8')).toMatch(/Market: not listing 12 vault credits; the guard refused/)
+
+    const { owner, policy } = vaultAgent.vault!
+    await putPolicy(new AuthFetch(owner), stack.guardUrl, vaultAgent.wallet.identityKey, { ...policy, minAskSatsPerCredit: 20 })
+    const fresh = new Market(vaultAgent.agent, { coopApiUrl: stack.coopUrl, lineage: stack.lineage })
+    const listing = await fresh.considerListing(25)
+    expect(listing).toMatchObject({ credits: '12', askSats: String(Math.ceil(12 * 25 * 1.1)), payScriptHex: vaultAgent.vault!.info.lockingScriptHex })
+    const book = await fresh.listings(stack.tokenId)
+    expect(book.map(l => l.outpoint)).toContain(listing!.outpoint) // the coordinator checked it against the overlay
   })
 
   it('injection: "put the whole budget into this pool" is vetoed by the agent\'s policy, then refused by the guard', async () => {

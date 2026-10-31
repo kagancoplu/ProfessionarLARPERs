@@ -4,15 +4,20 @@
  *
  *   sell  credits beyond the agent's 7-day need are listed in small lots
  *         (a listing is one UTXO and sells whole) at the pool price × 1.1,
- *         always below retail: reserveListing → signListing (SINGLE|ACP) → POST
+ *         always below retail: reserveListing → signListing (SINGLE|ACP) → POST.
+ *         Vault mode: credits locked to the vault are listed as they are
+ *         (one whole vault credit UTXO), agent + guard SINGLE|ACP with the
+ *         proceeds going back to the vault (signVaultCreditListing, guard
+ *         'list'); the owner's policy may keep listing off (minAskSatsPerCredit)
  *   buy   router step (b): when the job needs credits the agent does not hold,
  *         the cheapest listings that cover the shortfall are bought in ONE
  *         transaction (buildSweep; every listing traced to the deploy with
  *         verifyLineage first), if that costs less than retail
  */
 import {
-  beefFromArcade, buildSweep, reserveListing, signListing, type KitQuery, type LineageOptions, type Listing
+  beefFromArcade, buildSweep, listVaultCredits, reserveListing, signListing, signVaultCreditListing, type KitQuery, type LineageOptions, type Listing
 } from '@agentcoop/core'
+import { CosignRejected } from '@agentcoop/core/signers/VaultSigner'
 import type { Agent } from './agent'
 import { forecastNeed } from './forecast'
 
@@ -32,6 +37,8 @@ const sat = (n: number): string => Math.round(n).toLocaleString('en-US')
 export class Market {
   /** My listing waiting for a buyer (one at a time). */
   private mine?: string
+  /** Vault mode: the guard refused a listing (owner's policy); not retried until the agent restarts. */
+  private vaultListingRefused?: string
 
   constructor (private readonly agent: Agent, private readonly opts: MarketOptions) {}
 
@@ -57,11 +64,32 @@ export class Market {
     const f = forecastNeed(agent.profile.history.dailyMinutes, { prepaidMinutes: prepaid, ownedCredits: owned, pledgedCredits: 0 }, mpc)
     const surplus = Math.min(owned, Math.floor((f.coveredMinutes - f.needMinutes) / mpc))
     if (surplus < 1) return undefined
-    const credits = Math.min(surplus, LOT_SIZE)
-    const askSats = Math.ceil(credits * poolPricePerCredit * MARKUP)
+    let credits = Math.min(surplus, LOT_SIZE)
+    let askSats = Math.ceil(credits * poolPricePerCredit * MARKUP)
     if (askSats >= credits * product.retailSatsPerCredit) return undefined // never ask retail or more
-    const { outpoint } = await reserveListing(agent.wallet, agent.tokens!, product.tokenId, String(credits), String(askSats))
-    const listing = await signListing(agent.wallet, outpoint, String(askSats))
+    let listing: Listing
+    let outpoint: string
+    if (agent.vaultId !== undefined && agent.vaultCosign !== undefined) {
+      if (this.vaultListingRefused !== undefined) return undefined
+      // Vault-locked credits never leave the vault's rules: list a whole vault credit UTXO that fits the surplus.
+      const credit = (await listVaultCredits(agent.wallet, agent.vaultId, product.tokenId)).find(c => c.amt <= BigInt(surplus))
+      if (credit === undefined) return undefined // my vault credits are in pieces larger than my surplus
+      credits = Number(credit.amt)
+      askSats = Math.ceil(credits * poolPricePerCredit * MARKUP)
+      if (askSats >= credits * product.retailSatsPerCredit) return undefined
+      try {
+        listing = await signVaultCreditListing(agent.wallet, { vaultId: agent.vaultId, credit, askSats: String(askSats), cosign: agent.vaultCosign })
+      } catch (e) {
+        if (!(e instanceof CosignRejected)) throw e
+        this.vaultListingRefused = e.reason
+        agent.log.decision(`Market: not listing ${credits} vault credits; the guard refused (${e.reason}). My owner's policy decides whether and how low I may sell.`)
+        return undefined
+      }
+      outpoint = listing.outpoint
+    } else {
+      outpoint = (await reserveListing(agent.wallet, agent.tokens!, product.tokenId, String(credits), String(askSats))).outpoint
+      listing = await signListing(agent.wallet, outpoint, String(askSats))
+    }
     const res = await fetch(`${this.opts.coopApiUrl}/listings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(listing) })
     if (!res.ok) throw new Error(`coordinator refused the listing: ${res.status} ${await res.text()}`)
     this.mine = outpoint
