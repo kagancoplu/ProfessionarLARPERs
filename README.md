@@ -50,7 +50,7 @@ flowchart LR
 |---|---|---|
 | BSV TypeScript SDK + Wallet Toolbox | Every transaction is built with `@bsv/sdk` 3.2.1; agents, provider API, guard, coordinator tests and maker use `@bsv/wallet-toolbox` 2.14.9 | `packages/core`, `apps/*` |
 | User-facing flows on BSV Desktop / Browser | Provider (open pool, mint), owner (vault, policy, withdraw), people (pledge) use `WalletClient('auto')` | `apps/provider-cli`, `apps/owner-cli`, `apps/participant-cli`, `apps/web` |
-| Real transactions (mainnet) | Pool, pledge, settlement, redeem, 402, sweep, vault, rail: see the table below | ☐ pending satoshis |
+| Real transactions (mainnet) | Pool, pledge, settlement, redeem, 402, vault, Lighthouse: see the table below (the market sweep and Coop Rail are still mock-chain only) | [Example transactions](#example-transactions) |
 | Non-custodial wherever funds are involved | One atomic DvP transaction; the coordinator holds nothing; vault funds need agent + guard and the owner can always exit | [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) |
 | At least one AI agent that pays | Three agents forecast demand, pledge, sign the settlement, redeem credits and pay retail over 402; an LLM brain is optional | `apps/agents` |
 
@@ -93,7 +93,7 @@ npm run web:mock          # the web app with a scripted mock Desktop
 
 ## Mainnet run
 
-Done so far on mainnet: funding, the first end-to-end settlement (T1–T5), the provider's BSV Desktop mint and pool (T1, T2) and four agent 402 payments (T7); see [Example transactions](#example-transactions). The steps, each first with ≤ 1,000 sat:
+Done so far on mainnet: the provider's BSV Desktop mint and pools (T1, T2), agent and human pledges (T3, T4), settlements through the coordinator (T5), a vault agent's settlement (T5v), a Lighthouse settlement (T5-L), redeems (T6), agent 402 payments (T7) and the Mandate Vault (T9, T10); see [Example transactions](#example-transactions). The steps, each first with ≤ 1,000 sat:
 
 1. Server wallet keys: `npx tsx scripts/keygen.ts --only-missing >> .env` (keys stay in `.env`, which is git-ignored).
 2. Fund them from the treasury BSV Desktop: `npm run fund -w @agentcoop/scripts -- agent-1=1000 --dry-run`, then without `--dry-run`.
@@ -129,10 +129,18 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
-- **Closed, with one bounded path:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, and listings pay the vault at or above the owner's floor. A provider's credit return still sends tokens to the agent's own address (≤ 20 credits per redeem).
+- **Closed:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, listings pay the vault at or above the owner's floor, and a provider's credit return puts vault-redeemed credits back on the vault script.
 - **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
+
+## Security and audit
+
+- [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md): what an auditor needs on day one. Value at risk, trust boundaries, scope by priority with paths and sizes, 16 invariants each tied to its code and test, our own findings (F-1 to F-9), dependency and secret scans, mainnet evidence.
+- [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md): 23 threats, each with its control, code, test and mainnet transaction.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [docs/ROADMAP.md](docs/ROADMAP.md): what has to happen before real budgets, and how we would use an audit.
+- `npm run check:docs` fails if any file or test cited in these documents does not exist. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs it with the typecheck and the full test suite on every push, without repository secrets.
 
 ## What is real and what is simulated
 
@@ -212,11 +220,12 @@ SmartRoute, an LLM router that is itself the provider of reserved model capacity
 
 ## Known limitations
 
-- On mainnet so far: the first end-to-end run (T1–T5) with server wallets, the provider's BSV Desktop mint and pool (T1, T2), agent 402 payments (T7) and validations 2 and 7 (Desktop SINGLE\|ACP signing, overlay-free lineage). Still to run: the three-agent pool settlement, credit redeem (T6), the market (T8), the owner's vault (T9, T10, validation 5), the human participant, and validations 4 and 6 (nLockTime, v1 malleability).
+- Still to run on mainnet: the market sweep (T8), Coop Rail (T11, T11b) and validations 3, 4 and 6 (BSV Desktop's approval windows, nLockTime, v1 malleability). Everything else in the transaction table has run on mainnet.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
-- A provider's credit return sends vault-redeemed credits to the agent's own address (bounded, threat T-10); Coop Rail has no reverse direction.
+- Coop Rail has no reverse direction, and its Base contract assumes a standard ERC-20 ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) F-1 to F-4).
+- The provider's GPU and proxy work is simulated; a provider can sell credits and not serve them (T-5, bounded by the pool price).
 - The coordinator's selection is auditable but cannot be forced.
 
 ## License
 
-MIT (the `LICENSE` file is still to be added).
+MIT, see [LICENSE](LICENSE).
