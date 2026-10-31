@@ -12,9 +12,10 @@ Where the project stands after the hackathon, what has to happen before anyone p
 
 Nothing below changes the protocol's shape; each one closes a known gap.
 
+0. **Fix F-10 first** (provider API, a few lines): a provider's return must keep vault-redeemed credits on the vault script even when it empties the balance, and a redeem from a second vault must not redirect returns. `test/provider.return-vault.test.ts` already reproduces it.
 1. **External audit of the priority-1 scope:** the script templates, signers, settlement planner and verifier, lineage verification, the guard and the vault operations ([AUDIT-READINESS.md §3](AUDIT-READINESS.md)). Fix what it finds, with a regression test per finding.
 2. **The remaining mainnet validations:** 3 (BSV Desktop's approval windows), 4 (nLockTime height semantics), 6 (v1 malleability), and the market sweep (T8).
-3. **Coop Rail hardening before it goes live** (findings F-1, F-2, F-4): credit the balance the contract actually received, or allowlist tokens; a safe-transfer wrapper; a maker watchdog that broadcasts the BSV refund as soon as it is final, and a timeout margin sized for slow blocks. Deploy on Base Sepolia, then run validations 4 and 6.
+3. **Coop Rail hardening before it goes live** (findings F-1, F-2, F-4, F-11): an `OP_SIZE 32` check on the BSV claim's preimage; credit the balance the contract actually received, or allowlist tokens; a safe-transfer wrapper; a maker watchdog that broadcasts the BSV refund as soon as it is final, and a timeout margin sized for slow blocks. Deploy on Base Sepolia, then run validations 4 and 6.
 4. **Provider accountability (T-5):** a provider bond forfeited if a pool's credits are not served, and on-chain delivery reputation.
 5. **Public infrastructure:** coordinator and overlay behind a proxy with the existing per-IP limits (T-19), the audit endpoint public, and a second independent coordinator.
 6. **Deeper testing:** mutation testing of `packages/core/src/pool/verify.ts` and the script templates (done for the Base HTLC), and property tests over random settlement plans.

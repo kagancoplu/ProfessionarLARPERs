@@ -10,7 +10,7 @@ Only the `main` branch is supported.
 
 ## Reporting a vulnerability
 
-**Please do not open a public issue with details.** Use GitHub's private reporting: the repository's **Security** tab → **Report a vulnerability**. Only the maintainers see the report. If that button is not there, open an issue titled "Security contact request" with no details, and a maintainer will contact you privately.
+**Please do not open a public issue with details.** Use GitHub's private reporting when it is available: the repository's **Security** tab → **Report a vulnerability** (only the maintainers see the report). Until then, open an issue titled "Security contact request" with no details, and say where we can reach you (an email address or a handle on another platform); a maintainer will contact you there and agree on a private channel.
 
 Helpful to include:
 

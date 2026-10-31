@@ -4,7 +4,7 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
-> Status (30 Oct, 22:35 CET): the first end-to-end run is **on mainnet** (one pool, two agents, one settlement: see T1–T5 below). Every other flow runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`: 61 files, 312 tests); the rest of the example transaction table fills in as the mainnet runs happen.
+> Status (31 Oct): the core flows run **on mainnet**: settlements through the coordinator, a vault agent, a Lighthouse settlement, redeems, 402 payments and the Mandate Vault (see [Example transactions](#example-transactions)). Every flow also runs end to end on the wallet-toolbox **mock chain** with the real components (`npm test`, run by CI on every push). Security: [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md).
 
 ## What it does
 
@@ -129,16 +129,17 @@ Nobody holds anybody's money at any point: until settlement a pledge coin is in 
 
 - **Detectable, not prevented:** a coordinator's choice of whom to include (deterministic order, pledge-list hash on chain, an audit endpoint, and any coordinator can close any pool).
 - **Open, bounded:** a provider that takes payment but does not serve (credits are resellable), a redeemed balance held off chain (≤ 20 credits), a compromised agent and guard together (bounded by the vault balance), BRC-100 hash signing (one active pledge).
-- **Closed:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, listings pay the vault at or above the owner's floor, and a provider's credit return puts vault-redeemed credits back on the vault script.
+- **Closed while the credits sit on the vault:** an agent selling its credits to escape the guard. Vault pledges can lock their credits to the vault; the guard lets them go only to an allowed provider or back into the vault, and listings pay the vault at or above the owner's floor.
+- **Open, found in our own review (F-10):** a provider's credit return of an agent's whole prepaid balance sends vault-redeemed credits to the agent's own key instead of the vault, so they leave the guard one step later. Reproduced by a test; the fix is in the provider API ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) §6).
 - **Open:** no reverse direction for Coop Rail.
 
 Every threat, its control, and the test that exercises it: [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md).
 
 ## Security and audit
 
-- [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md): what an auditor needs on day one. Value at risk, trust boundaries, scope by priority with paths and sizes, 16 invariants each tied to its code and test, our own findings (F-1 to F-9), dependency and secret scans, mainnet evidence.
+- [docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md): what an auditor needs on day one. Value at risk, trust boundaries, scope by priority with paths and sizes, 16 invariants each tied to its code and test, our own findings (F-1 to F-11), dependency and secret scans, mainnet evidence.
 - [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md): 23 threats, each with its control, code, test and mainnet transaction.
-- [SECURITY.md](SECURITY.md): how to report a vulnerability privately.
+- [SECURITY.md](SECURITY.md): how to report a vulnerability.
 - [docs/ROADMAP.md](docs/ROADMAP.md): what has to happen before real budgets, and how we would use an audit.
 - `npm run check:docs` fails if any file or test cited in these documents does not exist. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs it with the typecheck and the full test suite on every push, without repository secrets.
 
@@ -222,7 +223,7 @@ SmartRoute, an LLM router that is itself the provider of reserved model capacity
 
 - Still to run on mainnet: the market sweep (T8), Coop Rail (T11, T11b) and validations 3, 4 and 6 (BSV Desktop's approval windows, nLockTime, v1 malleability). Everything else in the transaction table has run on mainnet.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
-- Coop Rail has no reverse direction, and its Base contract assumes a standard ERC-20 ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) F-1 to F-4).
+- Coop Rail has no reverse direction, and its Base contract assumes a standard ERC-20 ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) F-1 to F-4, F-11).
 - The provider's GPU and proxy work is simulated; a provider can sell credits and not serve them (T-5, bounded by the pool price).
 - The coordinator's selection is auditable but cannot be forced.
 
