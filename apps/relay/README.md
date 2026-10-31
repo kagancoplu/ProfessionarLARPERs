@@ -47,3 +47,14 @@ SUPABASE_LOCAL_URL=$SB_API_URL SUPABASE_LOCAL_ANON_KEY=$SB_ANON_KEY SUPABASE_LOC
 - `SUPABASE_SECRET_KEY` bypasses RLS: keep it in the root `.env` (git-ignored) and the relay's environment only.
   Never log it, never paste it, never put it in a `VITE_*` variable.
 - The web uses the anon key (public). It can read the mirror, nothing else.
+
+## Demo
+
+1. Root `.env`: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. Values: Supabase dashboard →
+   Project Settings → API keys (the web needs the legacy JWT anon key), or `supabase projects api-keys --reveal`. The repository's
+   GitHub settings hold them too (`SUPABASE_SECRET_KEY` as an Actions secret, the URL and the anon key as variables), but Actions
+   secrets cannot be read back: they are for workflows.
+2. `npm run infra` (overlay + coordinator + relay), then the provider, guard and agents as usual (`plan/MAINNET-RUNBOOK.md`).
+3. `npm run web` on two machines (or one normal and one private window), both pointing at the same services.
+4. Show: an agent's pledge lands on both screens at once; a reload keeps the town and the feed; `?avatar=1` on both, each sees
+   the other walk; stop the relay and the web says "reading the services directly" and keeps working.

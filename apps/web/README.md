@@ -31,12 +31,18 @@ Agents are villagers; a pool is the notice board with a chest that fills; a pled
 
 ## Known limitations
 
-- Desktop browsers only (≥ 1024 px); English; single player (no multiplayer; the avatar is local).
+- Desktop browsers only (≥ 1024 px); English. Multiplayer only with the Supabase transport (below), up to 8 players, names as each visitor announces them (cosmetic).
 - Mainnet acceptance not done yet. The live flows (pledge, review + sign, redeem + job, mint + open pool, vault create/fund/policy/withdraw, list + sweep) run end to end on the mock chain against the real overlay, coordinator, provider-api and guard with a wallet-toolbox wallet (`test/web.live-flows.mockchain.test.ts`); BSV Desktop itself and mainnet are the untested part. `AuthFetch` from the browser to the provider-api and the guard needs their CORS in production (the dev proxy covers local).
 - GPU jobs are simulated (`simulated GPU jobs`); pool discounts are `demo pricing`; Coop Rail is `experimental` (quotes only; no swap API yet).
 - In live mode the agents' bubbles come from Track C's feed (`AGENTS_URL`, `/events`); that path is wired and the event shapes match, but it has not been run from the browser against the real agents yet.
 - No real mainnet replay yet: record one from `/_debug` during a live run.
 - No `/design-review` browser loop was run; the DESIGN.md checklist was applied by hand with screenshots.
+
+## Live over Supabase (optional)
+
+With `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the root `.env`, live mode reads the relay's Supabase mirror ([`apps/relay`](../relay/README.md)) instead of opening the overlay, guard, agents and maker streams and polls itself: the town is full on the first frame, the feed survives a reload, and every visitor's browser holds one Realtime connection. The coordinator's WebSocket and every wallet flow stay direct (signing rounds need them). If the snapshot fails, takes over 5 s, or no tick (heartbeats included) arrives for 45 s, the web falls back to the direct streams on its own. `?transport=direct` (or `VITE_TRANSPORT=direct`) skips Supabase.
+
+In avatar mode (`?avatar=1`) the same connection runs the multiplayer town: visitors see each other walk (a destination at most every 1.5 s, then the others walk there on the same map, because the free Realtime quota counts every recipient). Supabase is a view: nothing that signs or pays reads from it.
 
 ## Assets and licences
 
