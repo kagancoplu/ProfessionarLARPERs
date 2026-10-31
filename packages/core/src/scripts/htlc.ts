@@ -3,10 +3,13 @@
  * Track A; Track D owns it (verification tests 4 and 6) and may change the
  * body (not the signature, MASTER-PLAN §3.4).
  *
- *   OP_IF    OP_SHA256 <hash> OP_EQUALVERIFY
+ *   OP_IF    OP_SIZE <32> OP_EQUALVERIFY OP_SHA256 <hash> OP_EQUALVERIFY
  *            OP_2 <agentPub> <guardPub> OP_2 OP_CHECKMULTISIG   claim: agent + guard with preimage
  *   OP_ELSE  OP_2 <makerPub> <agentPub> OP_2 OP_CHECKMULTISIG   refund: pre-signed, nLockTime = height + k
  *   OP_ENDIF
+ *
+ * The claim branch takes only a 32-byte secret (F-11): the Base HTLC accepts only bytes32, so an agent
+ * that picked a longer secret could claim the BSV and leave the maker unable to claim the USDC.
  */
 import { Hash, KeyDeriver, LockingScript, OP, Random, Script, UnlockingScript, Utils, type WalletProtocol } from '../sdk'
 
@@ -19,6 +22,7 @@ const bytes = (hex: string, len: number, what: string): number[] => {
 export function htlcLockingScript (hash: string, agentPub: string, guardPub: string, makerPub: string): LockingScript {
   const s = new Script()
     .writeOpCode(OP.OP_IF)
+    .writeOpCode(OP.OP_SIZE).writeBin([32]).writeOpCode(OP.OP_EQUALVERIFY)
     .writeOpCode(OP.OP_SHA256).writeBin(bytes(hash, 32, 'sha256 hash')).writeOpCode(OP.OP_EQUALVERIFY)
     .writeOpCode(OP.OP_2).writeBin(bytes(agentPub, 33, 'public key')).writeBin(bytes(guardPub, 33, 'public key')).writeOpCode(OP.OP_2).writeOpCode(OP.OP_CHECKMULTISIG)
     .writeOpCode(OP.OP_ELSE)
@@ -44,7 +48,7 @@ export interface HtlcKeys { hash: string, agentPub: string, guardPub: string, ma
 /** The HTLC's parts, or null if `script` is anything else (the agent key must be the same in both branches). */
 export function parseHtlcLockingScript (script: LockingScript | Script | string): HtlcKeys | null {
   const hex = (typeof script === 'string' ? script : script.toHex()).toLowerCase()
-  const m = /^63a820([0-9a-f]{64})88(52)21(0[23][0-9a-f]{64})21(0[23][0-9a-f]{64})52ae675221(0[23][0-9a-f]{64})21(0[23][0-9a-f]{64})52ae68$/.exec(hex)
+  const m = /^6382012088a820([0-9a-f]{64})88(52)21(0[23][0-9a-f]{64})21(0[23][0-9a-f]{64})52ae675221(0[23][0-9a-f]{64})21(0[23][0-9a-f]{64})52ae68$/.exec(hex)
   if (m === null || m[6] !== m[3]) return null
   return { hash: m[1], agentPub: m[3], guardPub: m[4], makerPub: m[5] }
 }
