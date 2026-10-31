@@ -223,7 +223,7 @@ SmartRoute, an LLM router that is itself the provider of reserved model capacity
 
 ## Known limitations
 
-- Still to run on mainnet: the market sweep (T8), Coop Rail (T11, T11b) and validations 3, 4 and 6 (BSV Desktop's approval windows, nLockTime, v1 malleability). Everything else in the transaction table has run on mainnet.
+- Still to run on mainnet: the market sweep (T8), Coop Rail (T11, T11b) and validation 3 (BSV Desktop's approval windows). Validations 4 (nLockTime) and 6 (v1 malleability) passed on 31 Oct. Everything else in the transaction table has run on mainnet.
 - Coop Rail is an offline proof of concept: the Base contract is not deployed and no live swap has run.
 - Coop Rail has no reverse direction, and its Base contract assumes a standard ERC-20 ([docs/AUDIT-READINESS.md](docs/AUDIT-READINESS.md) F-1 to F-4, F-11).
 - The provider's GPU and proxy work is simulated; a provider can sell credits and not serve them (T-5, bounded by the pool price).

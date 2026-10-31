@@ -40,7 +40,7 @@ No `OP_CHECKLOCKTIMEVERIFY` on BSV (NOP since Genesis), so the BSV refund path i
 | Validation test 6: version 1 malleability | not written | see below |
 | Live swap: Base Sepolia + BSV mainnet, ≤ 1 USDC / ≤ 1,000 sat | `npm run swap-demo -w @agentcoop/maker -- --vault <vaultId>` (dry run: checks keys, balances, guard and vault, moves nothing) → `-- --vault <vaultId> --amount 0.5 --yes`. The steps are `runSwap` (`apps/maker/src/swap.ts`), tested offline in `apps/maker/test/swap.mockchain.test.ts`; the pre-signed refund is saved to `data/rail/<swapId>.json` before the funding is sent | everything above + `BASE_HTLC_ADDRESS`, `BASE_USDC_ADDRESS`, `RAIL_SATS_PER_USDC`, a funded `maker` and agent, a guard with the agent's vault |
 
-**Validation 6 (open).** Chronicle lifts the malleability restrictions only for transactions with version > 1; a version 1 funding should therefore keep its txid, so the pre-signed refund stays valid. Not observed yet. Plan: on mainnet, send a version 1 transaction whose input signature is high-S (the guard and the agent already refuse high-S signatures themselves) and record whether Arcade refuses it; then the same with version 2. If version 1 is malleable, the refund must be signed after the funding is mined (the agent waits one block before claiming).
+**Validation 6 (passed, 31 Oct, mainnet).** Chronicle lifts the malleability restrictions only for transactions with version > 1, so a version 1 funding keeps its txid and the pre-signed refund stays valid. `npm run validation6 -w @agentcoop/scripts`: a version 1 spend with a high-S signature was refused by Arcade ("unlocking scripts are invalid"), the same spend with low-S accepted ([e6955d7a…](https://whatsonchain.com/tx/e6955d7a3fc883cf3833f85184f8aca291a3a03aef1782483e3d4ab9a3bc45a9)); a version 2 spend with a high-S signature was accepted ([01374a77…](https://whatsonchain.com/tx/01374a77bf2f5e7fe38d4bf7b9cd56c0b5e2c79639092a52cbe8553d4c717cd4)). Version 1 is not malleable; version 2 is.
 
 ## Assumptions and open points
 
@@ -54,4 +54,4 @@ No `OP_CHECKLOCKTIMEVERIFY` on BSV (NOP since Genesis), so the BSV refund path i
 
 ## Result
 
-**Sonuç: kısmen başarılı (offline).** Swap uçtan uca çalışıyor: mock chain + bellek içi EVM, gerçek kontrat bytecode'u, gerçek guard. İade yolu ve guard redleri de test edildi. Base Sepolia ve BSV mainnet'te koşmadı (test ETH/USDC ve sats yok). Doğrulama 4 hazır, doğrulama 6 açık. Faz 5'in A yolu (tam Coop Rail) ancak testnet swap'ı ve doğrulama 4/6 geçerse seçilir; aksi halde B yolu.
+**Sonuç: kısmen başarılı (offline).** Swap uçtan uca çalışıyor: mock chain + bellek içi EVM, gerçek kontrat bytecode'u, gerçek guard. İade yolu ve guard redleri de test edildi. Base Sepolia ve BSV mainnet'te koşmadı (test ETH/USDC ve sats yok). Doğrulama 4 ve 6 mainnet'te geçti (31.10). Faz 5'in A yolu (tam Coop Rail) ancak testnet swap'ı ve doğrulama 4/6 geçerse seçilir; aksi halde B yolu.

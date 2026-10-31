@@ -11,7 +11,8 @@
     "receive": "tsx --import @agentcoop/core/register-sdk receive.ts",
     "balances": "tsx --import @agentcoop/core/register-sdk balances.ts",
     "demo-injection": "tsx --import @agentcoop/core/register-sdk demo-injection.ts",
-    "validation4": "tsx --import @agentcoop/core/register-sdk validation4.ts"
+    "validation4": "tsx --import @agentcoop/core/register-sdk validation4.ts",
+    "validation6": "tsx --import @agentcoop/core/register-sdk validation6.ts"
   },
   "dependencies": {
     "@agentcoop/core": "0.1.0"
