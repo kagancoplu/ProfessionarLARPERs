@@ -4,6 +4,8 @@
  * Pure `resolveEnv` so tests can feed their own values; `env` is the live instance.
  *
  * Mode priority: `?mode=` → `?replay=<name>` → Vite `--mode mock` → VITE_DATA_MODE → live.
+ * Transport (live only): `supabase` when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set, unless `?transport=direct`
+ * or VITE_TRANSPORT=direct (plan/phases/SUPABASE-MVP.md).
  * URLs: in `vite dev` the services are reached through the proxy paths (`/api/<service>`,
  * see vite.config.ts) unless VITE_USE_PROXY=false; in a build the VITE_* URLs are used as-is.
  */
@@ -25,6 +27,9 @@ export interface RawEnv {
   VITE_ARCADE_URL?: string
   VITE_MAKER_URL?: string
   VITE_NETWORK?: string
+  VITE_SUPABASE_URL?: string
+  VITE_SUPABASE_ANON_KEY?: string
+  VITE_TRANSPORT?: string
 }
 
 export interface AppEnv {
@@ -35,6 +40,10 @@ export interface AppEnv {
   /** WhatsOnChain transaction page base. */
   wocTx: string
   dev: boolean
+  /** live mode's data path: the Supabase mirror (apps/relay) or the services' own streams */
+  transport: 'supabase' | 'direct'
+  /** public project URL + anon key; set only when transport is 'supabase' */
+  supabase?: { url: string, key: string }
 }
 
 const DEFAULT_URLS: Record<ServiceName, string> = {
@@ -63,6 +72,10 @@ export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
   else if (raw.MODE === 'mock') mode = 'mock'
   else if (isMode(raw.VITE_DATA_MODE)) mode = raw.VITE_DATA_MODE
   const dev = raw.DEV === true
+  const sbUrl = (raw.VITE_SUPABASE_URL ?? '').trim()
+  const sbKey = (raw.VITE_SUPABASE_ANON_KEY ?? '').trim()
+  const wantDirect = params.get('transport') === 'direct' || raw.VITE_TRANSPORT === 'direct'
+  const transport = !wantDirect && sbUrl !== '' && sbKey !== '' ? 'supabase' : 'direct'
   const useProxy = dev && raw.VITE_USE_PROXY !== 'false'
   const pick = (service: ServiceName, value: string | undefined): string => {
     if (useProxy && service !== 'arcade') return PROXY_PATHS[service]
@@ -83,7 +96,9 @@ export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
     },
     network: raw.VITE_NETWORK === 'test' ? 'test' : 'main',
     wocTx: raw.VITE_NETWORK === 'test' ? 'https://test.whatsonchain.com/tx/' : 'https://whatsonchain.com/tx/',
-    dev
+    dev,
+    transport,
+    ...(transport === 'supabase' ? { supabase: { url: sbUrl.replace(/\/+$/, ''), key: sbKey } } : {})
   }
 }
 

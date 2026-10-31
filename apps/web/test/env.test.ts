@@ -29,3 +29,15 @@ describe('resolveEnv', () => {
     expect(wsUrl('https://coop.example.com', { protocol: 'https:', host: 'x' })).toBe('wss://coop.example.com/ws')
   })
 })
+
+describe('transport (plan/phases/SUPABASE-MVP.md)', () => {
+  const sb = { VITE_SUPABASE_URL: 'https://ref.supabase.co', VITE_SUPABASE_ANON_KEY: 'anon' }
+  it('picks supabase when VITE_SUPABASE_URL and the anon key are set, direct otherwise or with ?transport=direct', () => {
+    expect(resolveEnv(sb).transport).toBe('supabase')
+    expect(resolveEnv(sb).supabase).toEqual({ url: 'https://ref.supabase.co', key: 'anon' })
+    expect(resolveEnv({ VITE_SUPABASE_URL: 'https://ref.supabase.co' }).transport).toBe('direct')
+    expect(resolveEnv({}).transport).toBe('direct')
+    expect(resolveEnv({ ...sb, VITE_TRANSPORT: 'direct' }).transport).toBe('direct')
+    expect(resolveEnv(sb, '?transport=direct').transport).toBe('direct')
+  })
+})
