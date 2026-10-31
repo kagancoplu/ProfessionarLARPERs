@@ -86,7 +86,8 @@ async function runAgent (name: string): Promise<void> {
     try {
       await participant.connect()
     } catch (e) {
-      agent.log.info(`coordinator ${coopApiUrl} unreachable (${(e as Error).message !== '' ? (e as Error).message : String((e as { code?: string }).code ?? e)}); credits and retail only`)
+      agent.log.info(`coordinator ${coopApiUrl} unreachable (${(e as Error).message !== '' ? (e as Error).message : String((e as { code?: string }).code ?? e)}); credits and retail only until it is back`)
+      participant.reconnectLater()
     }
     const market = new Market(agent, { coopApiUrl })
     const procurement = new Procurement({ agent, brain, participant, market, coopApiUrl })

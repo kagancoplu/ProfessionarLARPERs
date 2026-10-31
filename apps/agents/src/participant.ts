@@ -62,7 +62,7 @@ export interface ParticipantOptions {
   log: AgentLog
   /** verifyLineage source (tests: the mock chain). Default: Arcade. */
   lineage?: LineageOptions
-  /** Reconnect when the coordinator drops the socket. Default true. */
+  /** Reconnect when the coordinator drops the socket (retrying with backoff until close()). Default true. */
   reconnect?: boolean
   /** Live-feed events (Agent.emit). */
   emit?: (type: string, data: unknown, extra?: { txid?: string, poolId?: string }) => void
@@ -77,6 +77,7 @@ export class PoolParticipant {
   readonly history: ActivePledge[] = []
   private ws?: WebSocket
   private closed = false
+  private reconnecting = false
   private identity?: string
   private readonly listeners = new Set<() => void>()
 
@@ -96,6 +97,7 @@ export class PoolParticipant {
     this.ws = ws
     await new Promise<void>((resolve, reject) => {
       ws.once('error', reject)
+      ws.once('close', () => { reject(new Error('the coordinator closed the connection')) }) // no-op once resolved
       ws.on('message', d => {
         const msg = JSON.parse(d.toString()) as { type: string, [k: string]: any }
         if (msg.type === 'challenge') {
@@ -108,10 +110,25 @@ export class PoolParticipant {
         void this.onMessage(msg).catch(e => { this.opts.log.info(`coordinator message ${msg.type} failed: ${(e as Error).message}`) })
       })
     })
-    ws.on('close', () => {
-      if (this.closed || this.opts.reconnect === false) return
-      setTimeout(() => { void this.connect().catch(() => {}) }, 2000)
-    })
+    ws.on('error', () => {}) // a reset socket also emits 'close', which reconnects; an unhandled 'error' would end the process
+    ws.on('close', () => { this.reconnectLater() })
+  }
+
+  /**
+   * Keep trying to get back on the coordinator's WS (2 s, 4 s, … up to 30 s apart) until it works or
+   * close() is called. A coordinator restart drops every session; one try while it was still down used
+   * to leave the agent off the WS for good, so it was never asked to sign (mainnet, 31.10).
+   */
+  reconnectLater (attempt = 1): void {
+    if (this.closed || this.opts.reconnect === false || this.reconnecting) return
+    this.reconnecting = true
+    setTimeout(() => {
+      this.reconnecting = false
+      if (this.closed) return
+      this.connect()
+        .then(() => { this.opts.log.info('Back on the coordinator\'s WS.') })
+        .catch(() => { this.reconnectLater(attempt + 1) })
+    }, Math.min(2_000 * attempt, 30_000))
   }
 
   close (): void {
