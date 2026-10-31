@@ -34,6 +34,8 @@ export function startRelay (urls: RelayConfig['urls'], deps: RelayDeps, timings:
   const t = { ...DEFAULT_TIMINGS, ...timings }
   const now = deps.now ?? (() => new Date())
   const mirror = new Mirror(deps.sink, now)
+  // a service that has never seen our Last-Event-ID (relay restart) replays its backlog: store it, do not send it live
+  const startedAt = now().getTime()
   const src = deps.sources
   const stops: Array<() => void> = []
   const every = (ms: number, fn: () => void): void => { const id = setInterval(fn, ms); stops.push(() => clearInterval(id)) }
@@ -71,7 +73,7 @@ export function startRelay (urls: RelayConfig['urls'], deps: RelayDeps, timings:
     stops.push(deps.followSse(url, data => {
       let e: unknown
       try { e = JSON.parse(data) } catch { return }
-      if (isEnvelope(e)) mirror.pushEvent(e)
+      if (isEnvelope(e)) mirror.pushEvent(e, { live: !(Date.parse(e.ts) < startedAt - 5_000) })
     }).close)
   }
   // the coordinator's broadcasts, for history only: the web keeps its own WS (signing rounds, settled → afterSettlement)

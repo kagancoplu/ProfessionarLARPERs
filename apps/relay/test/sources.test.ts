@@ -35,6 +35,18 @@ describe('sources', () => {
     expect(f.bodies[0]).toEqual({ service: 'ls_agentcoop', query: { op: 'vaultCredits', vaultHash: createHash('sha256').update(Buffer.from('63ab', 'hex')).digest('hex') } })
   })
 
+  it('poolsWithPledges reads every pool\'s pledges with all=1, so withdrawn and settled pledges stay with spent=true', async () => {
+    const urls: string[] = []
+    const impl = (async (url: string) => {
+      urls.push(url)
+      const body = url.endsWith('/pools') ? [{ poolId: 'a_0', status: 'open' }] : [{ outpoint: 'x_1', spent: true, spendingTxid: 'cc' }]
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as unknown as typeof fetch
+    const s = createSources(URLS, impl)
+    expect(await s.poolsWithPledges()).toEqual([{ poolId: 'a_0', status: 'open', pledges: [{ outpoint: 'x_1', spent: true, spendingTxid: 'cc' }] }])
+    expect(urls).toEqual(['http://coop/pools', 'http://coop/pools/a_0/pledges?all=1'])
+  })
+
   it('probe reports a failing service with its error and never throws', async () => {
     const s = createSources(URLS, (async () => { throw new Error('ECONNREFUSED') }) as unknown as typeof fetch)
     expect(await s.probe('guard')).toEqual({ service: 'guard', ok: false, detail: 'ECONNREFUSED' })

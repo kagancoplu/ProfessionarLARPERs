@@ -102,6 +102,22 @@ describe('Mirror', () => {
     expect(await m.flush()).toBeUndefined()
   })
 
+  it('stops heartbeats while flushes keep failing, so browsers fall back to the services', async () => {
+    const sink = new FakeSink()
+    let now = new Date('2026-10-31T12:00:00.000Z')
+    const m = new Mirror(sink, () => now)
+    sink.upsert = async () => { throw new Error('schema drift') }
+    m.setPools([P('a_0', 'open', [])])
+    await expect(m.flush()).rejects.toThrow('schema drift')
+    now = new Date('2026-10-31T12:00:20.000Z')
+    await m.heartbeat()
+    expect(sink.ticks.filter(t => t.heartbeat === true)).toHaveLength(1)
+    now = new Date('2026-10-31T12:00:31.000Z')
+    await expect(m.flush()).rejects.toThrow('schema drift')
+    await m.heartbeat()
+    expect(sink.ticks.filter(t => t.heartbeat === true)).toHaveLength(1)
+  })
+
   it('a failed sink write keeps the changes for the next flush', async () => {
     const sink = new FakeSink()
     const m = new Mirror(sink)

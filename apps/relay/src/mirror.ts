@@ -22,6 +22,8 @@ export class Mirror {
   private events: Array<{ e: CoopEnvelope, live: boolean }> = []
   /** latest vault records, so a credits-only change can still write a complete row */
   private readonly vaultData = new Map<string, Json>()
+  /** when flushes started failing (cleared by a successful one): heartbeats stop after 30 s of it */
+  private failingSince?: number
 
   constructor (private readonly sink: Sink, private readonly now: () => Date = () => new Date()) {}
 
@@ -47,8 +49,14 @@ export class Mirror {
 
   setHealth (row: HealthRow): void { this.stage(this.health, 'health', row.service, row) }
 
-  /** `live: false` stores the event for history only (the web gets it elsewhere, e.g. the coordinator's WS). */
-  pushEvent (e: CoopEnvelope, opts: { live?: boolean } = {}): void { this.events.push({ e, live: opts.live !== false }) }
+  /**
+   * `live: false` stores the event for history only (the web gets it elsewhere, e.g. the coordinator's WS).
+   * An event whose ts Postgres cannot store is dropped: it would fail every later batch.
+   */
+  pushEvent (e: CoopEnvelope, opts: { live?: boolean } = {}): void {
+    if (Number.isNaN(Date.parse(e.ts))) { console.error(`[relay] dropped ${e.src} event ${e.id}: bad ts`); return }
+    this.events.push({ e, live: opts.live !== false })
+  }
 
   private empty (): boolean {
     return this.pools.size === 0 && this.listings === undefined && this.vaults.size === 0 && this.credits.size === 0 &&
@@ -58,6 +66,17 @@ export class Mirror {
   /** Write what changed and publish one tick; `undefined` when nothing changed. Throws (keeping it all pending) if a write fails. */
   async flush (): Promise<LiveTick | undefined> {
     if (this.empty()) return undefined
+    try {
+      const tick = await this.write()
+      this.failingSince = undefined
+      return tick
+    } catch (err) {
+      this.failingSince ??= this.now().getTime()
+      throw err
+    }
+  }
+
+  private async write (): Promise<LiveTick> {
     const pools = [...this.pools.values()]
     const listings = this.listings
     const vaults = new Map(this.vaults)
@@ -121,5 +140,9 @@ export class Mirror {
     return w === undefined ? undefined : JSON.parse(w) as VaultOutput[]
   }
 
-  async heartbeat (): Promise<void> { await this.sink.publishTick({ v: 1, ts: this.now().toISOString(), heartbeat: true }) }
+  /** A heartbeat says the mirror is current: none while flushes have been failing for over 30 s, so browsers fall back. */
+  async heartbeat (): Promise<void> {
+    if (this.failingSince !== undefined && this.now().getTime() - this.failingSince > 30_000) return
+    await this.sink.publishTick({ v: 1, ts: this.now().toISOString(), heartbeat: true })
+  }
 }

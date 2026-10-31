@@ -40,8 +40,12 @@ export function createSources (urls: RelayConfig['urls'], fetchImpl: typeof fetc
     maker: async () => (await getJson<{ ok: boolean }>(`${urls.maker}/healthz`, 4_000)).ok
   }
   return {
-    /** coordinator `GET /pools?pledges=1`: every pool with its pledges */
-    poolsWithPledges: async () => await getJson<Array<Json & { poolId: string, status: string, pledges?: Json[] }>>(`${urls.coop}/pools?pledges=1`),
+    /** every pool with ALL its pledges (`?all=1`, as the web's direct mode reads them): withdrawn and settled
+     *  pledges stay in the list with spent=true, so browsers see pledge_cancelled and stale rows are updated */
+    poolsWithPledges: async () => {
+      const pools = await getJson<Array<Json & { poolId: string, status: string }>>(`${urls.coop}/pools`)
+      return await Promise.all(pools.map(async p => ({ ...p, pledges: await getJson<Json[]>(`${urls.coop}/pools/${p.poolId}/pledges?all=1`) })))
+    },
     listings: async () => await getJson<Array<Json & { outpoint: string }>>(`${urls.coop}/listings`),
     vaults: async () => await lookup<Json & { vaultId: string, scriptHex: string }>({ op: 'vaults' }),
     /** credits locked to a vault: the overlay indexes them by sha256(vault script) */
