@@ -27,6 +27,41 @@
 	}
 }
 
+# Single-box live demo (FULL_STACK=1): guard, provider-api and agents.
+# Each serves SSE on /events, so the proxy must not buffer (flush_interval -1).
+# Set GUARD_HOST/PROVIDER_HOST/AGENTS_HOST in /etc/agentcoop.env; a host left
+# empty is served on :80/:443 for the empty name, so leave the block's env unset
+# to disable it (Caddy ignores an empty site address).
+{$GUARD_HOST} {
+	encode gzip
+	reverse_proxy 127.0.0.1:{$GUARD_PORT:8091} {
+		flush_interval -1
+	}
+	log {
+		output file /var/log/caddy/guard.log
+	}
+}
+
+{$PROVIDER_HOST} {
+	encode gzip
+	reverse_proxy 127.0.0.1:{$PROVIDER_PORT:8092} {
+		flush_interval -1
+	}
+	log {
+		output file /var/log/caddy/provider.log
+	}
+}
+
+{$AGENTS_HOST} {
+	encode gzip
+	reverse_proxy 127.0.0.1:{$AGENTS_PORT:8093} {
+		flush_interval -1
+	}
+	log {
+		output file /var/log/caddy/agents.log
+	}
+}
+
 # Second, independent coordinator (Faz 6.2; COOP2_PORT=8094 in /etc/agentcoop.env).
 # Uncomment and set COOP2_HOST=coop2.example.org:
 # {$COOP2_HOST} {

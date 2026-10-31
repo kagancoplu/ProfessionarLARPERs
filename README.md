@@ -6,7 +6,7 @@
 
 BSV Blockchain track, "DeFi Rails for Agentic Payments" · TUM Blockchain & AI Hackathon, 30–31 October 2026
 
-**Live demo:** <https://professionar-larpe-rs.vercel.app/> (Vercel + Supabase, no backend; the flow is mocked but every payment is a real mainnet transaction — see [plan/DEMO-HYBRID.md](plan/DEMO-HYBRID.md)).
+**Live demo:** <https://professionar-larpe-rs.vercel.app/> — the live app on BSV mainnet (Vercel web + a public backend; pools, pledges and agent decisions are real). Add `?mode=mock` for an offline walkthrough with no wallet.
 
 New here and not a programmer? Start with [README-SIMPLE.md](README-SIMPLE.md).
 
