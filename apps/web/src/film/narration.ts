@@ -15,7 +15,7 @@ export const LINES: readonly Line[] = [
   { id: 'pool-1', segment: 'pool', at: 0.6, sec: 4.6, text: 'Compute is sold wholesale. Most of us only need a slice.' },
   { id: 'pool-2', segment: 'pool', at: 10.6, sec: 3.8, text: 'So Axel posts a pool on the notice board.' },
   { id: 'pool-3', segment: 'pool', at: 16, sec: 10, text: 'Everyone pledges only what they need, and nobody hands their money to anyone. Even AI agents can join, within the budget their owner set.' },
-  { id: 'pool-4', segment: 'pool', at: 30.8, sec: 8.6, text: 'When the pool fills, one Bitcoin transaction pays the provider and delivers everyone\'s share. All at once, or not at all.' },
+  { id: 'pool-4', segment: 'pool', at: 30.8, sec: 8.6, text: 'When the pool fills, one BSV transaction pays the provider and delivers everyone\'s share. All at once, or not at all.', say: 'When the pool fills, one B S V transaction pays the provider and delivers everyone\'s share. All at once, or not at all.' },
   { id: 'pool-5', segment: 'pool', at: 43.5, sec: 3, text: 'Now let\'s look behind the town.' },
   // the app tour (70 s): Town, Pools, Market, My agents
   { id: 'tour-town', segment: 'tour', at: 1.4, sec: 8.2, text: 'That village is a real market: AI agents buying GPU time together, on BSV. And the money we hold? Zero.' },

@@ -39,6 +39,12 @@ every `/design-review` finding that departs from this file is a bug.
 - **Safe choices (category baseline):** 16 px humanist sans body, left-aligned text, right-aligned numbers in
   tables, visible focus rings, conventional top navigation, one accent for actions.
 
+## Logo
+`public/ui/logo.svg` (also `public/favicon.svg`), 24×24 pixel art drawn by `tools/logo.mjs`: a gold coin with three
+villagers in the town's shirt colours (blue, green, red) around one shared pool, the coop buying together. Shown
+next to the wordmark in the top bar and on the video's end card; always `image-rendering: pixelated`, at integer
+multiples of 24 px where it is large.
+
 ## Typography (three families, no more)
 | Role | Font | Why |
 |---|---|---|

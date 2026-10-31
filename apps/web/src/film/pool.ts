@@ -4,7 +4,7 @@
  * Times are film seconds; the narrator's lines are in narration.ts (subtitles with `&subs=1`).
  */
 import type { Director } from './director'
-import { ZOOM } from './frame'
+import { AXEL_HAIR, ZOOM } from './frame'
 import { duration } from './narration'
 
 export const POOL_DURATION = duration('pool')
@@ -23,6 +23,7 @@ export async function pool (d: Director, roll: Promise<void>): Promise<void> {
   // two stall keepers share a sprite with our baker and fisher: they take the day off
   for (const k of [town.keepers[0], town.keepers[2]]) k?.destroy()
   for (const k of town.keepers) if (k.active) k.showName(false)
+  d.recolor('villager_00', AXEL_HAIR)
   const axel = d.enter({ id: 'axel', name: 'Axel', char: 'villager_00', at: { x: fountain.x - 32, y: fountain.y + 10 }, house: true })
   const baker = d.enter({ id: 'baker', name: 'Baker', char: 'chloe', at: { x: 472, y: 402 }, house: true })
   const farmer = d.enter({ id: 'farmer', name: 'Farmer', char: 'bob', at: { x: 212, y: 248 }, house: true })

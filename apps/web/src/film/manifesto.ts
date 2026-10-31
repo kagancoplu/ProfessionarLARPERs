@@ -3,7 +3,7 @@
  * fountain; then the end card. Lines in narration.ts (manifesto-1 0.8 s, manifesto-2 5.8 s).
  */
 import type { Director } from './director'
-import { ZOOM } from './frame'
+import { AXEL_HAIR, ZOOM } from './frame'
 import { duration } from './narration'
 
 export const MANIFESTO_DURATION = duration('manifesto')
@@ -13,6 +13,7 @@ export async function manifesto (d: Director, roll: Promise<void>): Promise<void
   const f = { x: town.bell.x, y: town.bell.y }
   for (const k of [town.keepers[0], town.keepers[2]]) k?.destroy()
   for (const k of town.keepers) if (k.active) k.showName(false)
+  d.recolor('villager_00', AXEL_HAIR)
   const cast = [
     d.enter({ id: 'axel', name: 'Axel', char: 'villager_00', at: { x: f.x - 34, y: f.y + 14 } }),
     d.enter({ id: 'baker', name: 'Baker', char: 'chloe', at: { x: f.x + 30, y: f.y + 16 } }),
@@ -31,8 +32,7 @@ export async function manifesto (d: Director, roll: Promise<void>): Promise<void
   d.sparkle(f.x, f.y, 2.2)
   await d.at(6.0)
   for (const [i, v] of cast.entries()) town.time.delayedCall(i * 140, () => { d.emote(v, '♪', 1.2) })
-  // the end card, with the QR code to the live demo, holds for the last 4.6 s
-  await d.at(9.4, 'end card')
+  await d.at(10.0, 'end card')
   d.card(true)
   await d.at(MANIFESTO_DURATION, 'end')
 }

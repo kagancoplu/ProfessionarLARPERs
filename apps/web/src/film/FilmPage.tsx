@@ -183,23 +183,16 @@ function useStageScale (): number {
   return scale
 }
 
-/** The last frame of the video: name, line, and a QR code to try the live demo. Fades in over the manifesto's town at dusk. */
+/** The last frame of the video: name, line, where to try it. Fades in over the manifesto's town at dusk. */
 function EndCard ({ show }: { show: boolean }) {
   return (
-    <div className="pointer-events-none absolute inset-0 flex items-center justify-center" style={{ opacity: show ? 1 : 0, transition: 'opacity 700ms ease', background: 'rgba(29,31,43,.55)' }} data-testid="end-card">
-      <div className="frame-parchment flex items-center gap-[3.2cqw] bg-surface-2 px-[3.6cqw] py-[2.4cqw]">
-        <div className="flex flex-col items-start gap-[0.9cqw]">
-          <p className="m-0 flex items-center gap-[1cqw] font-display" style={{ fontSize: '5cqw', lineHeight: 1 }}><span className="inline-block bg-gold" style={{ width: '3cqw', height: '3cqw', border: '0.3cqw solid #3f2832' }} />AgentCoop</p>
-          <p className="m-0 font-display" style={{ fontSize: '2.3cqw' }}>Buy together. Hold nothing.</p>
-          <p className="m-0 text-ink-muted" style={{ fontSize: '1.4cqw', maxWidth: '30cqw' }}>AI agents pooling GPU time on BSV · one transaction · 0 sat held by anyone</p>
-          <p className="m-0" style={{ fontFamily: 'var(--font-counter)', fontSize: '1.6cqw' }}>professionar-larpe-rs.vercel.app</p>
-          <p className="m-0 text-ink-muted" style={{ fontFamily: 'var(--font-counter)', fontSize: '1.25cqw' }}>github.com/kagancoplu/ProfessionarLARPERs</p>
-        </div>
-        <div className="flex flex-col items-center gap-[0.8cqw]">
-          <span className="town-label town-label-gold" style={{ fontSize: '2.4cqw', padding: '0.3cqw 1.2cqw' }}>Try now</span>
-          {/* public/ui/qr-live-demo.svg: the live demo's URL */}
-          <img src="/ui/qr-live-demo.svg" alt="QR code: professionar-larpe-rs.vercel.app" style={{ width: '15cqw', height: '15cqw', imageRendering: 'pixelated', border: '0.3cqw solid #3f2832' }} />
-        </div>
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center" style={{ opacity: show ? 1 : 0, transition: 'opacity 900ms ease', background: 'rgba(29,31,43,.55)' }} data-testid="end-card">
+      <div className="frame-parchment flex flex-col items-center gap-[0.9cqw] bg-surface-2 px-[4cqw] py-[2.4cqw] text-center">
+        <p className="m-0 flex items-center gap-[1cqw] font-display" style={{ fontSize: '5.2cqw', lineHeight: 1 }}><img src="/ui/logo.svg" alt="" className="pixelated" style={{ width: '5.4cqw', height: '5.4cqw' }} />AgentCoop</p>
+        <p className="m-0 font-display" style={{ fontSize: '2.4cqw' }}>Buy together. Hold nothing.</p>
+        <p className="m-0 text-ink-muted" style={{ fontSize: '1.45cqw' }}>AI agents pooling GPU time on BSV · one transaction · 0 sat held by anyone</p>
+        <p className="m-0" style={{ fontFamily: 'var(--font-counter)', fontSize: '1.7cqw' }}>professionar-larpe-rs.vercel.app</p>
+        <p className="m-0 text-ink-muted" style={{ fontFamily: 'var(--font-counter)', fontSize: '1.3cqw' }}>github.com/kagancoplu/ProfessionarLARPERs</p>
       </div>
     </div>
   )

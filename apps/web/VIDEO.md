@@ -26,7 +26,7 @@ The video is made from code, so every take is the same and the picture lines up 
 | 0:00–0:48 | **The Pool** | `/film?film=pool` (`src/film/pool.ts`) | Axel needs 50 GPU-hours, the workshop sells 1000; the village pools at the notice board; the fountain lights up, the horse crosses, a chest for everyone; the camera pulls back |
 | 0:48–1:58 | **App tour** | `/?tour=main` over the real app in mock mode (`src/film/tourMain.ts`) | the film shrinks into the Town; a pixel cursor visits **Town** (0 sat in custody), **Pools** (the provider's offer signed once, a pool that did not fill, the settlement), **Market** (an agent buys spare credits), **My Agents** (vault and budget, the 5 checks, "Inject now" and the guard's refusal, Coop Rail); two **real mainnet transactions** read from the WhatsOnChain API |
 | 1:58–2:16 | **Why BSV** | `/film?film=why` (`src/film/WhyBsv.tsx`) | split screen: Ethereum escrow (5 deposits + 5 refunds) against one BSV transaction; the BSV stack |
-| 2:16–2:30 | **Manifesto** | `/film?film=manifesto` (`src/film/manifesto.ts`) | the square at dusk, then the end card for the last 4.6 s: logo, line, live demo URL and repo, **Try now** with a QR code to the live demo (`public/ui/qr-live-demo.svg`) |
+| 2:16–2:30 | **Manifesto** | `/film?film=manifesto` (`src/film/manifesto.ts`) | the square at dusk, then the end card: the logo, the line, the live demo URL and the repo |
 
 Every narrator line lives in `src/film/narration.ts` (segment, start second, subtitle length, spoken form); `apps/web/test/film.test.ts` checks they fit. Honesty: the app tour shows the `MOCK` and `demo pricing` tags as the app does; the two transactions are real (T5 settlement `6d320c9a…`, T8 market sweep `675c3334…`), shown as our own card with data read from the WhatsOnChain API, not as a copy of the site. Screenshots of the real WhatsOnChain pages can replace the cards: save them as `public/_film/woc-settlement.png` and `woc-sweep.png` (the site's bot check blocks a headless browser).
 
@@ -70,7 +70,7 @@ To change timing, edit the `d.at(seconds, 'beat')` sync points in the segment's 
 
 ### "The Pool": beats and lines
 
-Framing (1920×1080): close = zoom 6 (320×180 world px), medium = 4, wide = 3, the whole map = 2.5.
+Axel is `villager_00` with blond hair (`AXEL_HAIR` in `src/film/frame.ts`, repainted by `Director.recolor`). Framing (1920×1080): close = zoom 6 (320×180 world px), medium = 4, wide = 3, the whole map = 2.5.
 
 | s | Beat | On screen (bubbles) |
 |---|---|---|

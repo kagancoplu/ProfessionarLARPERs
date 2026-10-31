@@ -7,3 +7,5 @@ export const FILM_H = 1080
 export const ZOOM = { close: 6, medium: 4, wide: 3, map: 2.5 } as const
 /** a narrator speaks about 2.6 words a second (ElevenLabs' default pace is close to it) */
 export const WORDS_PER_SECOND = 2.6
+/** Axel is villager_00 with blond hair: its two hair browns become gold (Director.recolor) */
+export const AXEL_HAIR: Record<string, string> = { '#704643': '#e8b04b', '#5d2c28': '#b8732e' }

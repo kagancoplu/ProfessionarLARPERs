@@ -105,6 +105,37 @@ export class Director {
 
   // ---- cast
 
+  /** Repaint one character's frames in the shared sprite sheet (this film's game only), e.g. Axel's hair:
+   *  `colors` maps '#rrggbb' → '#rrggbb'. The sheet is redrawn on a canvas and uploaded again. */
+  recolor (char: string, colors: Record<string, string>): void {
+    const tex = this.town.textures.get('chars')
+    const src = tex.source[0]
+    if (src === undefined) return
+    const img = src.image as HTMLImageElement | HTMLCanvasElement
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width; canvas.height = img.height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (ctx === null) return
+    ctx.drawImage(img, 0, 0)
+    const hex = (h: string): number[] => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))
+    const map = Object.entries(colors).map(([a, b]) => [hex(a), hex(b)] as const)
+    for (const name of tex.getFrameNames()) {
+      if (!name.startsWith(`${char}_`)) continue
+      const f = tex.get(name)
+      const data = ctx.getImageData(f.cutX, f.cutY, f.cutWidth, f.cutHeight)
+      const d = data.data
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue
+        const m = map.find(([a]) => a[0] === d[i] && a[1] === d[i + 1] && a[2] === d[i + 2])
+        if (m !== undefined) { d[i] = m[1][0]!; d[i + 1] = m[1][1]!; d[i + 2] = m[1][2]! }
+      }
+      ctx.putImageData(data, f.cutX, f.cutY)
+    }
+    src.image = canvas
+    ;(src as unknown as { isCanvas: boolean }).isCanvas = true
+    src.update()
+  }
+
   /** Put a villager on stage: no idle wandering, its own sprite, standing at `at`. */
   enter (spec: CastSpec): Villager {
     const v = this.town.addVillager(spec.id, spec.profile ?? 'inference', spec.name, { char: spec.char, house: spec.house ?? false })
