@@ -64,6 +64,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
     flows = createMockFlows({ world: mock.world, bus, store, getWallet: () => wallet.wallet })
     stops.push(mock.stop)
     bus.publish(makeEvent('web', 'mode_changed', { mode: 'mock' }))
+    if (env.unconfigured === true) store.getState().pushToast({ kind: 'info', text: 'No backend configured for this deploy: showing the mock walkthrough. Set VITE_COOP_API_URL (and the other service URLs) for the live app.' })
     return runtime
   }
 

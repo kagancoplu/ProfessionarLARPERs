@@ -44,6 +44,8 @@ export interface AppEnv {
   transport: 'supabase' | 'direct'
   /** public project URL + anon key; set only when transport is 'supabase' */
   supabase?: { url: string, key: string }
+  /** a deployed live build without service URLs (VITE_COOP_API_URL unset): it runs the mock walkthrough instead */
+  unconfigured?: true
 }
 
 const DEFAULT_URLS: Record<ServiceName, string> = {
@@ -62,7 +64,9 @@ const PROXY_PATHS: Record<Exclude<ServiceName, 'arcade'>, string> = {
 
 const isMode = (v: unknown): v is DataMode => v === 'live' || v === 'mock' || v === 'replay'
 
-export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
+const isLocalHost = (host: string): boolean => /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)
+
+export function resolveEnv (raw: RawEnv, search = '', host = 'localhost'): AppEnv {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
   const replayName = params.get('replay') ?? undefined
   const urlMode = params.get('mode')
@@ -72,8 +76,14 @@ export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
   else if (raw.MODE === 'mock') mode = 'mock'
   else if (isMode(raw.VITE_DATA_MODE)) mode = raw.VITE_DATA_MODE
   const dev = raw.DEV === true
+  // a build served from a real host whose coordinator URL is still the localhost default can reach no service
+  // (the page's CSP and the browser refuse localhost from https): show the mock walkthrough rather than a dead page.
+  // An explicit ?mode=live keeps live.
+  // The Supabase mirror alone (keys set) still shows real data, so that stays live.
   const sbUrl = (raw.VITE_SUPABASE_URL ?? '').trim()
   const sbKey = (raw.VITE_SUPABASE_ANON_KEY ?? '').trim()
+  const unconfigured = mode === 'live' && !isMode(urlMode) && !dev && (raw.VITE_COOP_API_URL ?? '').trim() === '' && (sbUrl === '' || sbKey === '') && !isLocalHost(host)
+  if (unconfigured) mode = 'mock'
   const wantDirect = params.get('transport') === 'direct' || raw.VITE_TRANSPORT === 'direct'
   // only live mode: mock and replay stay offline even when the root .env holds the keys
   const transport = mode === 'live' && !wantDirect && sbUrl !== '' && sbKey !== '' ? 'supabase' : 'direct'
@@ -99,7 +109,8 @@ export function resolveEnv (raw: RawEnv, search = ''): AppEnv {
     wocTx: raw.VITE_NETWORK === 'test' ? 'https://test.whatsonchain.com/tx/' : 'https://whatsonchain.com/tx/',
     dev,
     transport,
-    ...(transport === 'supabase' ? { supabase: { url: sbUrl.replace(/\/+$/, ''), key: sbKey } } : {})
+    ...(transport === 'supabase' ? { supabase: { url: sbUrl.replace(/\/+$/, ''), key: sbKey } } : {}),
+    ...(unconfigured ? { unconfigured: true as const } : {})
   }
 }
 
@@ -111,5 +122,6 @@ export function wsUrl (coopUrl: string, loc: { protocol: string, host: string } 
 
 export const env: AppEnv = resolveEnv(
   import.meta.env as unknown as RawEnv,
-  typeof location !== 'undefined' ? location.search : ''
+  typeof location !== 'undefined' ? location.search : '',
+  typeof location !== 'undefined' ? location.host : 'localhost'
 )
