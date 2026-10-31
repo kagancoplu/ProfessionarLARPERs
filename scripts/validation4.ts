@@ -105,20 +105,28 @@ run(async () => {
         console.log('  ✗ unexpected: a non-final transaction was accepted early'); return
       }
     }
-    for (;;) {
-      const tip = await tipOf()
-      if (tip >= lock) break
-      console.log(`  waiting for height ${lock} (tip ${tip})…`)
-      await sleep(30_000)
-    }
+    // Consensus: final once the NEXT block's height exceeds nLockTime (tip ≥ lock). Arcade refused it at
+    // tip = lock on mainnet (31.10): try at each new tip up to lock + 2 and report where it was accepted.
     const final = await spend(lock)
-    if (await attempt(`height-based nLockTime ${lock} at tip ≥ ${lock}`, final)) {
+    let acceptedAt: number | undefined
+    for (let want = lock; want <= lock + 2 && acceptedAt === undefined; want++) {
+      for (;;) {
+        const tip = await tipOf()
+        if (tip >= want) break
+        console.log(`  waiting for height ${want} (tip ${tip})…`)
+        await sleep(30_000)
+      }
+      const tip = await tipOf()
+      if (await attempt(`height-based nLockTime ${lock} at tip ${tip} (tip - lock = ${tip - lock})`, final)) acceptedAt = tip
+    }
+    if (acceptedAt !== undefined) {
+      console.log(`  → Arcade accepts a height-locked tx once tip - nLockTime ≥ ${acceptedAt - lock} (consensus: ≥ 0)`)
       await wallet.internalizeAction({
         tx: final.toAtomicBEEF(),
         outputs: [{ outputIndex: 0, protocol: 'basket insertion', insertionRemittance: { basket: 'agentcoop rail', customInstructions: JSON.stringify({ protocolID: RAIL_PROTOCOL, keyID: backKey }) } }],
         description: 'AgentCoop validation 4: probe back'
       }).catch(e => { console.log(`  note: internalize failed (${(e as Error).message}); the output is the wallet's key ${backKey}`) })
-      console.log(`STATUS: | ${new Date().toISOString().slice(0, 16)} | T11 nLockTime probe (validation 4) | ${final.id('hex')} | D | lock ${lock}; early send refused |`)
+      console.log(`STATUS: | ${new Date().toISOString().slice(0, 16)} | T11 nLockTime probe (validation 4) | ${final.id('hex')} | D | lock ${lock}; refused early, accepted at tip ${acceptedAt} |`)
     }
   } finally {
     await close()
