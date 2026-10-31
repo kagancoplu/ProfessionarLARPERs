@@ -9,12 +9,14 @@
  *          "Why BSV", the theme again and a last chord for the manifesto; it ducks under the narrator
  *   sfx    synthesised from the cues the scripts logged (the app's own effect scores, src/audio/sfx.ts, plus
  *          a few more: speech blips, hooves, sparkles, clicks, whooshes)
- * Env: OUT (film-out), MUSIC (0.5, music level), SKIP_VIDEO=1 (only the audio).
+ *   subs   the narrator's lines burnt in at the bottom (IBM Plex Sans, as in the app), plus .srt and .ass files
+ * Env: OUT (film-out), MUSIC (0.5, music level), SUBS=0 (a cut without burnt-in subtitles), SKIP_VIDEO=1 (only the audio).
  */
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { SCORES } from '../src/audio/sfx.ts'
 import { LINES, SEGMENTS } from '../src/film/narration.ts'
 
@@ -179,16 +181,26 @@ writeFileSync(resolve(out, 'music.wav'), mwav)
 // ---- subtitles (for the upload) and the cut
 const ts = s => { const ms = Math.round(s * 1000); return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}` }
 writeFileSync(resolve(out, 'agentcoop-demo.srt'), LINES.map((l, i) => `${i + 1}\n${ts(start[l.segment] + l.at)} --> ${ts(start[l.segment] + l.at + l.sec)}\n${l.text}\n`).join('\n'))
+// the same lines styled for burning in: cream text on a dark, see-through box at the bottom centre
+const assTime = s => { const cs = Math.round(s * 100); return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, '0')}:${String(Math.floor(cs / 100) % 60).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}` }
+const ass = resolve(out, 'agentcoop-demo.ass')
+writeFileSync(ass, ['[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'WrapStyle: 0', '',
+  '[V4+ Styles]', 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  'Style: Sub,IBM Plex Sans,36,&H00CFE6F9,&H00CFE6F9,&H4D000000,&H4D000000,0,0,0,0,100,100,0,0,3,10,0,2,360,360,48,1', '',
+  '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  ...LINES.map(l => `Dialogue: 0,${assTime(start[l.segment] + l.at)},${assTime(start[l.segment] + l.at + l.sec)},Sub,,0,0,0,,${l.text}`)].join('\n') + '\n')
 console.log(`mix.wav · ${total} s · music, ${LINES.length} narrator lines, sound effects`)
 if (process.env.SKIP_VIDEO === '1') process.exit(0)
 const seg = SEGMENTS.map(s => need(resolve(out, `${s.id}.mp4`)))
+// the app's body font, straight from its package (FreeType reads the .woff files)
+const fonts = resolve(dirname(createRequire(import.meta.url).resolve('@fontsource/ibm-plex-sans/package.json')), 'files')
 const d = Object.fromEntries(SEGMENTS.map(s => [s.id, s.sec]))
 // the film runs straight into the tour (the tour opens on the film's last frame); the others dip through black
 const filter = [
   `[1:v]fade=t=out:st=${d.tour - 0.35}:d=0.35[v1]`,
   `[2:v]fade=t=in:st=0:d=0.35,fade=t=out:st=${d.why - 0.35}:d=0.35[v2]`,
   `[3:v]fade=t=in:st=0:d=0.35,fade=t=out:st=${d.manifesto - 0.8}:d=0.8[v3]`,
-  '[0:v][v1][v2][v3]concat=n=4:v=1:a=0[v]'
+  process.env.SUBS === '0' ? '[0:v][v1][v2][v3]concat=n=4:v=1:a=0[v]' : `[0:v][v1][v2][v3]concat=n=4:v=1:a=0[cut];[cut]subtitles=filename=${ass}:fontsdir=${fonts}[v]`
 ].join(';')
 const final = resolve(out, 'agentcoop-demo.mp4')
 execFileSync('ffmpeg', ['-v', 'error', '-y', ...seg.flatMap(f => ['-i', f]), '-i', resolve(out, 'mix.wav'), '-filter_complex', filter,

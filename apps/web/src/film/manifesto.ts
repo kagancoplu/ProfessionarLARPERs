@@ -21,6 +21,7 @@ export async function manifesto (d: Director, roll: Promise<void>): Promise<void
     d.enter({ id: 'agent', name: 'AI agent', char: 'mike', at: { x: f.x - 6, y: f.y + 30 } })
   ]
   for (const v of cast) { v.showName(false); d.look(v, f.x, f.y - 10) }
+  town.board.showProgress('GPU pool · H100<br>settled ✓', 1000, 1000)
   d.cut(f.x, f.y - 70, ZOOM.wide)
   await roll
   d.start()
@@ -30,7 +31,8 @@ export async function manifesto (d: Director, roll: Promise<void>): Promise<void
   d.sparkle(f.x, f.y, 2.2)
   await d.at(6.0)
   for (const [i, v] of cast.entries()) town.time.delayedCall(i * 140, () => { d.emote(v, '♪', 1.2) })
-  await d.at(10.0, 'end card')
+  // the end card, with the QR code to the live demo, holds for the last 4.6 s
+  await d.at(9.4, 'end card')
   d.card(true)
   await d.at(MANIFESTO_DURATION, 'end')
 }
