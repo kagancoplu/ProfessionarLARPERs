@@ -203,12 +203,25 @@ export class CoordinatorEngine {
     const prog = this.prog(poolId)
     this.starting.add(poolId)
     try {
-      const fresh = (await this.deps.overlay.pledgeCandidates(poolId)).filter(c => !prog.blacklist.has(c.view.outpoint))
-      const spent = await this.deps.spent.spent(fresh.map(c => c.view.outpoint))
-      for (const c of fresh) {
-        if (spent.get(c.view.outpoint) === true) prog.blacklist.set(c.view.outpoint, 'spent on chain')
+      const all = await this.deps.overlay.pledgeCandidates(poolId)
+      // A coin blacklisted as "spent on chain" is asked again: WhatsOnChain can answer wrongly for a
+      // transaction seconds old (mainnet, 31.10, twice), and the overlay still lists the coin as unspent.
+      const recheck = all.filter(c => prog.blacklist.get(c.view.outpoint) === 'spent on chain')
+      const fresh = all.filter(c => !prog.blacklist.has(c.view.outpoint))
+      const spent = await this.deps.spent.spent([...fresh, ...recheck].map(c => c.view.outpoint))
+      let changed = false
+      for (const c of recheck) {
+        if (spent.get(c.view.outpoint) === false) {
+          prog.blacklist.delete(c.view.outpoint)
+          fresh.push(c)
+          changed = true
+          this.deps.log('unblacklisted', { poolId, outpoint: c.view.outpoint, reason: 'unspent on chain after all' })
+        }
       }
-      if (fresh.some(c => spent.get(c.view.outpoint) === true)) this.persist(poolId)
+      for (const c of fresh) {
+        if (spent.get(c.view.outpoint) === true) { prog.blacklist.set(c.view.outpoint, 'spent on chain'); changed = true }
+      }
+      if (changed) this.persist(poolId)
       // A lighthouse pledge can only be signed by its guard, with the human's signature this coordinator holds.
       const signable = await Promise.all(fresh.map(async c =>
         !isLighthouseRecord(recordOf(c.view, c.sourceTx)) || (await this.deps.lighthouse?.pledge(c.view.outpoint)) !== undefined))
