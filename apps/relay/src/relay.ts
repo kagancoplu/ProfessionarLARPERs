@@ -6,6 +6,7 @@ import type { CoopEnvelope, Json } from './contract'
 import type { RelayConfig } from './config'
 import type { followSse as FollowSse } from './sse'
 import type { watchCoordinator as WatchCoordinator } from './coordinator'
+import { PoolHistory } from './history'
 import { Mirror } from './mirror'
 import type { Sink } from './sink'
 import { SERVICES, type Sources } from './sources'
@@ -39,11 +40,16 @@ export function startRelay (urls: RelayConfig['urls'], deps: RelayDeps, timings:
   const src = deps.sources
   const stops: Array<() => void> = []
   const every = (ms: number, fn: () => void): void => { const id = setInterval(fn, ms); stops.push(() => clearInterval(id)) }
+  const history = new PoolHistory()
 
   // pools + pledges, listings, vaults and their credits: one pass, each source failing on its own
   const refresh = async (): Promise<void> => {
     await Promise.all([
-      src.poolsWithPledges().then(p => mirror.setPools(p), quiet('pools')),
+      src.poolsWithPledges().then(p => {
+        // pool_opened / pledge_added / … for the feed history (BL-33); live browsers derive them from the tick
+        for (const e of history.diff(p, now().toISOString())) mirror.pushEvent(e, { live: false })
+        mirror.setPools(p)
+      }, quiet('pools')),
       src.listings().then(l => mirror.setListings(l), quiet('listings')),
       src.vaults().then(async vaults => {
         mirror.setVaults(vaults)

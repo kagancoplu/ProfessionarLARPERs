@@ -38,9 +38,9 @@ Durum: ☐ açık · ◐ başladı · ✅ bitti · ⏸ bilerek ertelendi
 
 | ID | İş | Sahip | Durum | Bitti sayılır | Referans |
 |---|---|---|---|---|---|
-| BL-30 | **"Siparişlerim":** provider'a kimliğin işlerini ve ödemelerini listeleyen `GET /v1/jobs`, web'e bunu gösteren bir ekran. Şu an `/me`'deki iş yenilemede kayboluyor. Kullanıcı olumlu, başlanmadı (~1–2 sa) | Track C + E | ✅ 31.10 `f96bed5` | Yenilemeden sonra işler listeleniyor; test | HANDOFF §5.2 |
-| BL-31 | **Doğrudan (direct) modda `pledge_added` çift sayımı:** reducer, koordinatörün saydığı krediyi bir daha ekliyor (Supabase yolunda düzeltildi) | Track E | ☐ | Direct modda kredi toplamı koordinatörle aynı; test | HANDOFF §2.3 |
-| BL-32 | **STATUS Track E notu eskimiş:** `POST /pledges/lighthouse` "açık" görünüyor ama var (`apps/coordinator/src/api.ts:90`), T5-L mainnet'te yapıldı | Track E | ☐ | Track E satırı düzeltilmiş | HANDOFF §5.4 |
+| BL-30 | **"Siparişlerim":** provider'a kimliğin işlerini ve ödemelerini listeleyen `GET /v1/jobs`, web'e bunu gösteren bir ekran. Şu an `/me`'deki iş yenilemede kayboluyor. Kullanıcı olumlu, başlanmadı (~1–2 sa) | Track C + E | ✅ 31.10 `125b2d8` | Yenilemeden sonra işler listeleniyor; test | HANDOFF §5.2 |
+| BL-31 | **Doğrudan (direct) modda `pledge_added` çift sayımı:** reducer, koordinatörün saydığı krediyi bir daha ekliyor (Supabase yolunda düzeltildi) | Track E | ✅ 31.10 `9aec881` | Direct modda kredi toplamı koordinatörle aynı; test | HANDOFF §2.3 |
+| BL-32 | **STATUS Track E notu eskimiş:** `POST /pledges/lighthouse` "açık" görünüyor ama var (`apps/coordinator/src/api.ts:90`), T5-L mainnet'te yapıldı | Track E | ✅ 31.10 `9aec881` | Track E satırı düzeltilmiş | HANDOFF §5.4 |
 | BL-33 | **Supabase prova gözlemi:** yenilenen sayfanın akışında `pool_opened`/`pledge_added` yok (durum doğru, akış eksik); bu olaylar istemcide türetiliyor ve mirror geçmişine yazılmıyor | Supabase katmanı | ☐ | Yenilemeden sonra akışta görünüyorlar | HANDOFF §4.3 |
 | BL-34 | **Supabase incelemesinden ertelenen 19 küçük madde** (tam liste HANDOFF §4.4). Önce: #2 boş tick, #7 sınırsız olay kuyruğu, #8 SSE boşta kalma zaman aşımı, #11 45 sn geri dönüş ve gizli sekmeler | Supabase katmanı | ☐ | Her madde HANDOFF §4.4'te işaretli | HANDOFF §4.4 |
 | BL-35 | **Guard karar log'una txid** (bugün imza anında bilinmiyor; yayın sonrası eşleştir) | Track D | ☐ | Sahip her ortak imzayı zincirde bulabiliyor | AUDIT F-5, ROADMAP |

@@ -56,6 +56,15 @@ describe('startRelay', () => {
     expect(h.ticks.flatMap(t => t.events ?? []).map(e => e.id)).toContain('overlay:admitted:aa')
   })
 
+  it('BL-33: pool_opened and pledge_added are stored for the feed history, not sent live', async () => {
+    const h = harness()
+    h.setPools([{ poolId: 'a_0', status: 'open', pledgedCredits: '10', txid: 'a', pledges: [{ outpoint: 'bb_0', txid: 'bb', participant: '02b', credits: '10', spent: false }] }])
+    stop = startRelay(URLS, h.deps, h.timings).stop
+    await until(() => h.stored.some(e => e.type === 'pledge_added'))
+    expect(h.stored.filter(e => e.id.startsWith('relay:')).map(e => e.type)).toEqual(['pool_opened', 'pledge_added'])
+    expect(h.ticks.flatMap(t => t.events ?? []).some(e => e.id.startsWith('relay:'))).toBe(false)
+  })
+
   it('guard, agents and maker envelopes go into the tick as they are', async () => {
     const h = harness()
     stop = startRelay(URLS, h.deps, h.timings).stop
