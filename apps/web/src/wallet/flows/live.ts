@@ -63,14 +63,18 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
     return json as T
   }
   const identity = (): string => { const id = store.getState().me.identityKey; if (id === undefined) throw new FlowError('wallet', 'Connect BSV Desktop first.'); return id }
-  const pool = (poolId: string): PoolTerms => { const p = store.getState().pools.byId[poolId]; if (p === undefined) throw new FlowError('pledge', 'That pool is not on the overlay.'); return p.terms }
+  // Terms decide where the fee goes and how big the coin is: read them from the coordinator right before building,
+  // never from the store (in the Supabase transport the store is filled from the mirror, plan/phases/SUPABASE-MVP.md).
+  const pool = async (poolId: string): Promise<PoolTerms> => {
+    try { return (await coopApi.pool(poolId)).terms } catch { throw new FlowError('pledge', 'That pool is not on the overlay.') }
+  }
 
   return {
     mode: 'live',
 
     async pledge (poolId, credits) {
       const s = createStepper(bus, 'pledge')
-      const terms = pool(poolId)
+      const terms = await pool(poolId)
       const k = kit()
       const me = identity()
       const tokenIndex = await s.step('Pick my next credit address', 'BSV-21', () => k.nextIndex(me), i => ({ detail: `receive address #${i}` }))
@@ -84,7 +88,7 @@ export function createLiveFlows (deps: LiveFlowDeps): FlowsApi {
 
     async lighthousePledge (poolId, credits) {
       const s = createStepper(bus, 'pledge')
-      const terms = pool(poolId)
+      const terms = await pool(poolId)
       // never leave a fee-paid coin with nobody to take it: check the coordinator first (B: POST /pledges/lighthouse)
       await s.step(STEP.lighthouseProbe, 'HTTP', async () => {
         const res = await http(`${env.urls.coop}/pledges/lighthouse`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })

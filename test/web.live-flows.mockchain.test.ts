@@ -89,6 +89,18 @@ describe('web live flows on the mock chain (Track E)', () => {
     expect(credits).toMatchObject({ tokenId: stack.tokenId, overlay: 12n })
   })
 
+  it('a pledge pays the pool\'s real fee script even when the store holds tampered terms (e.g. from the Supabase mirror)', async () => {
+    const human = await person(false)
+    mine.getState().load(human.identity)
+    const poolId = (await stack.openPool({ credits: 40, priceSats: 1000, deadline: '+144', feeSats: 100, minCredits: 5, label: 'H100 · tampered terms' })).poolId!
+    const real = (await createCoopApi(stack.coopUrl).pools()).find(p => p.poolId === poolId)!
+    const attacker = '76a914' + '11'.repeat(20) + '88ac'
+    human.store.getState().hydratePools([{ ...real, terms: { ...real.terms, payScriptHex: attacker, feeSats: '5000' } }])
+    const my = await human.flows.pledge(poolId, 6)
+    const valid = await createCoopApi(stack.coopUrl).pledges(poolId)
+    expect(valid.map(p => p.outpoint)).toContain(my.outpoint)
+  })
+
   it('redeems a credit at the provider (AuthFetch, BRC-103) and runs a job paid with the prepaid minutes', async () => {
     const human = people[0]!
     mine.getState().load(human.identity)
