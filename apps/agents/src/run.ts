@@ -19,8 +19,9 @@
  * guard at GUARD_URL.
  *
  * Env: WALLET_AGENT_1..3_KEY (per profile), PROVIDER_API_URL, OVERLAY_URL, GUARD_URL,
- * COOP_API_URL, AGENTS_URL, AGENTS_CORS_ORIGIN, AGENT_BRAIN=rules|llm
- * (llm: ANTHROPIC_API_KEY), NETWORK, ARCADE_URL, DATA_DIR.
+ * COOP_API_URL, AGENTS_URL, AGENTS_CORS_ORIGIN, AGENT_BRAIN=rules|llm|openai
+ * (llm: ANTHROPIC_API_KEY; openai: OPENAI_API_KEY, OPENAI_MODEL default gpt-4o),
+ * NETWORK, ARCADE_URL, DATA_DIR.
  * Offline demo instead: npm run demo:k1.
  */
 import { parseArgs } from 'node:util'

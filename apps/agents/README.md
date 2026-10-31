@@ -28,7 +28,7 @@ npm run agents              # all three agents (or: npm run agent -- eval --jobs
 
 `npm run agents` also serves the web app's live feed on `AGENTS_URL` (default `http://localhost:8093`, CORS open; `AGENTS_CORS_ORIGIN` to restrict). The routes are `GET /healthz`, `GET /agents` (name, profile, identity, mode) and `GET /events`. `/events` streams SSE of `CoopEvent` envelopes, keeps the last 500 and resumes from `Last-Event-ID` (MASTER §3.10). The event types are `agent_started`, `agent_thought` (every log line), `agent_decision` (`pledge` / `skip` / `redeem` / `retail` / `list` / `buy` / `sign` / `reject`), `agent_job` (`queued` / `done`) and `agent_payment` (`402` / `pledge` / `redeem` / `sweep`, with the txid).
 
-Env: `WALLET_AGENT_1..3_KEY`, `PROVIDER_API_URL`, `OVERLAY_URL`, `COOP_API_URL`, `AGENTS_URL`, `AGENT_BRAIN=rules|llm` (`llm` needs Claude API credentials: `ANTHROPIC_API_KEY`), `NETWORK`, `ARCADE_URL`, `DATA_DIR`.
+Env: `WALLET_AGENT_1..3_KEY`, `PROVIDER_API_URL`, `OVERLAY_URL`, `COOP_API_URL`, `AGENTS_URL`, `AGENT_BRAIN=rules|llm|openai` (`llm` needs `ANTHROPIC_API_KEY`; `openai` needs `OPENAI_API_KEY`, model `OPENAI_MODEL`, default `gpt-4o`), `NETWORK`, `ARCADE_URL`, `DATA_DIR`.
 
 ## What an agent does
 
@@ -50,7 +50,7 @@ A pledge pays for the coming week, not for the job in front of the agent: that j
   - **Timing:** the pool must close within the 7-day horizon.
   - **Budget:** it must fit the per-pool cap, the weekly budget, the wallet and the allowed providers.
 
-  A pool settles only when it is exactly full. So the agent may take a few spare credits (up to max(2, 25% of its need)) to close a pool, or to meet the pool's minimum. `AGENT_BRAIN=rules` is deterministic. `AGENT_BRAIN=llm` asks Claude Opus 5.5 (`claude-opus-5-5`, structured JSON output, refusal fallbacks on) over the same facts, and passes the provider's text as data. On a refusal, an error or an answer that does not match the schema, it falls back to the rules brain.
+  A pool settles only when it is exactly full. So the agent may take a few spare credits (up to max(2, 25% of its need)) to close a pool, or to meet the pool's minimum. `AGENT_BRAIN=rules` is deterministic. `AGENT_BRAIN=llm` asks Claude Opus 5.5 (`claude-opus-5-5`) and `AGENT_BRAIN=openai` asks OpenAI (`OPENAI_MODEL`, default `gpt-4o`); both use structured JSON output (`src/brainPrompt.ts`) over the same facts and pass the provider's text as data. On a refusal, an error or an answer that does not match the schema, either falls back to the rules brain.
 - **Policy** (`enforcePolicy`): code, not a prompt, runs after either brain. It vetoes anything over the owner's caps, outside the pool's limits, or more than twice the forecast need. A prompt-injected "pledge everything" is discarded.
 
 ### Pledge, sign, receive (`src/participant.ts`)

@@ -10,6 +10,9 @@
  *   COOP2_PORT    (unset)            a second, independent coordinator on the same overlay (B.P6b, Faz 6.2): own database coordinator2/coordinator.db
  *   NETWORK, ARCADE_URL, TOKEN_WHITELIST, OVERLAY_PRIVATE_KEY, ROUND_TIMEOUT_MS, MAX_ROUNDS, SPENT_CHECK  passed through
  *   SUPABASE_URL + SUPABASE_SECRET_KEY  (both set) also start apps/relay, the web's optional Supabase live layer
+ *   FULL_STACK=1  also start guard (:8091), provider-api (:8092) and agents (:8093) on this box,
+ *                 for a single-box live demo (GUARD_PORT/PROVIDER_PORT/AGENTS_PORT override the ports).
+ *                 Needs the server-wallet keys and, for the LLM agents, AGENT_BRAIN + the API key in .env.
  */
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -78,6 +81,25 @@ const services = [
         cwd: join(root, 'apps/relay'),
         env: { COOP_API_URL: `http://localhost:${coopPort}`, OVERLAY_URL: `http://localhost:${overlayPort}` }
       }]
+    : []),
+  // optional single-box live demo (FULL_STACK=1): guard, provider-api and agents next to the overlay/coordinator.
+  // Inter-service calls stay on localhost; Caddy exposes the public HTTPS hosts the web points at (VITE_* on Vercel).
+  // Wallet keys, AGENT_BRAIN and the LLM API key come from the root .env (loaded above into process.env).
+  ...(process.env.FULL_STACK === '1'
+    ? (() => {
+        const overlayUrl = `http://localhost:${overlayPort}`
+        const coopUrl = `http://localhost:${coopPort}`
+        const guardPort = process.env.GUARD_PORT ?? '8091'
+        const providerPort = process.env.PROVIDER_PORT ?? '8092'
+        const agentsPort = process.env.AGENTS_PORT ?? '8093'
+        const guardUrl = `http://localhost:${guardPort}`
+        const providerUrl = `http://localhost:${providerPort}`
+        return [
+          { name: 'guard', cwd: join(root, 'apps/guard'), entry: 'src/main.ts', env: { GUARD_URL: guardUrl, OVERLAY_URL: overlayUrl, COOP_API_URL: coopUrl } },
+          { name: 'provider-api', cwd: join(root, 'apps/provider-api'), env: { PORT: providerPort, PROVIDER_API_URL: providerUrl, OVERLAY_URL: overlayUrl, COOP_API_URL: coopUrl } },
+          { name: 'agents', cwd: join(root, 'apps/agents'), entry: 'src/run.ts', env: { AGENTS_URL: `http://localhost:${agentsPort}`, OVERLAY_URL: overlayUrl, COOP_API_URL: coopUrl, GUARD_URL: guardUrl, PROVIDER_API_URL: providerUrl } }
+        ]
+      })()
     : [])
 ]
 
@@ -92,7 +114,7 @@ function start (svc, backoff = 1_000) {
   }
   const startedAt = Date.now()
   // --import register-sdk: one runtime copy of @bsv/sdk under tsx (packages/core/register-sdk.mjs, MASTER §3.1)
-  const child = spawn(tsx, ['--import', '@agentcoop/core/register-sdk', 'src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(tsx, ['--import', '@agentcoop/core/register-sdk', svc.entry ?? 'src/server.ts'], { cwd: svc.cwd, env: { ...process.env, ...svc.env }, stdio: ['ignore', 'pipe', 'pipe'] })
   children.set(svc.name, child)
   const prefix = (stream, out) => {
     let buf = ''
@@ -124,6 +146,7 @@ function stop () {
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
 
-console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}${process.env.COOP2_PORT ? `, coordinator2 :${process.env.COOP2_PORT}` : ''}${services.some(s => s.name === 'relay') ? ', relay → Supabase' : ''}`)
+const extra = services.filter(s => !['overlay', 'coordinator'].includes(s.name)).map(s => s.name === 'relay' ? 'relay → Supabase' : s.name)
+console.log(`[infra] data in ${dataDir}; overlay :${overlayPort}, coordinator :${coopPort}${process.env.COOP2_PORT ? `, coordinator2 :${process.env.COOP2_PORT}` : ''}${extra.length > 0 ? `, ${extra.join(', ')}` : ''}`)
 start(services[0])
-setTimeout(() => { for (const svc of services.slice(1)) start(svc) }, 1_500) // the coordinators read the overlay
+setTimeout(() => { for (const svc of services.slice(1)) start(svc) }, 1_500) // the others read the overlay/coordinator
