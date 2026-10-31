@@ -81,6 +81,8 @@ async function runAgent (name: string): Promise<void> {
   const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log, emit: (t, d, x) => { agent.emit(t, d, x) }, vault })
   try {
     agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…, brain ${brain.name}): ${profile.description}`)
+    // A restarted agent takes its waiting pledge back from the wallet before the coordinator asks it to sign.
+    await participant.restore().catch(e => { agent.log.info(`could not restore a pledge from the wallet: ${(e as Error).message}`) })
     try {
       await participant.connect()
     } catch (e) {

@@ -7,11 +7,15 @@
  *          credits in one transaction and spend them on their jobs.
  *  Failed  a pool that does not fill by its deadline costs the agent nothing
  *          but the fee; its pledge coin is reused for the next pool.
+ *  Restart an agent restarted between its pledge and the round takes the
+ *          pledge back from its wallet and signs (mainnet 31.10: it answered
+ *          "no active pledge" and was blacklisted).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PLEDGE_BASKET } from '@agentcoop/core'
+import { PoolParticipant } from '../apps/agents/src/participant'
 import { startMockStack, type DemoAgent, type MockStack } from '../apps/agents/src/demo/harness'
 
 describe('K1: three agents buy one GPU block together', () => {
@@ -94,5 +98,35 @@ describe('A pool that does not fill', () => {
     const log = readFileSync(join(stack.dataDir, 'agents', 'finetune', 'decisions.log'), 'utf8')
     expect(log).toMatch(/failed \(deadline passed before it filled\)\. Nothing was spent/)
     expect(log).toMatch(/Reusing my pledge coin: withdrew it from "H100 rack · 500 GPU-hours" \(that pool failed\)/)
+  })
+})
+
+describe('An agent restarted between its pledge and the round', () => {
+  let stack: MockStack
+  afterAll(async () => { await stack?.close() })
+  beforeAll(async () => { stack = await startMockStack({ quiet: true }) })
+
+  it('restores its pledge from the wallet, signs, and the pool settles', async () => {
+    await stack.openPool({ credits: 40, priceSats: 1000, deadline: '+144', feeSats: 100, minCredits: 5, label: 'restart' })
+    const [finetune, evalAgent] = [await stack.agent('finetune'), await stack.agent('eval')]
+    expect((await finetune.procurement.considerPools())?.action).toBe('pledge')
+    expect((await evalAgent.procurement.considerPools())?.action).toBe('pledge')
+    const pledged = evalAgent.participant.active!
+
+    // "Restart" eval: the old process is gone; a fresh participant on the same wallet knows nothing until restore().
+    evalAgent.participant.close()
+    const restarted = new PoolParticipant({ wallet: evalAgent.wallet, kit: evalAgent.agent.tokens!, coopApiUrl: stack.coopUrl, log: evalAgent.agent.log, lineage: stack.lineage, reconnect: false })
+    expect(restarted.active).toBeUndefined()
+    const restored = await restarted.restore()
+    expect(restored).toMatchObject({ poolId: pledged.poolId, outpoint: pledged.outpoint, credits: pledged.credits, tokenIndex: pledged.tokenIndex, status: 'pending', label: 'restart' })
+    expect(restored!.instructions.keyID).toBe(pledged.instructions.keyID)
+    await restarted.connect()
+
+    const inference = await stack.agent('inference')
+    expect((await inference.procurement.considerPools())?.action).toBe('pledge') // closes the pool: 17 + 11 + 12
+    await Promise.all([finetune.participant, restarted, inference.participant].map(async p => { await p.until(() => p.active?.status === 'settled', 90_000) }))
+    expect(restarted.active!.settledTxid).toBe(finetune.participant.active!.settledTxid)
+    expect(await evalAgent.agent.ownedCredits()).toBe(11n)
+    restarted.close()
   })
 })

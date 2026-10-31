@@ -13,6 +13,11 @@
  * The agent must stay connected: the coordinator sends `sign_request` only to
  * sessions that proved the agent's identity in `hello` (B.P5a).
  *
+ * restore() (after a restart): the active pledge lives only in memory, so a
+ * restarted agent would answer its round with "no active pledge" and be
+ * blacklisted (mainnet, 31.10). It takes the waiting pledge back from the
+ * wallet's pledge basket: the record from the pledge tx, the pool from the coordinator.
+ *
  * Vault mode (track C 3.2, Mandate Vault, Track D): the pledge coin comes from
  * the owner-funded vault (pledgeFromVault: the guard checks the owner's policy
  * at pledge time), the settlement input is signed agent + guard (VaultSigner:
@@ -21,9 +26,9 @@
  */
 import { WebSocket } from 'ws'
 import { signHello } from '@agentcoop/coordinator/auth'
-import { Transaction, type WalletInterface } from '@agentcoop/core/sdk'
+import { Beef, Transaction, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  buildPledge, cancelPledge, internalizeSettlement, P2pkhWalletSigner, receivePkh, signSettlementInput, verifySettlementPlan,
+  buildPledge, cancelPledge, internalizeSettlement, P2pkhWalletSigner, PLEDGE_BASKET, pledgeRecordOf, receivePkh, signSettlementInput, verifySettlementPlan,
   type KitQuery, type LineageOptions, type Offer, type PledgeInstructions, type PoolTerms, type SettlementPlan, type TokenKit
 } from '@agentcoop/core'
 import {
@@ -132,6 +137,40 @@ export class PoolParticipant {
   /** True while a pledge is waiting for its pool. */
   get busy (): boolean {
     return this.active !== undefined && (this.active.status === 'pending' || this.active.status === 'signed')
+  }
+
+  /**
+   * After a restart: take back the pledge still in the wallet (P2PKH pledges; settlement change in the
+   * same basket is skipped). Its pool open → 'pending' (signs the next round); settled without it →
+   * 'left-out'; failed or cancelled → 'failed' (both withdrawn before the next pledge). No-op when a
+   * pledge is already active, in vault mode, or when there is none.
+   */
+  async restore (): Promise<ActivePledge | undefined> {
+    if (this.active !== undefined || this.opts.vault !== undefined) return this.active
+    const res = await this.opts.wallet.listOutputs({ basket: PLEDGE_BASKET, include: 'entire transactions', includeCustomInstructions: true, limit: 1000 })
+    const beef = res.BEEF !== undefined ? Beef.fromBinary(Array.from(res.BEEF)) : undefined
+    for (const o of res.outputs) {
+      if (!o.spendable || o.customInstructions === undefined) continue
+      let ins: PledgeInstructions & { change?: boolean }
+      try { ins = JSON.parse(o.customInstructions) } catch { continue }
+      if (ins.change === true || typeof ins.poolId !== 'string') continue
+      const [txid, vout] = o.outpoint.split('.')
+      const tx = beef?.findTxid(txid)?.tx
+      const record = tx !== undefined ? pledgeRecordOf(tx) : undefined
+      if (record === undefined || record.poolId !== ins.poolId) continue
+      const r = await fetch(`${this.opts.coopApiUrl}/pools/${ins.poolId}`).catch(() => undefined)
+      if (r?.ok !== true) continue
+      const pool = await r.json() as { status: string, terms: PoolTerms }
+      const status: PledgeStatus = pool.status === 'open' || pool.status === 'locking' ? 'pending' : pool.status === 'settled' ? 'left-out' : 'failed'
+      this.active = {
+        poolId: ins.poolId, label: pool.terms.label, outpoint: `${txid}_${vout}`, credits: record.credits, tokenIndex: Number(record.tokenIndex),
+        instructions: ins, status, pricePerCredit: Number(pool.terms.priceSats) / Number(pool.terms.credits)
+      }
+      this.history.push(this.active)
+      this.opts.log.info(`Restored my pledge of ${record.credits} credits to "${pool.terms.label}" from the wallet (${status}).`)
+      return this.active
+    }
+    return undefined
   }
 
   /** Take over a pledge made earlier (e.g. by `participant-cli pledge` in another process) to sign its round. */
