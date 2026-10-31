@@ -4,12 +4,12 @@ Run on the laptop where the owner's BSV Desktop is open and unlocked (mainnet). 
 
 ```bash
 npm install                                                   # repo root (workspace); then from apps/owner-cli:
-npm run owner -- create-vault --agent agent-1                 # registers at GUARD_URL (BRC-103), writes data/vaults/<id>/vault.json
-npm run owner -- policy <vaultId> --allow provider-api --max-pool 5000 --weekly 20000 --max-fee 500 --hot-daily 2000
-npm run owner -- fund <vaultId> 20000                         # out0 vault coin, out1 OP_RETURN vault record
+npm run owner -w apps/owner-cli -- create-vault --agent agent-1                 # registers at GUARD_URL (BRC-103), writes data/vaults/<id>/vault.json
+npm run owner -w apps/owner-cli -- policy <vaultId> --allow provider-api --max-pool 5000 --weekly 20000 --max-fee 500 --hot-daily 2000
+npm run owner -w apps/owner-cli -- fund <vaultId> 20000                         # out0 vault coin, out1 OP_RETURN vault record
 npm run adopt -w @agentcoop/guard -- agent-1 <vaultId>        # the agent takes the funding into its basket
-npm run owner -- status                                       # chain balance (WhatsOnChain) + guard view
-npm run owner -- withdraw <vaultId> [--outpoint txid.vout]    # owner branch: no guard, no agent
+npm run owner -w apps/owner-cli -- status                                       # chain balance (WhatsOnChain) + guard view
+npm run owner -w apps/owner-cli -- withdraw <vaultId> [--outpoint txid.vout]    # owner branch: no guard, no agent
 ```
 
 `withdraw` finds the vault's UTXOs on chain (WhatsOnChain by script hash) plus the Desktop basket, and builds their BEEF from Arcade, so it works even if the guard and the overlay are down. If WhatsOnChain has not indexed a fresh UTXO yet, pass it with `--outpoint`.

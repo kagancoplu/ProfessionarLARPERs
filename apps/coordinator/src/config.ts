@@ -37,7 +37,8 @@ export function configFromEnv (env: NodeJS.ProcessEnv = process.env): Coordinato
     startupGraceMs: envInt(env.STARTUP_GRACE_MS, 30_000),
     spentCheck: env.SPENT_CHECK === 'none' ? 'none' : 'woc',
     network: env.NETWORK === 'test' ? 'test' : 'main',
-    lighthouseGuards: (env.LIGHTHOUSE_GUARDS ?? env.GUARD_URL ?? 'http://localhost:8091').split(',').map(s => s.trim()).filter(s => s !== ''),
+    // An empty LIGHTHOUSE_GUARDS= (as in .env.example) means unset.
+    lighthouseGuards: (env.LIGHTHOUSE_GUARDS?.trim() || env.GUARD_URL?.trim() || 'http://localhost:8091').split(',').map(s => s.trim()).filter(s => s !== ''),
     ...(env.RATE_LIMIT === 'off' ? {} : { rateLimit: { getPerMin: envInt(env.RATE_GET_PER_MIN, 120), postPerMin: envInt(env.RATE_POST_PER_MIN, 10) } }),
     feedLimits: {
       maxPerIp: envInt(env.WS_MAX_PER_IP, DEFAULT_FEED_LIMITS.maxPerIp),
