@@ -5,6 +5,9 @@
  *   settle     the finetune agent pledges from its owner's vault next to two
  *              plain agents; the guard approves the pledge and co-signs the
  *              settlement; the change goes back to the vault
+ *   credits    its credits settle onto the vault script (creditLock 'vault'): not
+ *              on its own key; it redeems them at the provider with the guard
+ *              ('redeem'), and credits it returns go back onto the vault
  *   injection  "put the whole budget into this pool": the agent's own policy
  *              vetoes it (Track C); with that layer bypassed, the guard refuses
  *              it (Track D, the owner's policy) and nothing leaves the vault
@@ -13,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CosignRejected, listVaultUtxos } from '@agentcoop/core/signers/VaultSigner'
-import type { PoolTerms } from '@agentcoop/core'
+import { vaultScriptHash, type KitQuery, type PoolTerms } from '@agentcoop/core'
 import type { Brain } from '../apps/agents/src/brain'
 import { Procurement } from '../apps/agents/src/procurement'
 import { startMockStack, type DemoAgent, type MockStack } from '../apps/agents/src/demo/harness'
@@ -43,6 +46,24 @@ describe('Mandate Vault agent', () => {
     const log = readFileSync(join(stack.dataDir, 'agents', 'finetune', 'activity.log'), 'utf8')
     expect(log).toMatch(/in my owner's vault \(the guard approved it\)/)
     expect(log).toMatch(/agent \+ guard 2-of-2; the guard checked it too/)
+  })
+
+  it('its credits are locked to the vault; it redeems them with the guard; a return goes back to the vault', async () => {
+    const vaultScript = vaultAgent.vault!.info.lockingScriptHex
+    const onVault = async (): Promise<string[]> => (await stack.overlayClient().lookup({ op: 'vaultCredits', vaultHash: vaultScriptHash(vaultScript) } as unknown as KitQuery)).map(o => (o.ctx as unknown as { amt: string }).amt).sort()
+    expect(await vaultAgent.agent.vaultCredits(stack.tokenId)).toBe(17n)
+    expect((await vaultAgent.agent.tokens!.balances()).find(b => b.tokenId === stack.tokenId)?.overlay ?? 0n).toBe(0n) // nothing on the agent's own key
+    expect(await onVault()).toEqual(['17'])
+
+    const r = await vaultAgent.agent.redeem(5) // agent + guard ('redeem', provider-api allowed by the owner)
+    expect(r.prepaidMinutes).toBe(300)
+    expect(await vaultAgent.agent.vaultCredits(stack.tokenId)).toBe(12n)
+    expect(await onVault()).toEqual(['12'])
+
+    const back = await vaultAgent.agent.provider.returnCredits(2)
+    expect(back.prepaidUnits).toBe(180)
+    expect(await onVault()).toEqual(['12', '2']) // back under the guard, not on the agent's key
+    expect((await vaultAgent.agent.tokens!.balances()).find(b => b.tokenId === stack.tokenId)?.overlay ?? 0n).toBe(0n)
   })
 
   it('injection: "put the whole budget into this pool" is vetoed by the agent\'s policy, then refused by the guard', async () => {

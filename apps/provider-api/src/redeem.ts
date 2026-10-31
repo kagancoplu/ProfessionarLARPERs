@@ -18,11 +18,13 @@
  * the caller's prepaid balance grows by credits × unitsPerCredit metered units.
  *
  * Return: unused whole credits go back to the caller as tokens (TokenKit.send);
- * a remainder smaller than one credit stays prepaid.
+ * a remainder smaller than one credit stays prepaid. Credits redeemed from a
+ * Mandate Vault (rule 4 met by a vault-locked input whose vault record names
+ * the caller as its agent) go back onto that vault script (TokenKit.sendToVault).
  */
 import { Beef, Transaction, Utils, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  arcadeTxFetcher, decodeBsv21, GAP_LIMIT, instructionsFor, MAX_PENDING_REDEEM_CREDITS, MAX_REDEEM_CREDITS, receivePkh, TOKEN_BASKET,
+  arcadeTxFetcher, decodeBsv21, decodeBsv21Owned, GAP_LIMIT, instructionsFor, MAX_PENDING_REDEEM_CREDITS, MAX_REDEEM_CREDITS, receivePkh, TOKEN_BASKET,
   verifyLineage as coreVerifyLineage, type OverlayClient, type TokenKit, type TxFetcher
 } from '@agentcoop/core'
 import type { CreditLedger } from './credits'
@@ -86,7 +88,8 @@ async function checkLineage (deps: CreditDeps, beef: Beef, txid: string, vout: n
   const verify = deps.verifyLineage ?? coreVerifyLineage
   let r: Awaited<ReturnType<VerifyLineage>>
   try {
-    r = await verify(`${txid}_${vout}`, { fetchTx: beefFirst(beef, deps.fetchTx ?? arcadeTxFetcher(deps.arcadeUrl)) })
+    // Vault-locked ancestors (a redeem paid from a Mandate Vault) are credits too.
+    r = await verify(`${txid}_${vout}`, { fetchTx: beefFirst(beef, deps.fetchTx ?? arcadeTxFetcher(deps.arcadeUrl)), ownerKinds: ['p2pkh', 'vault'] })
   } catch (e) {
     throw new CreditError(400, 'ERR_BAD_LINEAGE', `could not verify the credits' lineage: ${(e as Error).message}`)
   }
@@ -142,7 +145,9 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
   const callerOutputs = new Set((await deps.overlay.lookup({ op: 'identity', identityKey: caller, tokenId, includeSpent: true }))
     .map(o => `${o.txid}.${o.vout}`))
   const spendsOwn = tx.inputs.some(i => callerOutputs.has(`${i.sourceTXID ?? i.sourceTransaction?.id('hex')}.${i.sourceOutputIndex}`))
-  if (!spendsOwn) throw new CreditError(403, 'ERR_NOT_SENDER', 'only the identity that sent these credits can redeem them')
+  // …or the caller's vault paid: a vault-locked credit input on a vault whose (verified) record names the caller as its agent.
+  const fromVault = spendsOwn ? undefined : await callerVaultInput(deps, tx, caller)
+  if (!spendsOwn && fromVault === undefined) throw new CreditError(403, 'ERR_NOT_SENDER', 'only the identity that sent these credits can redeem them')
 
   // 5. genuine credits
   const lineageDepth = await checkLineage(deps, parsed, txid, vout, { tokenId, amount: decoded.amount, ownerPkh: decoded.ownerPkh })
@@ -175,7 +180,22 @@ export async function redeemCredits (deps: CreditDeps, caller: string, body: unk
     throw new CreditError(400, 'ERR_REDEEM_FAILED', `the wallet did not accept the transfer: ${(e as Error).message}`)
   }
   const prepaidUnits = deps.ledger.commitRedeem(outpoint)
+  if (fromVault !== undefined) deps.ledger.noteVault(caller, tokenId, fromVault)
   return { outpoint, product: product.id, tokenId, credits, prepaidUnits, ...(runnerIdOf(product) === 'gpu' ? { prepaidMinutes: prepaidUnits } : {}), lineageDepth }
+}
+
+/** The vault script of a vault-locked credit input whose vault record names `caller` as its agent. */
+async function callerVaultInput (deps: CreditDeps, tx: Transaction, caller: string): Promise<string | undefined> {
+  const scripts = new Set<string>()
+  for (const i of tx.inputs) {
+    const src = i.sourceTransaction?.outputs[i.sourceOutputIndex]
+    const d = src === undefined ? null : decodeBsv21Owned(src.lockingScript)
+    if (d?.owner.kind === 'vault') scripts.add(d.owner.vaultScriptHex)
+  }
+  if (scripts.size === 0) return undefined
+  const vaults = await deps.overlay.lookup({ op: 'vaults' } as unknown as Parameters<OverlayClient['lookup']>[0])
+  return vaults.map(v => v.ctx as unknown as { agent?: string, scriptHex?: string, verified?: boolean })
+    .find(v => v.verified === true && v.agent === caller && v.scriptHex !== undefined && scripts.has(v.scriptHex))?.scriptHex
 }
 
 export async function returnCredits (deps: CreditDeps, caller: string, body: unknown): Promise<{ txid: string, product: string, credits: number, prepaidUnits: number, prepaidMinutes?: number }> {
@@ -190,7 +210,10 @@ export async function returnCredits (deps: CreditDeps, caller: string, body: unk
     throw new CreditError(400, 'ERR_INSUFFICIENT_CREDITS', `prepaid balance is ${have} units = ${Math.floor(have / unitsPerCredit(product))} whole credits`)
   }
   try {
-    const { txid } = await deps.kit.send(product.tokenId, BigInt(credits), caller)
+    const vault = deps.ledger.vaultOf(caller, product.tokenId)
+    const { txid } = vault !== undefined
+      ? await deps.kit.sendToVault(product.tokenId, BigInt(credits), vault) // vault-redeemed: back under the guard
+      : await deps.kit.send(product.tokenId, BigInt(credits), caller)
     const prepaidUnits = deps.ledger.balance(caller, product.tokenId)
     return { txid, product: product.id, credits, prepaidUnits, ...(runnerIdOf(product) === 'gpu' ? { prepaidMinutes: prepaidUnits } : {}) }
   } catch (e) {

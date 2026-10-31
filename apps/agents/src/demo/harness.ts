@@ -202,7 +202,8 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
         await chain.fund(owner, 100_000)
         const info = await createVault(owner, { agent: wallet.identityKey, guard: guardWallet.identityKey })
         await registerVault(new AuthFetch(owner), guardUrl, info)
-        const policy: GuardPolicyInput = { allowProviders: [operatorWallet.identityKey], maxPerPoolSats: 1_000, weeklyCapSats: profile.budget.weeklyBudgetSats, maxFeeSats: 500, hotWalletDailySats: 0 }
+        // The pool's provider (operator) and provider-api (where vault-locked credits are redeemed).
+        const policy: GuardPolicyInput = { allowProviders: [operatorWallet.identityKey, providerWallet.identityKey], maxPerPoolSats: 1_000, weeklyCapSats: profile.budget.weeklyBudgetSats, maxFeeSats: 500, hotWalletDailySats: 0 }
         await putPolicy(new AuthFetch(owner), guardUrl, wallet.identityKey, policy)
         const funded = await fundVault(owner, info, 20_000)
         await adoptVaultOutput(wallet, info.record.vaultId, funded.tx, funded.vout)
@@ -211,7 +212,7 @@ export async function startMockStack (opts: StackOptions = {}): Promise<MockStac
       }
       const log = new AgentLog(profile.name, dataDir, opts.quiet)
       const client = overlayClient()
-      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir, events, vaultId: vault?.info.record.vaultId })
+      const agent = new Agent({ wallet, profile, providerUrl: apiUrl, overlay: client, log, stateDir: dataDir, events, vaultId: vault?.info.record.vaultId, ...(vault !== undefined ? { vaultCosign: cosign } : {}) })
       const identity = await agent.identityKey()
       roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode, ...(vault !== undefined ? { vaultId: vault.info.record.vaultId } : {}) })
       agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })

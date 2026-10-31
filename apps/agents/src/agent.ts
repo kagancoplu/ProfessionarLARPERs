@@ -16,7 +16,8 @@ import type { WalletInterface } from '@agentcoop/core/sdk'
 import { receivePkh, TokenKit, type OverlayClient } from '@agentcoop/core'
 import { dataDir, network, requireEnv } from '@agentcoop/core/node/env'
 import { openServerWallet } from '@agentcoop/core/node/serverWallet'
-import { listVaultUtxos } from '@agentcoop/core/signers/VaultSigner'
+import { listVaultUtxos, type Cosigner } from '@agentcoop/core/signers/VaultSigner'
+import { listVaultCredits, transferVaultCredits } from '@agentcoop/core'
 import type { AgentEvents, EventExtra } from './events'
 import { AgentLog } from './log'
 import type { AgentProfile } from './profile'
@@ -36,6 +37,8 @@ export interface AgentOptions {
   events?: AgentEvents
   /** Mandate Vault mode: the owner-funded vault the agent spends from (with the guard). */
   vaultId?: string
+  /** Vault mode: the guard's co-signer, to redeem vault-locked credits (guard kind 'redeem'). */
+  vaultCosign?: Cosigner
 }
 
 /** ISO week, e.g. "2026-W44": the owner's weekly budget resets with it. */
@@ -65,6 +68,7 @@ export class Agent {
   private readonly stateFile?: string
   readonly events?: AgentEvents
   readonly vaultId?: string
+  readonly vaultCosign?: Cosigner
   private spend: { week: string, sats: number }
 
   constructor (opts: AgentOptions) {
@@ -76,6 +80,7 @@ export class Agent {
     this.log = opts.log ?? new AgentLog(opts.profile.name)
     this.events = opts.events
     this.vaultId = opts.vaultId
+    this.vaultCosign = opts.vaultCosign
     this.log.subscribe(text => { this.emit('agent_thought', { text }) })
     this.stateFile = opts.stateDir === undefined ? undefined : join(opts.stateDir, 'agents', opts.profile.name, 'state.json')
     this.spend = this.stateFile !== undefined && existsSync(this.stateFile)
@@ -114,7 +119,7 @@ export class Agent {
    * that key (WALLET_AGENT_1_KEY → `data/wallets/agent-1.sqlite`), the same file Track D's `scripts/fund.ts`
    * and `infra/preflight.mjs` use; one key, one wallet database (else the agent does not see its funding).
    */
-  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents, vaultId?: string } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
+  static async open (profile: AgentProfile, opts: { providerUrl?: string, overlay?: OverlayClient, events?: AgentEvents, vaultId?: string, vaultCosign?: Cosigner } = {}): Promise<{ agent: Agent, close: () => Promise<void> }> {
     const { wallet, close } = await openServerWallet({
       name: walletNameOf(profile.walletEnv),
       rootKeyHex: requireEnv(profile.walletEnv),
@@ -130,7 +135,8 @@ export class Agent {
       log: new AgentLog(profile.name, dataDir()),
       stateDir: dataDir(),
       events: opts.events,
-      vaultId: opts.vaultId
+      vaultId: opts.vaultId,
+      vaultCosign: opts.vaultCosign
     })
     return { agent, close }
   }
@@ -164,7 +170,14 @@ export class Agent {
     const product = await this.product()
     if (this.tokens === undefined || product.tokenId === null) return 0n
     await this.tokens.sync()
-    return (await this.tokens.balances()).find(b => b.tokenId === product.tokenId)?.overlay ?? 0n
+    const own = (await this.tokens.balances()).find(b => b.tokenId === product.tokenId)?.overlay ?? 0n
+    return own + await this.vaultCredits(product.tokenId)
+  }
+
+  /** Vault mode: credits locked to the vault (settled with creditLock 'vault'), still unspent in the wallet's basket. */
+  async vaultCredits (tokenId: string): Promise<bigint> {
+    if (this.vaultId === undefined) return 0n
+    return (await listVaultCredits(this.wallet, this.vaultId, tokenId)).reduce((s, c) => s + c.amt, 0n)
   }
 
   /** Send `credits` tokens to the provider-api and claim them as prepaid balance. */
@@ -179,6 +192,24 @@ export class Agent {
       throw new Error(`redeeming ${credits} would break the provider's cap (≤ ${catalog.credits.maxRedeem} per redeem, ≤ ${catalog.credits.maxPending} credits prepaid; have ${prepaid} min)`)
     }
     const server = catalog.credits.redeemTo
+    // Vault mode: credits locked to the vault go to the provider with agent + guard (guard 'redeem': the
+    // provider must be one the owner allows, proven by creditPayees). The rest stays on the vault.
+    if (this.vaultId !== undefined && this.vaultCosign !== undefined) {
+      const [credit] = (await listVaultCredits(this.wallet, this.vaultId, product.tokenId)).filter(c => c.amt >= BigInt(credits))
+      if (credit !== undefined) {
+        const index = await this.tokens.nextIndex(server)
+        const r = await transferVaultCredits(this.wallet, {
+          vaultId: this.vaultId, credit, amt: BigInt(credits), toPkh: receivePkh(server, index), kind: 'redeem', cosign: this.vaultCosign,
+          context: { creditPayees: [{ vout: 0, provider: server, index }] }
+        })
+        await this.overlay.submit(r.beef)
+        const res = await this.provider.redeem(r.beef, 0)
+        this.emit('agent_decision', { action: 'redeem', credits, reason: `from the vault (the guard approved it); prepaid now ${res.prepaidUnits} ${product.unit === 'GB' ? 'MB' : 'GPU-min'}` })
+        this.emit('agent_payment', { kind: 'redeem', txid: r.txid }, { txid: r.txid })
+        this.log.info(`Redeemed ${credits} vault-locked credit${credits === 1 ? '' : 's'} at the provider (agent + guard; prepaid now ${res.prepaidUnits} GPU-min). https://whatsonchain.com/tx/${r.txid}`)
+        return { credits, prepaidMinutes: res.prepaidUnits, txid: r.txid }
+      }
+    }
     const { txid, recipientIndex } = await this.tokens.send(product.tokenId, BigInt(credits), server)
     // The output that pays the provider, found by its locking script (never by index).
     const pkh = receivePkh(server, recipientIndex)

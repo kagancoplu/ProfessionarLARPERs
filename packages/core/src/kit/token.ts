@@ -12,6 +12,7 @@ import { instructionsFor, receivePkh, TOKEN_BASKET, type CustomInstructions } fr
 import type { OverlayClient, OverlayOutput } from './overlayApi'
 import { P2PKH_UNLOCK_LENGTH, signWalletP2pkhInput } from './signer'
 import { selectUtxos } from './coinselect'
+import { buildVaultCreditScript } from '../scripts/creditLock'
 
 export interface BasketEntry {
   outpoint: string
@@ -270,6 +271,20 @@ export class TokenKit {
     ], `Send ${amount} tokens`)
   }
 
+  /**
+   * Send `amount` of `tokenId` onto a Mandate Vault script (vault-locked credits, A-P5): a provider
+   * returning credits that were redeemed from a vault puts them back there, never on the agent's own key.
+   */
+  async sendToVault (tokenId: string, amount: bigint, vaultScriptHex: string): Promise<{ txid: string, recipientIndex: number }> {
+    if (amount <= 0n) throw new Error('amount must be positive')
+    const { entries, beef } = await this.spendable(tokenId)
+    const { selected, total } = selectUtxos(entries, amount)
+    return await this.spendInputs(selected, beef, tokenId, [
+      { vaultScriptHex, amount },
+      ...(total > amount ? [{ to: 'self' as const, amount: total - amount }] : [])
+    ], `Return ${amount} tokens to a vault`)
+  }
+
   /** Consolidate every UTXO of `tokenId` into one, on a fresh address of yours. */
   async merge (tokenId: string): Promise<{ txid: string, recipientIndex: number }> {
     const { entries: selected, beef } = await this.spendable(tokenId)
@@ -305,7 +320,7 @@ export class TokenKit {
     inputs: Array<BasketEntry & { amount: bigint }>,
     inputBEEF: number[],
     tokenId: string,
-    destinations: Array<{ to: string | 'self', amount: bigint }>,
+    destinations: Array<{ to: string | 'self', amount: bigint } | { vaultScriptHex: string, amount: bigint }>,
     description: string
   ): Promise<{ txid: string, recipientIndex: number }> {
     const me = await this.identityKey()
@@ -313,6 +328,11 @@ export class TokenKit {
     const outputs = []
     let recipientIndex = -1
     for (const d of destinations) {
+      if ('vaultScriptHex' in d) {
+        outputs.push({ lockingScript: buildVaultCreditScript({ op: 'transfer', id: tokenId, amt: d.amount.toString() }, d.vaultScriptHex).toHex(), satoshis: 1, outputDescription: 'Tokens to a vault' })
+        if (recipientIndex === -1) recipientIndex = 0
+        continue
+      }
       const self = d.to === 'self' || d.to === me
       const owner = self ? me : d.to
       const index = self ? nextOwn++ : await this.nextIndex(owner)

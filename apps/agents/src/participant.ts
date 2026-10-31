@@ -23,12 +23,15 @@
  * at pledge time), the settlement input is signed agent + guard (VaultSigner:
  * the guard checks the plan, DvP and lineage again), and the change goes back
  * to the vault (internalizeVaultSettlement). The guard can refuse either step.
+ * The pledge asks for vault-locked credits (record creditLock 'vault', A-P5
+ * 5.3): the credits settle onto the vault script too (internalizeVaultCredits),
+ * so the agent alone can never move them (FINAL-IDEA §8).
  */
 import { WebSocket } from 'ws'
 import { signHello } from '@agentcoop/coordinator/auth'
 import { Beef, Transaction, type WalletInterface } from '@agentcoop/core/sdk'
 import {
-  buildPledge, cancelPledge, internalizeSettlement, P2pkhWalletSigner, PLEDGE_BASKET, pledgeRecordOf, receivePkh, signSettlementInput, verifySettlementPlan,
+  buildPledge, cancelPledge, internalizeSettlement, internalizeVaultCredits, P2pkhWalletSigner, PLEDGE_BASKET, pledgeRecordOf, receivePkh, signSettlementInput, verifySettlementPlan,
   type KitQuery, type LineageOptions, type Offer, type PledgeInstructions, type PoolTerms, type SettlementPlan, type TokenKit
 } from '@agentcoop/core'
 import {
@@ -233,7 +236,7 @@ export class PoolParticipant {
     if (utxo === undefined) throw new Error(`vault ${vaultId.slice(0, 12)}… has no spendable funds (the owner funds it)`)
     // The pool transaction from the overlay saves the guard a fetch.
     const [pool] = await this.opts.kit.overlay.lookup({ op: 'pool', poolId: terms.poolId } as unknown as KitQuery)
-    return await pledgeFromVault(this.opts.wallet, { vaultId, utxo, terms, credits: String(credits), tokenIndex, cosign, poolBEEF: pool?.beef })
+    return await pledgeFromVault(this.opts.wallet, { vaultId, utxo, terms, credits: String(credits), tokenIndex, cosign, poolBEEF: pool?.beef, creditLock: 'vault' })
   }
 
   private async onMessage (msg: { type: string, [k: string]: any }): Promise<void> {
@@ -325,8 +328,11 @@ export class PoolParticipant {
       return
     }
     const tx = await this.settlementTx(poolId, txid)
-    if (a.vaultId !== undefined) await internalizeVaultSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.vaultId) // change back on the vault script
-    else await internalizeSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.instructions)
+    if (a.vaultId !== undefined) {
+      await internalizeVaultSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.vaultId) // change back on the vault script
+      // Credits locked to the vault (creditLock 'vault'): agent + guard, or the owner, move them.
+      if (a.plan.participants.find(p => p.outpoint === a.outpoint)?.creditLock === 'vault') await internalizeVaultCredits(this.opts.wallet, tx, a.plan, a.outpoint, a.vaultId)
+    } else await internalizeSettlement(this.opts.wallet, tx, a.plan, a.outpoint, a.instructions)
     await this.opts.kit.sync()
     a.status = 'settled'
     this.opts.log.decision(`Pool "${a.label}" filled. One settlement tx paid the provider and delivered every share: ${a.credits} credits are mine. https://whatsonchain.com/tx/${txid}`)

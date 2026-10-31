@@ -12,6 +12,11 @@
  * its debit. A redeem reserves its outpoint and amount before the async
  * internalize, so a parallel redeem of the same outpoint (or one that would
  * pass the cap) is refused.
+ *
+ * Vault-redeemed credits (A-P5, D's 22:45 request): a redeem paid from a
+ * Mandate Vault records that vault's script for the identity and token; while
+ * any prepaid balance remains, returns go back onto that vault script, never to
+ * the agent's own key (which would bypass the guard's per-redeem cap).
  */
 import { JsonFile } from './jsonFile'
 
@@ -22,6 +27,8 @@ interface LedgerState {
   balances: Record<string, Record<string, number>>
   /** "txid.vout" of every redeemed token output */
   redeemed: Record<string, RedeemRecord>
+  /** identity key → token id → the vault script prepaid credits came from (returns go back there) */
+  vaults?: Record<string, Record<string, string>>
 }
 
 export type ReserveResult = 'ok' | 'replayed' | 'over-limit'
@@ -51,6 +58,18 @@ export class CreditLedger {
   /** Put back minutes debited for something that then failed. */
   refund (identity: string, tokenId: string, minutes: number): void {
     this.add(identity, tokenId, minutes)
+  }
+
+  /** The redeem was paid from this vault: returns of `identity`'s `tokenId` balance go back onto it. */
+  noteVault (identity: string, tokenId: string, vaultScriptHex: string): void {
+    this.state.vaults ??= {}
+    this.state.vaults[identity] = { ...this.state.vaults[identity], [tokenId]: vaultScriptHex }
+    this.store.write(this.state)
+  }
+
+  /** The vault script returns must go to, while a vault-sourced balance remains. */
+  vaultOf (identity: string, tokenId: string): string | undefined {
+    return this.state.vaults?.[identity]?.[tokenId]
   }
 
   isRedeemed (outpoint: string): boolean {
@@ -86,7 +105,10 @@ export class CreditLedger {
   private add (identity: string, tokenId: string, delta: number): void {
     const mine = this.state.balances[identity] ?? {}
     mine[tokenId] = (mine[tokenId] ?? 0) + delta
-    if (mine[tokenId] === 0) delete mine[tokenId]
+    if (mine[tokenId] === 0) {
+      delete mine[tokenId]
+      if (this.state.vaults?.[identity] !== undefined) delete this.state.vaults[identity][tokenId] // used up: no vault left to return to
+    }
     this.state.balances[identity] = mine
     if (Object.keys(mine).length === 0) delete this.state.balances[identity]
     this.store.write(this.state)

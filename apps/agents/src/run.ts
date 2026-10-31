@@ -72,12 +72,13 @@ async function runAgent (name: string): Promise<void> {
   const overlay = new OverlayClient(process.env.OVERLAY_URL ?? 'http://localhost:8080', undefined, network(), process.env.ARCADE_URL, COOP_TOPIC, COOP_SERVICE)
   const vaultId = process.env[`${name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_VAULT_ID`]
   if (vaultId !== undefined && vaultId !== '') profile.mode = 'vault'
-  const { agent, close } = await Agent.open(profile, { overlay, events, vaultId: profile.mode === 'vault' ? vaultId : undefined })
+  const guardCosign = profile.mode === 'vault' ? httpCosigner(process.env.GUARD_URL ?? 'http://localhost:8091') : undefined
+  const { agent, close } = await Agent.open(profile, { overlay, events, vaultId: profile.mode === 'vault' ? vaultId : undefined, vaultCosign: guardCosign })
   if (profile.mode === 'vault' && (vaultId === undefined || vaultId === '')) throw new Error(`${name} is in vault mode: set ${name.toUpperCase()}_VAULT_ID (owner-cli create-vault / fund, then adopt)`)
   const identity = await agent.identityKey()
   roster.push({ name: profile.name, profile: profile.name, identity, mode: profile.mode, ...(agent.vaultId !== undefined ? { vaultId: agent.vaultId } : {}) })
   agent.emit('agent_started', { name: profile.name, profile: profile.name, identity })
-  const vault = agent.vaultId !== undefined ? { vaultId: agent.vaultId, cosign: httpCosigner(process.env.GUARD_URL ?? 'http://localhost:8091') } : undefined
+  const vault = agent.vaultId !== undefined && guardCosign !== undefined ? { vaultId: agent.vaultId, cosign: guardCosign } : undefined
   const participant = new PoolParticipant({ wallet: agent.wallet, kit: agent.tokens!, coopApiUrl, log: agent.log, emit: (t, d, x) => { agent.emit(t, d, x) }, vault })
   try {
     agent.log.info(`${profile.name} agent up (identity ${(await agent.identityKey()).slice(0, 16)}…, brain ${brain.name}): ${profile.description}`)
