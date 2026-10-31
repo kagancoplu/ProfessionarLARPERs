@@ -353,6 +353,12 @@ export class AgentCoopLookupService implements LookupService {
           fee_out_script_hex: fee?.lockingScript.toHex() ?? null,
           height
         }).onConflict('outpoint').ignore()
+        // A pledge that reaches the overlay after the settlement that spent it (a backfill, mainnet S1):
+        // the engine never notifies that spend, so mark it from the settlement's inputs.
+        const outpoint = outpointOf(txid, PLEDGE_COIN_VOUT)
+        const spender = (await this.knex<SettlementRow>(SETTLEMENTS).where({ pool_id: pledge.poolId }))
+          .find(r => (JSON.parse(r.inputs) as string[]).includes(outpoint))
+        if (spender !== undefined) await this.knex(PLEDGES).where({ outpoint }).update({ spent: true, spending_txid: spender.txid })
         return
       }
       case 'settle': {

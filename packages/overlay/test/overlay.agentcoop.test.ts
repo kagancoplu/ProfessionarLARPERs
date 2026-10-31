@@ -120,6 +120,26 @@ describe('ls_agentcoop: pools and pledges from chain records', () => {
     expect((await lookup(overlay.url, { op: 'pools', status: 'settled' })).map(o => o.ctx.poolId)).toContain(p.poolId)
   })
 
+  it('8. pledges submitted after their settlement (a backfill) are history spent by it, and the audit facts hold', async () => {
+    const q = await openPool(provider)
+    await submit(q.deployTx)
+    await submit(q.poolTx)
+    const [late1, late2] = [await pledge(a1, q, 600n), await pledge(a2, q, 400n)]
+    const parts = [{ w: a1, x: late1 }, { w: a2, x: late2 }].map(({ w, x }) => ({
+      w,
+      p: { coin: x.coin, identityKey: x.identityKey, credits: x.credits, share: Number(x.credits) * 4_500 / 1000, fee: 100 }
+    }))
+    const tx = buildSettlement({ offer: q.credit, tokenId: q.terms.tokenId, priceSats: 4_500, payScript: LockingScript.fromHex(q.terms.payScriptHex), participants: parts.map(x => x.p), poolId: q.poolId })
+    tx.inputs[0].unlockingScript = await signInput(provider, tx, 0, q.credit.key, SCOPE_SINGLE_ACP)
+    for (const [i, { w, p: part }] of parts.entries()) tx.inputs[i + 1].unlockingScript = await signInput(w, tx, i + 1, part.coin.key, SCOPE_ALL)
+    await broadcastMock(chain.services, tx)
+    await submitToOverlay(overlay.url, tx.toBEEF()) // the settlement first: the pledges never reached this overlay
+    expect(await pool(q.poolId)).toMatchObject({ status: 'settled' })
+    for (const x of [late1, late2]) await submit(x.tx) // backfill
+    const hist = await pledges(q.poolId, { includeSpent: true, includeInvalid: true })
+    for (const x of [late1, late2]) expect(hist.find(h => h.txid === x.txid)).toMatchObject({ spent: true, spendingTxid: tx.id('hex') })
+  })
+
   it('7. the provider spending the credit UTXO outside a settlement cancels the pool', async () => {
     const q = await openPool(provider)
     await submit(q.deployTx)
