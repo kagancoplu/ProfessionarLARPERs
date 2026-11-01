@@ -26,6 +26,9 @@ export default function TownCanvas () {
         // headless automation (Playwright) has flaky WebGL framebuffers: draw with Canvas there, WebGL for people
         type: navigator.webdriver ? Phaser.CANVAS : Phaser.AUTO, parent, backgroundColor: '#1d1f2b',
         pixelArt: true, antialias: false, roundPixels: true, dom: { createContainer: true },
+        // no window.focus() at boot: a page that hosts the Town in an iframe keeps its keyboard focus until the
+        // visitor clicks into the game (the keys work as before at the top level, where the window has focus)
+        autoFocus: false,
         // render mode (film/vclock.ts) steps 33 ms frames; Phaser's smoothing would run the clock at half speed
         ...(window.__vt !== undefined ? { fps: { smoothStep: false } } : {}),
         scale: { mode: Phaser.Scale.RESIZE, width: parent.clientWidth, height: parent.clientHeight },
