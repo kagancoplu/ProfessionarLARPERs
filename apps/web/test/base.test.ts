@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appPath, asset, routerBasename } from '../src/base'
+import { appPath, asset, entryPath, routerBasename } from '../src/base'
 
 describe('base path', () => {
   it('leaves URLs unchanged under the default base', () => {
@@ -18,5 +18,11 @@ describe('base path', () => {
     expect(appPath('/play/agentcoop', '/play/agentcoop/')).toBe('/')
     expect(appPath('/play/agentcoop/', '/play/agentcoop/')).toBe('/')
     expect(appPath('/play/agentcoop/pools', '/play/agentcoop/')).toBe('/pools')
+  })
+
+  it('shows the base path instead of an explicit index.html', () => {
+    expect(entryPath('/play/agentcoop/index.html', '/play/agentcoop/')).toBe('/play/agentcoop/')
+    expect(entryPath('/index.html', '/')).toBe('/')
+    expect(entryPath('/play/agentcoop/pools', '/play/agentcoop/')).toBeNull()
   })
 })

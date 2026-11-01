@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter } from 'react-router'
-import { routerBasename } from './base'
+import { normalizeEntry, routerBasename } from './base'
 import { TownPage } from './consoles/town/TownPage'
 import { ExplorerPage } from './consoles/explorer/ExplorerPage'
 import { MetricsPage } from './consoles/metrics/MetricsPage'
@@ -19,6 +19,9 @@ const KitPage = lazy(() => import('./dev/KitPage'))
 const DebugPage = lazy(() => import('./dev/DebugPage'))
 const FilmPage = lazy(() => import('./film/FilmPage'))
 const lazyPage = (Page: React.LazyExoticComponent<() => React.JSX.Element>) => <Suspense fallback={<LoadingState title="Loading…" />}><Page /></Suspense>
+
+// `<base>index.html` → `<base>` before the router reads the address (src/base.ts)
+normalizeEntry()
 
 export const router = createBrowserRouter([
   // film mode (VIDEO.md): the Town alone on a 16:9 stage, outside the shell

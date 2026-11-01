@@ -32,3 +32,19 @@ export function appPath (pathname: string, base: string = BASE): string {
   if (pathname === b.slice(0, -1) || pathname === b) return '/'
   return pathname.startsWith(b) ? `/${pathname.slice(b.length)}` : pathname
 }
+
+/**
+ * A host that cannot answer the base path with its index (Next.js public files, for example) links to
+ * `<base>index.html`. The app then shows the base path itself, so the router sees `/` and the page stays inside
+ * the MSW worker's scope (`<base>`); `null` when the pathname needs no change.
+ */
+export function entryPath (pathname: string, base: string = BASE): string | null {
+  return pathname === `${withSlashes(base)}index.html` ? withSlashes(base) : null
+}
+
+/** applies `entryPath` to the address bar (no reload); call before the router reads the location */
+export function normalizeEntry (): void {
+  if (typeof location === 'undefined' || typeof history === 'undefined') return
+  const to = entryPath(location.pathname)
+  if (to !== null) history.replaceState(history.state, '', to + location.search + location.hash)
+}
