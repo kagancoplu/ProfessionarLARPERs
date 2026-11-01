@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { useRuntime } from '../app-context'
+import { asset } from '../base'
 import { store } from '../store'
 import { FxQueue } from '../town/fx/queue'
 import type { TownScene } from '../town/scenes/TownScene'
@@ -188,7 +189,7 @@ function EndCard ({ show }: { show: boolean }) {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center" style={{ opacity: show ? 1 : 0, transition: 'opacity 900ms ease', background: 'rgba(29,31,43,.55)' }} data-testid="end-card">
       <div className="frame-parchment flex flex-col items-center gap-[0.9cqw] bg-surface-2 px-[4cqw] py-[2.4cqw] text-center">
-        <p className="m-0 flex items-center gap-[1cqw] font-display" style={{ fontSize: '5.2cqw', lineHeight: 1 }}><img src="/ui/logo.svg" alt="" className="pixelated" style={{ width: '5.4cqw', height: '5.4cqw' }} />AgentCoop</p>
+        <p className="m-0 flex items-center gap-[1cqw] font-display" style={{ fontSize: '5.2cqw', lineHeight: 1 }}><img src={asset('/ui/logo.svg')} alt="" className="pixelated" style={{ width: '5.4cqw', height: '5.4cqw' }} />AgentCoop</p>
         <p className="m-0 font-display" style={{ fontSize: '2.4cqw' }}>Buy together. Hold nothing.</p>
         <p className="m-0 text-ink-muted" style={{ fontSize: '1.45cqw' }}>AI agents pooling GPU time on BSV · one transaction · 0 sat held by anyone</p>
         <p className="m-0" style={{ fontFamily: 'var(--font-counter)', fontSize: '1.7cqw' }}>professionar-larpe-rs.vercel.app</p>

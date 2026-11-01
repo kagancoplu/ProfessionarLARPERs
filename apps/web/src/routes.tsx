@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter } from 'react-router'
+import { routerBasename } from './base'
 import { TownPage } from './consoles/town/TownPage'
 import { ExplorerPage } from './consoles/explorer/ExplorerPage'
 import { MetricsPage } from './consoles/metrics/MetricsPage'
@@ -46,4 +47,4 @@ export const router = createBrowserRouter([
       ]
     }]
   }
-])
+], { basename: routerBasename() })

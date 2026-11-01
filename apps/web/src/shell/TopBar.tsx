@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router'
+import { asset } from '../base'
 import { t } from '../i18n/t'
 import { store, useStore } from '../store'
 import { selectHealth, selectMode, selectSettings, selectUnread } from '../store/selectors'
@@ -33,7 +34,7 @@ export function TopBar () {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 whitespace-nowrap border-b-2 border-wood-dark bg-wood px-4 text-surface-2">
       <NavLink to="/" className="flex items-center gap-2 no-underline text-surface-2">
-        <img src="/ui/logo.svg" alt="" aria-hidden className="pixelated size-8" />
+        <img src={asset('/ui/logo.svg')} alt="" aria-hidden className="pixelated size-8" />
         <span className="font-display text-[20px] leading-7 font-bold tracking-wide">{t('app.name')}</span>
       </NavLink>
       <nav className="flex items-center gap-1" aria-label="Main">

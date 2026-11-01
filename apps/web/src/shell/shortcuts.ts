@@ -1,4 +1,5 @@
 /** Keyboard shortcuts (track-E 4.4): letters only, never while typing in a field or with a modifier held. */
+import { appPath } from '../base'
 import type { AppStoreApi } from '../store'
 
 export const SHORTCUTS: Record<string, string> = { t: '/', p: '/pools', a: '/agents', e: '/explorer', k: '/market', o: '/owner' }
@@ -19,7 +20,7 @@ export function handleShortcut (e: KeyboardEvent, store: AppStoreApi, navigate: 
   if (stage !== undefined && replay !== undefined) { replay.skipTo(stage as never); return true }
   const avatar = store.getState().settings.avatar
   if (key === 'v') { store.getState().updateSettings({ avatar: !avatar }); return true }
-  if (avatar && typeof location !== 'undefined' && location.pathname === '/') return false   // WASD/E belong to the Town
+  if (avatar && typeof location !== 'undefined' && appPath(location.pathname) === '/') return false   // WASD/E belong to the Town
   const to = SHORTCUTS[key]
   if (to !== undefined) { navigate(to); return true }
   if (key === 'm') { const s = store.getState(); s.updateSettings({ sound: !s.settings.sound }); return true }

@@ -70,6 +70,8 @@ The app is a static build; any static host works. Services must send CORS for th
 
 **Cloudflare Pages:** build command `npm run web:build`, output `apps/web/dist`, Node 22+. `public/_redirects` routes every path to `index.html`; `public/_headers` sets the CSP and long caches for `/game`, `/ui` and `/assets` (fill the service origins into `connect-src`). Set `VITE_DATA_MODE=live` and the service URLs.
 
+**Under a sub-path** (another site hosting the Town, for example in an iframe): `npm -w apps/web run build:demo -- --base /play/agentcoop/`. Vite's `--base` sets `import.meta.env.BASE_URL`; `apps/web/src/base.ts` prefixes every absolute URL the app requests (Phaser atlases, UI images, replays, the MSW worker and its scope) and gives React Router its basename, and `index.html` passes the base to the boot guard. The host serves the files under that path and answers unknown paths below it with its `index.html`. The default base is `/`, so the Vercel build is unchanged.
+
 **Replays:** `public/replays/*.jsonl`. Record one from `/_debug` ("record a replay" downloads `mainnet-<date>.jsonl`) and open it with `?replay=mainnet-<date>`. The repository has only the scripted `mock-demo` recording; no mainnet replay has been recorded yet.
 
 Sound is synthesised in the browser (no audio files). Keyboard: `T` town, `P` pools, `A` agents, `E` explorer, `K` market, `O` owner, `M` sound, `N` day/night, `?` tour.

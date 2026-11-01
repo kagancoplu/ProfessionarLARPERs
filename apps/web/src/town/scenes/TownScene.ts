@@ -4,6 +4,7 @@
  * map/places.ts, villagers from chars.json. Everything that stands is depth-sorted by its y.
  */
 import Phaser from 'phaser'
+import { asset } from '../../base'
 import type { AppStoreApi } from '../../store'
 import type { EventBus } from '../../events/bus'
 import { Bell, Cart, House, Stall, Workshop, ensureAnim, placeAnimated, placeStatic, Building } from '../entities/Buildings'
@@ -65,12 +66,12 @@ export class TownScene extends Phaser.Scene {
   get walkStart (): { x: number, y: number } { const p = POINTS['walk-start']!; return { x: p.x, y: p.y } }
 
   preload (): void {
-    this.load.tilemapTiledJSON('map', '/game/map.json')
-    for (const k of TERRAIN_KEYS) this.load.image(`t_${k}`, `/game/terrain/${k}.png`)
-    for (let f = 0; f < WATER_FRAMES; f++) this.load.image(`t_water_${f}`, `/game/terrain/water_${f}.png`)
-    this.load.atlas('town', '/game/town.png', '/game/town.json')
-    this.load.atlas('chars', '/game/chars.png', '/game/chars.json')
-    this.load.spritesheet('icons', '/ui/icons.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.tilemapTiledJSON('map', asset('/game/map.json'))
+    for (const k of TERRAIN_KEYS) this.load.image(`t_${k}`, asset(`/game/terrain/${k}.png`))
+    for (let f = 0; f < WATER_FRAMES; f++) this.load.image(`t_water_${f}`, asset(`/game/terrain/water_${f}.png`))
+    this.load.atlas('town', asset('/game/town.png'), asset('/game/town.json'))
+    this.load.atlas('chars', asset('/game/chars.png'), asset('/game/chars.json'))
+    this.load.spritesheet('icons', asset('/ui/icons.png'), { frameWidth: 16, frameHeight: 16 })
   }
 
   create (): void {

@@ -4,6 +4,8 @@
  * instead of an empty page, with a way out. Plain DOM, no dependencies; CSP-safe (a file, not inline).
  */
 (function () {
+  // the path the app is served under (index.html passes Vite's BASE_URL), so the way out stays inside it
+  var base = (document.currentScript && document.currentScript.getAttribute('data-base')) || '/'
   var errors = []
   var note = function (msg) { if (msg && errors.length < 8) errors.push(String(msg).slice(0, 400)) }
   window.addEventListener('error', function (e) { note(e.error && e.error.stack ? e.error.stack.split('\n').slice(0, 3).join(' / ') : e.message || (e.target && e.target.src ? 'failed to load ' + e.target.src : '')) }, true)
@@ -26,7 +28,7 @@
     var links = document.createElement('p'); links.style.margin = '0'
     var a = function (href, text) { var l = document.createElement('a'); l.href = href; l.textContent = text; l.style.marginRight = '16px'; links.appendChild(l) }
     a(location.pathname + location.search, 'Reload')
-    a('/?mode=mock', 'Open the mock walkthrough')
+    a(base + '?mode=mock', 'Open the mock walkthrough')
     box.appendChild(links)
     root.appendChild(box)
   }

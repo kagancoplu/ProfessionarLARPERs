@@ -16,6 +16,7 @@ import { createLiveClient } from './api/supabaseLiveClient'
 import { startSfx } from './audio'
 import { invalidateFor, queryClient } from './api/queries'
 import type { AppRuntime } from './app-context'
+import { asset } from './base'
 import { env, wsUrl } from './env'
 import { createBus } from './events/bus'
 import { startCoordinatorFeed } from './events/adapters/coordinatorWs'
@@ -73,7 +74,7 @@ export async function bootstrap (): Promise<AppRuntime & { stop: () => void }> {
     runtime.replay = replay
     flows = createLiveFlows({ env, store, bus, getWallet: () => wallet.wallet, getFeed: () => undefined })
     bus.publish(makeEvent('web', 'mode_changed', { mode: 'replay', replayName: env.replayName ?? 'mock-demo' }))
-    void replay.load(`/replays/${env.replayName ?? 'mock-demo'}.jsonl`).then(() => replay.play()).catch(err => {
+    void replay.load(asset(`/replays/${env.replayName ?? 'mock-demo'}.jsonl`)).then(() => replay.play()).catch(err => {
       store.getState().pushToast({ kind: 'error', text: `Replay not found: ${String((err as Error).message)}` })
     })
     stops.push(() => replay.pause())

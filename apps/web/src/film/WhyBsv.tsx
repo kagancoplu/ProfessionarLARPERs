@@ -6,6 +6,7 @@
  * Lines in narration.ts (why-eth 0.8 s, why-bsv 7.2 s, why-stack 14 s).
  */
 import type { CSSProperties, ReactNode } from 'react'
+import { asset } from '../base'
 import { ICONS } from '../ui/icons.generated'
 import { duration } from './narration'
 
@@ -25,7 +26,7 @@ const span = (t: number, a: number, b: number): number => { const x = clamp((t -
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k
 
 function Icon ({ name, size = 64, style }: { name: keyof typeof ICONS, size?: number, style?: CSSProperties }) {
-  return <div style={{ width: size, height: size, backgroundImage: 'url(/ui/icons.png)', backgroundSize: `${30 * size}px ${size}px`, backgroundPosition: `${-ICONS[name] * size}px 0`, imageRendering: 'pixelated', ...style }} />
+  return <div style={{ width: size, height: size, backgroundImage: `url(${asset('/ui/icons.png')})`, backgroundSize: `${30 * size}px ${size}px`, backgroundPosition: `${-ICONS[name] * size}px 0`, imageRendering: 'pixelated', ...style }} />
 }
 
 function Panel ({ x, title, tag, children, show }: { x: number, title: string, tag: string, children: ReactNode, show: number }) {

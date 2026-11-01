@@ -1,4 +1,5 @@
 /** Mock mode bootstrap: MSW worker + scenario + health = ok for every service. */
+import { BASE, asset } from '../base'
 import type { EventBus } from '../events/bus'
 import { makeEvent } from '../events/types'
 import type { ServiceName } from '../env'
@@ -14,7 +15,7 @@ export async function startMockMode (bus: EventBus, opts: { speed?: number, work
   if (opts.worker !== false && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     const { setupWorker } = await import('msw/browser')
     const worker = setupWorker(...createHandlers(world))
-    await worker.start({ onUnhandledRequest: 'bypass', quiet: true, serviceWorker: { url: '/mockServiceWorker.js' } })
+    await worker.start({ onUnhandledRequest: 'bypass', quiet: true, serviceWorker: { url: asset('/mockServiceWorker.js'), options: { scope: BASE } } })
     stopWorker = () => { worker.stop() }
   }
   const services: ServiceName[] = ['coop', 'overlay', 'provider', 'guard', 'agents', 'arcade', 'maker']
