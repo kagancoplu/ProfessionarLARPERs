@@ -18,6 +18,7 @@ import { LoadingState } from './ui'
 const KitPage = lazy(() => import('./dev/KitPage'))
 const DebugPage = lazy(() => import('./dev/DebugPage'))
 const FilmPage = lazy(() => import('./film/FilmPage'))
+const TownOnlyPage = lazy(() => import('./town/TownOnlyPage'))
 const lazyPage = (Page: React.LazyExoticComponent<() => React.JSX.Element>) => <Suspense fallback={<LoadingState title="Loading…" />}><Page /></Suspense>
 
 // `<base>index.html` → `<base>` before the router reads the address (src/base.ts)
@@ -26,6 +27,8 @@ normalizeEntry()
 export const router = createBrowserRouter([
   // film mode (VIDEO.md): the Town alone on a 16:9 stage, outside the shell
   { path: '/film', element: lazyPage(FilmPage) },
+  // the Town alone, filling the window, for an iframe on another site (src/town/TownOnlyPage.tsx)
+  { path: '/town', element: lazyPage(TownOnlyPage) },
   {
     path: '/',
     element: <AppShell />,

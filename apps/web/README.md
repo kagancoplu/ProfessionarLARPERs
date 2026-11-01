@@ -86,6 +86,7 @@ Sound is synthesised in the browser (no audio files). Keyboard: `T` town, `P` po
 | `/pools`, `/me`, `/provider`, `/owner`, `/agents`, `/market`, `/explorer`, `/metrics` | the consoles: pools, participant, provider, owner (vault + guard), agents, market, ledger, metrics + harbor (Coop Rail, experimental) |
 | `/_kit` | the design system: tokens, type, every component and state, sprites, Phaser atlas |
 | `/_debug` | events, state, service health, mode controls, the core-in-browser smoke test |
+| `/town` | the Town alone, filling the window (no top bar, consoles or feed): for another site's iframe, e.g. `/town?mode=mock&avatar=1`; V walk, E open, M sound, N day/night |
 | `/film` | film mode: a scripted Town scene on a 16:9 stage for the demo video (`?film=pool&subs=1&tc=1`; render with `npm run film:render`, see VIDEO.md) |
 
 ## Layout

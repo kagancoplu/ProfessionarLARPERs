@@ -25,7 +25,7 @@ function NarrowScreenNotice () {
 }
 
 /** The mock Desktop's approval window (mock mode only). */
-function MockApprovalDialog () {
+export function MockApprovalDialog () {
   const pending = useApproval(s => s.pending)
   return (
     <Scroll open={pending !== undefined} title={t('wallet.approveHint')} id="mock-approval" priority
